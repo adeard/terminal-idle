@@ -39,9 +39,6 @@ export function tampilkanPopupKepuasan(akar: HTMLElement, m: ModelKepuasan): voi
   const bonus = el('p', 'kepuasan-bonus', TEKS.kepuasanBonus(persen(m.bonus), persen(m.bonusMulai), persen(m.bonusMaks)));
   bonus.classList.toggle('nol', m.bonus <= 0);
   const penumpang = el('p', 'kepuasan-penumpang', TEKS.kepuasanPenumpang(persen(m.tambahanPenumpang), persen(m.keterisian)));
-  // Tiket terlalu mahal mengurangi seluruh kepuasan: penyebab yang paling cepat diperbaiki pemain.
-  const hargaMahal = el('p', 'kepuasan-harga', TEKS.kepuasanHargaMahal(persen(m.penaltiHarga)));
-  hargaMahal.hidden = m.penaltiHarga <= 0;
   const baris = (label: string, nilai: number, saran: string): HTMLElement => {
     const b = el('div', 'kepuasan-baris');
     b.dataset['tingkat'] = tingkatKepuasan(nilai);
@@ -63,7 +60,7 @@ export function tampilkanPopupKepuasan(akar: HTMLElement, m: ModelKepuasan): voi
   const catatan = el('p', 'popup-catatan', TEKS.kepuasanCatatan);
   const tutupB = el('button', 'tombol tombol-hijau popup-tombol', TEKS.kepuasanTutup);
   tutupB.type = 'button';
-  kotak.append(wajah, judul, bonus, penumpang, hargaMahal, daftar, catatan, tutupB);
+  kotak.append(wajah, judul, bonus, penumpang, daftar, catatan, tutupB);
   latar.append(kotak);
   akar.append(latar);
   const tutup = (): void => {

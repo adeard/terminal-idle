@@ -43,12 +43,12 @@ export function langkahBerikut(s: GameState): IdLangkahTutorial | null {
 }
 
 /**
- * Game yang benar-benar baru (belum membeli apa pun, belum pernah prestige):
+ * Game yang benar-benar baru (belum membeli apa pun, belum pernah Renovasi):
  * tutorial dimulai. Pemain lama yang pertama kali menerima versi bertutorial
  * tidak diganggu.
  */
 export function cocokUntukTutorial(s: GameState): boolean {
-  return s.prestige.poin.lte(0) && LANGKAH_TUTORIAL.every((id) => !langkahTerpenuhi(id, s));
+  return s.renovasi.jumlah === 0 && s.renovasi.poin.lte(0) && LANGKAH_TUTORIAL.every((id) => !langkahTerpenuhi(id, s));
 }
 
 /** Tombol yang dituju langkah ini, dan biayanya (untuk kemajuan "uang / biaya"). */

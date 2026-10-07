@@ -114,9 +114,9 @@ export class RambuPelabuhan {
     });
   }
 
-  /** @param jurusanBuka banyaknya jurusan terbuka: rambu menunjuk pelabuhan rute antarpulau yang sudah dibuka. */
-  perbarui(jurusanBuka: number): void {
-    const p = pelabuhanTerbuka(jurusanBuka);
+  /** @param mask jurusan yang dilayani: rambu menunjuk pelabuhan rute antarpulau yang dilayani. */
+  perbarui(mask: number): void {
+    const p = pelabuhanTerbuka(mask);
     const kunci = `${p.barat ?? ''}|${p.timur ?? ''}`;
     for (const [k, g] of this.grup) g.visible = k === kunci;
   }

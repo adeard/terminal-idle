@@ -8,9 +8,10 @@
 // Variabel lingkungan:
 //   URL         halaman (bawaan http://localhost:5199/?tingkat=1; ?tingkat=0..4 mengunci kualitas grafis)
 //   W, H        ukuran jendela (bawaan 540×960 portrait; mis. 900×420 landscape)
-//   SAVE        "peron,loket,keberangkatan" → suntik save dengan level itu & semua Kepala
+//   SAVE        "peron,loket,keberangkatan" → suntik save (format v1, dimigrasikan game ke v2) dengan level itu & semua Kepala
 //   JAM, HARI   jam terminal (0–24) & hari ke- (0 = Senin) di save yang disuntik
-//   SAVE_EXTRA  JSON {"terminal": {...}} digabung ke save (fasilitas, jurusanBuka, teknologi)
+//   SAVE_EXTRA  JSON {"terminal": {...}} digabung ke terminal (fasilitas, teknologi, jalur); kunci lain menimpa
+//               blok save v1, mis. {"armada":{"po":["ondelOndel","peuyeumKilat"]},"prestige":{"poin":"0e0","jumlahReset":1}}
 //   OFFLINE_MS  waktuTerakhirMs mundur sekian ms (memunculkan popup offline)
 //   PRA         skrip JS yang dijalankan sebelum halaman dimuat (mis. localStorage pilihan UI)
 //   CHROME      path chrome.exe (bawaan C:/Program Files/Google/Chrome/Application/chrome.exe)
@@ -95,7 +96,12 @@ if (process.env.SAVE) {
     prestige: { poin: '0e0', jumlahReset: 0 },
     statistik: { totalPendapatanRun: '0e0', totalPendapatanSepanjangMasa: '0e0', waktuMainDetik: jam * 60 },
   };
-  if (process.env.SAVE_EXTRA) Object.assign(save.terminal, JSON.parse(process.env.SAVE_EXTRA).terminal ?? {});
+  if (process.env.SAVE_EXTRA) {
+    // {"terminal": {...}} digabung ke terminal; kunci lain (mis. "armada", "prestige", "statistik") menimpa bloknya.
+    const { terminal, ...lain } = JSON.parse(process.env.SAVE_EXTRA);
+    Object.assign(save.terminal, terminal ?? {});
+    Object.assign(save, lain);
+  }
   const js = `const s=${JSON.stringify(save)};s.waktuTerakhirMs=Date.now()-${Number(process.env.OFFLINE_MS ?? 0)};localStorage.setItem('terminal-bus-tycoon/save',JSON.stringify(s));`;
   await kirim('Page.addScriptToEvaluateOnNewDocument', { source: js });
 }

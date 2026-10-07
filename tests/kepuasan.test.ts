@@ -4,16 +4,16 @@ import { EKONOMI } from '../src/config/economy.config';
 import { hitungKepuasan } from '../src/sim/kepuasan';
 import {
   bangunFasilitas,
-  bisaKontrakPo,
+  bisaDaftarPo,
   bukaJalur,
+  daftarPo,
   kepuasanTerminal,
-  kontrakPo,
   pendapatanPerDetikState,
   pengaliKepuasan,
   type GameState,
 } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
-import { stateOtomatis } from './helpers';
+import { denganLevelTerminal, stateOtomatis } from './helpers';
 
 const kaya = (s: GameState, uang = 1e15): GameState => ({ ...s, uang: new Decimal(uang) });
 const masukan = { kapasitas: [10, 10, 10], arus: 10, levelFasilitas: 100, jalur: 5, jalurMaks: 5 };
@@ -73,18 +73,19 @@ describe('kepuasan di terminal', () => {
     expect(m.jalurPerlu).toBe(k.jalurPerlu);
   });
 
-  it('mitra PO besar butuh kepuasan minimal walau uangnya cukup', () => {
-    let s = kaya(stateOtomatis({ peron: 30, loket: 50, keberangkatan: 30 }));
-    const sy = EKONOMI.po.syarat.sultanGarasi;
-    expect(sy.jenis === 'kontrak' && sy.kepuasanMin).toBeGreaterThan(kepuasanTerminal(s).nilai);
-    expect(bisaKontrakPo(s, 'sultanGarasi')).toBe(false);
-    expect(kontrakPo(s, 'sultanGarasi')).toBe(s);
-    expect(buatModel(s).armada.daftar.find((p) => p.id === 'sultanGarasi')?.syarat).toMatchObject({ jenis: 'kontrak', kepuasanKurang: true });
-    // PO tanpa syarat kepuasan tetap bisa dikontrak.
-    expect(bisaKontrakPo(s, 'ondelOndel')).toBe(true);
+  it('mitra PO premium butuh kepuasan minimal walau uangnya cukup', () => {
+    let s = denganLevelTerminal(kaya(stateOtomatis({ peron: 30, loket: 50, keberangkatan: 30 })), 10);
+    const min = EKONOMI.mitra.po.sultanGarasi.kepuasanMin!;
+    expect(min).toBeGreaterThan(kepuasanTerminal(s).nilai);
+    expect(bisaDaftarPo(s, 'sultanGarasi')).toBe(false);
+    expect(daftarPo(s, 'sultanGarasi')).toBe(s);
+    expect(buatModel(s).mitra.tersedia.find((p) => p.id === 'sultanGarasi')?.kurang).toEqual({ jenis: 'kepuasan', min });
+    // PO tanpa syarat kepuasan tetap bisa didaftarkan.
+    expect(bisaDaftarPo(s, 'peuyeumKilat')).toBe(true);
     for (let i = 0; i < 12; i++) s = bangunFasilitas(bangunFasilitas(s, 'kios'), 'toilet');
     for (let i = 0; i < 5; i++) s = bukaJalur(s);
-    expect(bisaKontrakPo(s, 'sultanGarasi')).toBe(true);
-    expect(kontrakPo(s, 'sultanGarasi').armada.po).toContain('sultanGarasi');
+    expect(kepuasanTerminal(s).nilai).toBeGreaterThanOrEqual(min);
+    expect(bisaDaftarPo(s, 'sultanGarasi')).toBe(true);
+    expect(daftarPo(s, 'sultanGarasi').mitra.terdaftar.map((p) => p.id)).toContain('sultanGarasi');
   });
 });

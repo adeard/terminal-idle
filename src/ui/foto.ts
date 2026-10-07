@@ -52,11 +52,11 @@ export function pasangTombolFoto(induk: HTMLElement, o: OpsiFoto): void {
   induk.append(b);
 }
 
-/** Keterangan terminal pemain di bingkai foto: kelas, jurusan, arus penumpang, mitra PO. */
+/** Keterangan terminal pemain di bingkai foto: kelas, jurusan yang dilayani, arus penumpang, mitra PO. */
 export function keteranganFoto(pembaca: PembacaState): string {
   const m = buatModel(pembaca.state);
-  const jurusan = m.jurusan.daftar.filter((j) => j.buka).length;
-  return TEKS.fotoKeterangan(namaKelas(m.kelas.kelas), jurusan, formatAngka(m.hud.arusPotensial), m.armada.jumlah, m.kelas.nama);
+  const jurusan = new Set(m.mitra.terdaftar.flatMap((p) => p.jurusan.filter((j) => j.aktif).map((j) => j.jurusan))).size;
+  return TEKS.fotoKeterangan(namaKelas(m.terminal.kelas), jurusan, formatAngka(m.hud.arusPotensial), m.mitra.terdaftar.length, m.terminal.nama);
 }
 
 async function bukaFoto(o: OpsiFoto): Promise<void> {

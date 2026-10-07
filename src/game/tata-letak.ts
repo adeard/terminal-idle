@@ -211,6 +211,28 @@ export const MAKS_NGETEM_DETIK = 15;
  */
 export const TUJUAN_BUS: readonly string[] = EKONOMI.jurusan.map((j) => j.nama);
 
+/**
+ * Jurusan yang dilayani mitra PO sebagai bitmask (bit i = TUJUAN_BUS[i]):
+ * tidak selalu urut, karena tiap PO punya jurusannya sendiri. Murah
+ * dibandingkan & jadi kunci cache tiap frame.
+ */
+export const MASK_SEMUA_JURUSAN = 2 ** TUJUAN_BUS.length - 1;
+
+/** Jurusan ke-j termasuk mask. */
+export const jurusanDiMask = (mask: number, j: number): boolean => j >= 0 && j < TUJUAN_BUS.length && Math.floor(mask / 2 ** j) % 2 === 1;
+
+/** Mask dari daftar boolean per jurusan (lihat sim jurusanDilayani). */
+export function maskJurusan(dilayani: readonly boolean[]): number {
+  let mask = 0;
+  dilayani.forEach((ya, j) => {
+    if (ya && j < TUJUAN_BUS.length) mask += 2 ** j;
+  });
+  return mask;
+}
+
+/** Mask n jurusan pertama (urut TUJUAN_BUS). */
+export const maskAwal = (n: number): number => 2 ** Math.max(0, Math.min(TUJUAN_BUS.length, Math.floor(n))) - 1;
+
 export interface KelompokParkir {
   /** Tulisan papan jurusan di belakang kelompok petak (kota Jawa–Bali). */
   readonly nama: string;
@@ -242,6 +264,16 @@ export const KELOMPOK_PARKIR: readonly KelompokParkir[] = (
   const antarpulau = laut.filter((t) => t < TUJUAN_BUS.length);
   return { nama, tujuan: [...darat, ...antarpulau], antarpulau, warna, petak: Array.from({ length: 5 }, (_, i) => k * 5 + i) };
 });
+
+/**
+ * Tampilan papan pulau kelompok parkir: 0 = belum ada jurusan kelompok yang
+ * dilayani ("SEGERA DIBUKA"), selain itu 1 + bit rute antarpulau kelompok yang
+ * dilayani (baris kedua papan, urut KelompokParkir.antarpulau).
+ */
+export function kunciPapanPulau(tujuan: readonly number[], antarpulau: readonly number[], mask: number): number {
+  if (!tujuan.some((t) => jurusanDiMask(mask, t))) return 0;
+  return 1 + antarpulau.reduce((bit, t, k) => (jurusanDiMask(mask, t) ? bit + 2 ** k : bit), 0);
+}
 
 /** Kelompok jurusan pemilik petak ke-i. */
 export function kelompokPetak(i: number): number {

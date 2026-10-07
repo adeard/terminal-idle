@@ -2,7 +2,7 @@ import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { MAKS_GALAT_PER_SESI, PencatatAnalitik, pesanGalat, ringkasanSesi, ringkasGalat, type DataAnalitik } from '../src/app/analitik';
 import { terapkanAksi } from '../src/sim/aksi';
-import { bukaJalur } from '../src/sim/state';
+import { bukaJalur, levelTerminal } from '../src/sim/state';
 import { jalankan, stateOtomatis } from './helpers';
 
 const penampung = (): { catat(nama: string, data?: DataAnalitik): void; semua: { nama: string; data?: DataAnalitik }[] } => {
@@ -43,7 +43,7 @@ describe('ringkasan sesi', () => {
     let akhir = bukaJalur(awal);
     akhir = jalankan(akhir, 60);
     const r = ringkasanSesi(awal, akhir, 4, 75.4);
-    expect(r).toMatchObject({ detik: 75, detik_main: 60, upgrade: 4, kelas: 0, jalur: 2, jurusan: awal.terminal.jurusanBuka, level_rata: 10 });
+    expect(r).toMatchObject({ detik: 75, detik_main: 60, upgrade: 4, kelas: 0, level_terminal: levelTerminal(akhir), jalur: 2, jurusan: 1, po: 1, level_rata: 10 });
     expect(r['penumpang']).toBeGreaterThan(0);
     expect(r['pendapatan_log10']).toBeGreaterThan(0);
     expect(r['kepuasan']).toBeGreaterThanOrEqual(0);

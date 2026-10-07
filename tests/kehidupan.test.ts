@@ -16,21 +16,7 @@ import {
 import type { LajuVisual } from '../src/game/laju';
 import { LuarTerminal, MOTOR_OJEK, MOTOR_OJOL } from '../src/game/luar3d';
 import { rutePulangPengantar, Rombongan } from '../src/game/rombongan';
-import {
-  BLOK_KURSI,
-  diGedung,
-  GERBANG_KELUAR_X,
-  GERBANG_MASUK_X,
-  GERBANG_X,
-  JURUSAN_JENDELA,
-  KURSI_TUNGGU,
-  LEBAR_GERBANG_PAGAR,
-  RUANG_TUNGGU,
-  TALI_LABIRIN,
-  TUJUAN_BUS,
-  X_LOKET,
-  Y_PAGAR,
-} from '../src/game/tata-letak';
+import { BLOK_KURSI, diGedung, GERBANG_KELUAR_X, GERBANG_MASUK_X, GERBANG_X, JURUSAN_JENDELA, KURSI_TUNGGU, LEBAR_GERBANG_PAGAR, maskAwal, RUANG_TUNGGU, TALI_LABIRIN, TUJUAN_BUS, URUTAN_LOKET, X_LOKET, Y_PAGAR } from '../src/game/tata-letak';
 import { ruasBerpotongan } from './helpers';
 
 const SEIMBANG: LajuVisual = { turun: 1.4, layanLoket: 1.4, naik: 1.4, busDatang: 0.12, muatanBus: 16, faktorKecepatanBus: 1 };
@@ -66,19 +52,25 @@ describe('jam buka', () => {
     expect(loketBuka(1).length).toBeGreaterThan(0);
   });
 
-  it('jendela loket hanya melayani jurusan yang sudah dibuka, mulai dari jendela di depan kepala antrean', () => {
-    // Jendela "SEGERA DIBUKA" (jurusannya belum dibuka) tidak pernah melayani, siang maupun malam.
+  it('jendela loket hanya melayani jurusan yang dilayani PO, mulai dari jendela di depan kepala antrean', () => {
+    // Jendela "SEGERA DIBUKA" (jurusannya tidak dilayani) tidak pernah melayani, siang maupun malam.
     for (let j = 1; j <= TUJUAN_BUS.length; j++) {
       for (const jam of [1, 12]) {
-        const buka = loketBuka(jam, j);
+        const buka = loketBuka(jam, maskAwal(j));
         expect(buka.length).toBeGreaterThan(0);
         for (const i of buka) expect(JURUSAN_JENDELA[i]).toBeLessThan(j);
       }
-      expect(loketBuka(12, j)).toHaveLength(Math.min(j, X_LOKET.length));
+      expect(loketBuka(12, maskAwal(j))).toHaveLength(Math.min(j, X_LOKET.length));
     }
-    // Awal permainan (2 jurusan): dua jendela di depan kepala antrean, malam pun tetap dua.
-    expect(loketBuka(12, 2)).toEqual([3, 4]);
-    expect(loketBuka(1, 2)).toEqual([3, 4]);
+    // Dua jurusan: dua jendela di depan kepala antrean, malam pun tetap dua.
+    expect(loketBuka(12, maskAwal(2))).toEqual([3, 4]);
+    expect(loketBuka(1, maskAwal(2))).toEqual([3, 4]);
+    // Tidak harus urut: hanya jendela Jakarta & Semarang yang buka.
+    const jakartaSemarang = loketBuka(12, 2 ** 0 + 2 ** 2);
+    expect(jakartaSemarang.map((i) => JURUSAN_JENDELA[i]).sort((a, b) => a! - b!)).toEqual([0, 2]);
+    // Tanpa jendela untuk jurusannya (mask kosong, atau hanya rute antarpulau): tetap satu jendela terdepan yang buka.
+    expect(loketBuka(12, 0)).toEqual([URUTAN_LOKET[0]]);
+    expect(loketBuka(12, 2 ** (TUJUAN_BUS.length - 1))).toEqual([URUTAN_LOKET[0]]);
     // Semua jurusan: malam hari separuh jendela, yang terdekat ke kepala antrean.
     expect(loketBuka(1)).toEqual([2, 3, 4, 5]);
     // Tiap jurusan Jawa–Bali dijual di tepat satu jendela (rute antarpulau dijual di semua jendela).

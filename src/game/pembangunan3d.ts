@@ -1,19 +1,19 @@
 /**
  * Bagian terminal yang belum dibangun (terminal "tumbuh" seiring jalur bus &
- * jurusan dibuka): kerucut & palang merah-putih di tepi peron kedatangan dan
+ * jurusan dilayani mitra PO): kerucut & palang merah-putih di tepi peron kedatangan dan
  * peron keberangkatan milik jalur yang belum dibangun (gerbangnya tertutup
  * pintu gulung, lihat malam3d.ts), dan barikade di mulut tiap petak parkir
- * kelompok jurusan yang belum dibuka (bus tidak parkir di sana, lihat
+ * kelompok yang belum ada jurusannya dilayani (bus tidak parkir di sana, lihat
  * DuniaVisual.pilihPetak). Tiap bagian satu grup mesh yang ditukar
  * visibilitasnya.
  */
 import * as THREE from 'three';
 import { kotak, Kumpulan, silinder } from './geometri';
-import { GERBANG_X, HALTE_DATANG_X, KELOMPOK_PARKIR, PARKIR_SERONG, PERON, PERON_BERANGKAT, PINTU_BUS, TINGGI_PERON } from './tata-letak';
+import { GERBANG_X, HALTE_DATANG_X, jurusanDiMask, KELOMPOK_PARKIR, PARKIR_SERONG, PERON, PERON_BERANGKAT, PINTU_BUS, TINGGI_PERON } from './tata-letak';
 
 interface Bagian {
   readonly grup: THREE.Group;
-  readonly tutup: (jalur: number, jurusanBuka: number) => boolean;
+  readonly tutup: (jalur: number, maskJurusan: number) => boolean;
 }
 
 /** Kerucut lalu lintas (unit): tinggi, jari-jari bawah & atas, alas persegi. */
@@ -36,14 +36,13 @@ export class PembangunanTerminal {
     GERBANG_X.forEach((x, k) => {
       if (k > 0) this.tambah((jalur) => jalur <= k, (kp) => this.pagarTepi(kp, x, PERON_BERANGKAT.y0 + 0.14));
     });
-    // Mulut petak parkir kelompok jurusan yang belum dibuka (posisi pita warna kelompok).
+    // Mulut petak parkir kelompok yang belum ada jurusannya dilayani (posisi pita warna kelompok).
     const { pusatY, sudut } = PARKIR_SERONG;
     const c = Math.cos(sudut);
     const sn = Math.sin(sudut);
     for (const g of KELOMPOK_PARKIR) {
-      const pertama = Math.min(...g.tujuan);
       this.tambah(
-        (_, jurusanBuka) => jurusanBuka <= pertama,
+        (_, mask) => !g.tujuan.some((t) => jurusanDiMask(mask, t)),
         (kp) => {
           for (const petak of g.petak) {
             const sx = PARKIR_SERONG.pusatX[petak]!;
@@ -63,12 +62,12 @@ export class PembangunanTerminal {
     }
   }
 
-  /** @param jurusanBuka banyaknya jurusan terbuka (kelompok parkir). */
-  perbarui(jalur: number, jurusanBuka: number): void {
-    const kunci = `${jalur}|${jurusanBuka}`;
+  /** @param mask jurusan yang dilayani (kelompok parkir, lihat MASK_SEMUA_JURUSAN). */
+  perbarui(jalur: number, mask: number): void {
+    const kunci = `${jalur}|${mask}`;
     if (kunci === this.kunciLalu) return;
     this.kunciLalu = kunci;
-    for (const b of this.bagian) b.grup.visible = b.tutup(jalur, jurusanBuka);
+    for (const b of this.bagian) b.grup.visible = b.tutup(jalur, mask);
   }
 
   private tambah(tutup: Bagian['tutup'], bangun: (k: Kumpulan) => void): void {

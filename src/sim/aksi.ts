@@ -3,53 +3,62 @@
  * Bentuk data ini memudahkan replay/analitik nanti tanpa mengubah UI.
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
-import type { FasilitasId, KelasBusId, PencapaianId, PoId, TeknologiId } from './fitur';
+import type { FasilitasId, PencapaianId, PoId, TeknologiId } from './fitur';
 import {
   aktifkanBoost,
-  aturHargaJurusan,
+  aturHargaPo,
   aturIkutPeringkat,
   aturNamaTerminal,
-  aturTambahanKelas,
   bangunFasilitas,
-  beliKelasBus,
+  bangunLoket,
   beliTeknologi,
   beliUpgrade,
   bukaJalur,
-  bukaJurusan,
+  daftarPo,
+  isiLoketKosong,
   klaimBonusOffline,
   klaimBusEmas,
   klaimEvent,
   klaimPencapaian,
   klaimTantangan,
   klaimTarget,
-  kontrakPo,
   lepasBusEmas,
-  naikKelas,
+  mulaiPerluasan,
+  perpanjangPo,
+  putusPo,
   rekrutKepala,
+  renovasi,
   tahanBusEmas,
   type GameState,
 } from './state';
 import type { TahapId } from './tahap';
 
 export type Aksi =
+  /** Upgrade tahap. Loket: bangun satu loket untuk PO yang paling menguntungkan. */
   | { readonly jenis: 'upgrade'; readonly tahap: TahapId }
+  /** Rekrut Kepala tahap (Kepala Loket = Kepala Kemitraan). */
   | { readonly jenis: 'rekrutKepala'; readonly tahap: TahapId }
   | { readonly jenis: 'bangunFasilitas'; readonly fasilitas: FasilitasId }
-  | { readonly jenis: 'bukaJurusan' }
-  /** Bangun jalur bus berikutnya (halte kedatangan & jalur keberangkatan). */
+  /** Bangun jalur bus berikutnya (halte kedatangan & jalur keberangkatan). Permanen. */
   | { readonly jenis: 'bukaJalur' }
   | { readonly jenis: 'beliTeknologi'; readonly teknologi: TeknologiId }
-  /** Datangkan armada kelas bus berikutnya. */
-  | { readonly jenis: 'beliKelasBus'; readonly kelas: KelasBusId }
-  /** Atur harga tiket jurusan ke-`indeks` / tambahan harga kelas bus, dalam persen harga normal (dirapikan sim). */
-  | { readonly jenis: 'aturHargaJurusan'; readonly indeks: number; readonly persen: number }
-  | { readonly jenis: 'aturTambahanKelas'; readonly kelas: KelasBusId; readonly persen: number }
+  /** Bangun satu loket untuk PO tertentu (tanpa `po`: yang paling menguntungkan). */
+  | { readonly jenis: 'bangunLoket'; readonly po?: PoId }
+  /** Isi loket kosong (gratis) ke PO tertentu atau ke PO yang paling menguntungkan. */
+  | { readonly jenis: 'isiLoketKosong'; readonly po?: PoId }
+  /** Daftarkan mitra PO ke slot terminal. */
+  | { readonly jenis: 'daftarPo'; readonly po: PoId }
+  /** Putus kontrak PO (gratis; masa jeda sebelum bisa didaftarkan lagi). */
+  | { readonly jenis: 'putusPo'; readonly po: PoId }
+  | { readonly jenis: 'perpanjangPo'; readonly po: PoId }
+  /** Atur harga tiket PO untuk salah satu jurusannya (indeks EKONOMI.jurusan), persen harga normal (dirapikan sim). */
+  | { readonly jenis: 'aturHargaPo'; readonly po: PoId; readonly jurusan: number; readonly persen: number }
+  /** Mulai proyek tahap perluasan terminal berikutnya. */
+  | { readonly jenis: 'mulaiPerluasan' }
+  /** Renovasi: kapasitas dibangun ulang dengan bonus pendapatan permanen. */
+  | { readonly jenis: 'renovasi' }
   /** Klaim hadiah tahap event musiman berikutnya. */
   | { readonly jenis: 'klaimEvent' }
-  /** Naik kelas terminal (prestige): dibangun ulang dengan bonus pendapatan permanen. */
-  | { readonly jenis: 'naikKelas' }
-  /** Kontrak mitra PO (PO yang bergabung dengan membayar sekali). */
-  | { readonly jenis: 'kontrakPo'; readonly po: PoId }
   /** Klaim hadiah tantangan mingguan ke-`indeks`. */
   | { readonly jenis: 'klaimTantangan'; readonly indeks: number }
   /** `ganda`: hadiah 2× setelah menonton iklan berhadiah. */
@@ -76,22 +85,26 @@ export function terapkanAksi(state: GameState, aksi: Aksi, cfg: KonfigEkonomi = 
       return rekrutKepala(state, aksi.tahap, cfg);
     case 'bangunFasilitas':
       return bangunFasilitas(state, aksi.fasilitas, cfg);
-    case 'bukaJurusan':
-      return bukaJurusan(state, cfg);
     case 'bukaJalur':
       return bukaJalur(state, cfg);
     case 'beliTeknologi':
       return beliTeknologi(state, aksi.teknologi, cfg);
-    case 'beliKelasBus':
-      return beliKelasBus(state, aksi.kelas, cfg);
-    case 'aturHargaJurusan':
-      return aturHargaJurusan(state, aksi.indeks, aksi.persen, cfg);
-    case 'aturTambahanKelas':
-      return aturTambahanKelas(state, aksi.kelas, aksi.persen, cfg);
-    case 'kontrakPo':
-      return kontrakPo(state, aksi.po, cfg);
-    case 'naikKelas':
-      return naikKelas(state, cfg);
+    case 'bangunLoket':
+      return bangunLoket(state, aksi.po ?? null, cfg);
+    case 'isiLoketKosong':
+      return isiLoketKosong(state, aksi.po ?? null, cfg);
+    case 'daftarPo':
+      return daftarPo(state, aksi.po, cfg);
+    case 'putusPo':
+      return putusPo(state, aksi.po, cfg);
+    case 'perpanjangPo':
+      return perpanjangPo(state, aksi.po, cfg);
+    case 'aturHargaPo':
+      return aturHargaPo(state, aksi.po, aksi.jurusan, aksi.persen, cfg);
+    case 'mulaiPerluasan':
+      return mulaiPerluasan(state, cfg);
+    case 'renovasi':
+      return renovasi(state, cfg);
     case 'klaimEvent':
       return klaimEvent(state, cfg);
     case 'klaimTantangan':

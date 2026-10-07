@@ -95,6 +95,31 @@ export function kelasAktif(id: PoId, level: number, kelasTerminal: number, cfg: 
   return KELAS_BUS_IDS.filter((k, i) => i < maks && level >= cfg.mitra.kelas[k].levelPo && cfg.kelasBus[k].kelasTerminal <= kelasTerminal);
 }
 
+/** PO terdaftar sebagaimana dibutuhkan untuk menghitung jurusan & kelas bus terminal. */
+export interface PoAktif {
+  readonly id: PoId;
+  /** XP kumulatif (level = levelPoDariXp). */
+  readonly xp: number;
+  readonly loket: number;
+}
+
+/** Jurusan (indeks EKONOMI.jurusan) yang dilayani PO terdaftar yang punya loket. */
+export function jurusanDilayaniPo(daftar: readonly PoAktif[], kelasTerminal: number, cfg: KonfigEkonomi = EKONOMI): boolean[] {
+  const hasil = cfg.jurusan.map(() => false);
+  for (const p of daftar) {
+    if (p.loket <= 0) continue;
+    for (const j of jurusanAktif(p.id, levelPoDariXp(p.xp, cfg), kelasTerminal, cfg)) hasil[j] = true;
+  }
+  return hasil;
+}
+
+/** Kelas bus yang dioperasikan PO terdaftar mana pun yang punya loket (urut KELAS_BUS_IDS). */
+export function kelasBusDioperasikan(daftar: readonly PoAktif[], kelasTerminal: number, cfg: KonfigEkonomi = EKONOMI): KelasBusId[] {
+  const ada = new Set<KelasBusId>();
+  for (const p of daftar) if (p.loket > 0) for (const k of kelasAktif(p.id, levelPoDariXp(p.xp, cfg), kelasTerminal, cfg)) ada.add(k);
+  return KELAS_BUS_IDS.filter((k) => ada.has(k));
+}
+
 // ---------------------------------------------------------------------------
 // Reputasi (0–100)
 

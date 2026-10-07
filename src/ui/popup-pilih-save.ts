@@ -7,7 +7,7 @@
 import type { PertanyaanKonflik, PilihanKonflik, RingkasanSave } from '../app/akun';
 import { formatAngka, formatDurasi, formatUang } from './format';
 import { tungguPopupLain } from './popup-pembaruan';
-import { TEKS } from './teks';
+import { namaKelas, TEKS } from './teks';
 
 /** Pemain menekan Batal (hanya saat login). */
 export class PilihanDibatalkan extends Error {
@@ -54,9 +54,9 @@ export async function tanyaPilihanSave(akar: HTMLElement, p: PertanyaanKonflik, 
       el('div', 'kartu-save-nama', nama),
       el('div', 'kartu-save-uang', formatUang(r.uang)),
       el('div', 'kartu-save-baris', TEKS.pilihSavePendapatan(formatUang(r.totalPendapatan))),
-      el('div', 'kartu-save-baris', TEKS.pilihSaveLevel(formatAngka(r.totalLevel, { desimalKecil: 0 }))),
+      el('div', 'kartu-save-baris', TEKS.pilihSaveTerminal(namaKelas(r.kelasTerminal), formatAngka(r.levelTerminal, { desimalKecil: 0 }))),
     );
-    if (r.jumlahReset > 0) k.append(el('div', 'kartu-save-baris', TEKS.pilihSavePrestige(formatAngka(r.jumlahReset, { desimalKecil: 0 }))));
+    if (r.poinRenovasi.gt(0)) k.append(el('div', 'kartu-save-baris', TEKS.pilihSaveRenovasi(formatAngka(r.poinRenovasi, { desimalKecil: 0 }))));
     k.append(el('div', 'kartu-save-baris kartu-save-waktu', teksTerakhir(r.waktuTerakhirMs, sekarangMs)));
     const b = el('button', 'tombol tombol-upgrade kartu-save-tombol', TEKS.pilihSavePakai);
     b.type = 'button';

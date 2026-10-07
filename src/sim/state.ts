@@ -4,6 +4,11 @@
  *
  * Semua fungsi murni: tidak memutasi state masukan, selalu mengembalikan
  * state baru (atau state yang sama persis kalau aksinya tidak berlaku).
+ *
+ * Ekonomi v2 (documents/12-rancangan-ekonomi-po.md): loket disewa mitra PO,
+ * penumpang dibagi ke segmen PO × jurusan × kelas bus (sim/segmen.ts), level
+ * terminal naik dari penumpang dan menentukan kelasnya, perluasan terminal
+ * permanen, dan Renovasi menggantikan prestige naik kelas.
  */
 import Decimal from 'break_infinity.js';
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
@@ -22,10 +27,30 @@ import {
 } from './economy';
 import { benihCuacaDari } from './cuaca';
 import { eventPada, jadwalUji } from './event';
-import { FASILITAS_IDS, isEventId, KELAS_BUS_IDS, PENCAPAIAN_IDS, PO_IDS, TEKNOLOGI_IDS, type EventId, type FasilitasId, type JenisTarget, type KelasBusId, type PencapaianId, type PoId, type TeknologiId } from './fitur';
+import { FASILITAS_IDS, isEventId, PENCAPAIAN_IDS, PO_IDS, TEKNOLOGI_IDS, type EventId, type FasilitasId, type JenisTarget, type KelasBusId, type PencapaianId, type PoId, type TeknologiId } from './fitur';
 import { hitungKepuasan, type Kepuasan } from './kepuasan';
+import { kelasDariLevel, levelTerminalDariXp, pengaliLevelTerminal, slotPo } from './level-terminal';
+import {
+  biayaDaftarPo,
+  biayaPerpanjang,
+  hariKontrakPertama,
+  jatahLoket,
+  jurusanAktif,
+  jurusanDilayaniPo,
+  kelasBusDioperasikan,
+  levelPoDariXp,
+  majukanReputasi,
+  sisaSetelahPerpanjang,
+  syaratDaftarKurang,
+  targetReputasi,
+  tingkatPo,
+  xpLoketBaru,
+  type SyaratDaftarKurang,
+} from './mitra';
+import { biayaPerluasan, bonusJatahPerluasan, levelCukupPerluasan } from './perluasan';
 import { SYARAT_PENCAPAIAN } from './pencapaian';
 import { rapikanNamaTerminal } from './profil';
+import { hitungSegmen, type HasilSegmen, type OpsiSegmen, type PoSegmen } from './segmen';
 import { jenisTantanganMinggu, mingguWib, type JenisTantangan } from './tantangan';
 import { TAHAP_IDS, type TahapId } from './tahap';
 import { keramaianTerminal, waktuTerminal, waktuTerminalState } from './waktu';
@@ -36,15 +61,21 @@ export const ID_TERMINAL_AWAL = 'tipe-c';
 /** Toleransi pembulatan saat menghitung penumpang/bus utuh (0,8 × 0,1 × 10 bisa jadi 0,7999…). */
 const EPSILON_TRANSAKSI = 1e-9;
 
+/** Lama satu hari terminal dalam detik main (kontrak PO dihitung dalam hari terminal). */
+export const DETIK_SEHARI = 24 * WAKTU.detikPerJam;
+
 export interface KepalaState {
   readonly direkrut: boolean;
   // Ruang untuk skill aktif Kepala (level, cooldown, dst.) tanpa ubah bentuk save.
 }
 
 export interface TahapState {
-  /** Mulai dari 1. */
+  /**
+   * Mulai dari 1. Untuk Loket: banyaknya loket milik terminal (yang disewa PO +
+   * yang kosong), dasar biaya loket berikutnya; kapasitasnya dari loket yang disewa.
+   */
   readonly level: number;
-  /** Kepala menjalankan tahapnya saat game ditutup (pendapatan offline). */
+  /** Kepala menjalankan tahapnya saat game ditutup (pendapatan offline). Kepala Loket = Kepala Kemitraan. */
   readonly kepala: KepalaState;
 }
 
@@ -53,14 +84,12 @@ export interface TerminalState {
   readonly tahap: Readonly<Record<TahapId, TahapState>>;
   /** Level tiap fasilitas penunjang (0 = belum dibangun). */
   readonly fasilitas: Readonly<Record<FasilitasId, number>>;
-  /** Banyaknya jurusan yang sudah dibuka (urut EKONOMI.jurusan). */
-  readonly jurusanBuka: number;
   /** Modernisasi yang sudah dipasang. */
   readonly teknologi: Readonly<Record<TeknologiId, boolean>>;
-  /** Kelas bus yang sudah beroperasi (ekonomi selalu true). */
-  readonly kelasBus: Readonly<Record<KelasBusId, boolean>>;
-  /** Jalur bus yang beroperasi (1 … jumlahJalurMaks). */
+  /** Jalur bus yang beroperasi (1 … jumlahJalurMaks). Permanen: tidak ikut Renovasi. */
   readonly jalur: number;
+  /** Loket milik terminal yang tidak disewa PO mana pun (PO-nya keluar): tidak melayani penumpang. */
+  readonly loketKosong: number;
 }
 
 /** Target harian: berganti tiap hari terminal; hadiahnya diklaim pemain. */
@@ -80,13 +109,14 @@ export interface PencapaianState {
   readonly diklaim: readonly PencapaianId[];
 }
 
-export interface PrestigeState {
+/** Renovasi (pengganti prestige): poin = bonus pendapatan permanen. */
+export interface RenovasiState {
   readonly poin: Decimal;
-  readonly jumlahReset: number;
+  readonly jumlah: number;
 }
 
 export interface StatistikState {
-  /** Total pendapatan sejak prestige terakhir. Dasar hitung poin prestige. */
+  /** Total pendapatan sejak Renovasi terakhir. Dasar hitung poin Renovasi. */
   readonly totalPendapatanRun: Decimal;
   readonly totalPendapatanSepanjangMasa: Decimal;
   /** Waktu main aktif (tidak termasuk offline). */
@@ -104,21 +134,51 @@ export interface SewaKiosState {
   readonly hariTerakhir: number;
 }
 
-/** Armada terminal: mitra PO yang sudah bergabung (urut bergabung). Permanen, tidak direset prestige. */
-export interface ArmadaState {
-  readonly po: readonly PoId[];
+/** Harga tiket PO per jurusan (indeks EKONOMI.jurusan → persen harga normal); yang tidak ada = 100. */
+export type HargaPo = Readonly<Partial<Record<number, number>>>;
+
+/** Mitra PO yang sedang terdaftar (menempati slot). */
+export interface PoTerdaftar {
+  readonly id: PoId;
+  /** XP kumulatif (satuan bus); level = levelPoDariXp(xp), jadi tidak pernah turun. */
+  readonly xp: number;
+  /** Loket yang disewa PO ini. */
+  readonly loket: number;
+  /** Jumlah loket tertinggi yang pernah disewa: XP loket hanya untuk loket di atas rekor ini. */
+  readonly rekorLoket: number;
+  /** 0–100. */
+  readonly reputasi: number;
+  readonly harga: HargaPo;
+  /** Sisa kontrak (detik main). Hari terminal berhenti saat game ditutup, kontrak juga. */
+  readonly kontrakDetik: number;
 }
 
-/**
- * Harga tiket yang diatur pemain, disimpan dalam persen harga normal (pemain
- * melihatnya dalam Rupiah; lihat EKONOMI.harga): tiket = harga jurusan +
- * tambahan kelas bus. Tetap walau naik kelas.
- */
-export interface HargaState {
-  /** Harga tiap jurusan (indeks EKONOMI.jurusan, termasuk yang belum dibuka); 100 = normal. */
-  readonly jurusan: readonly number[];
-  /** Tambahan harga tiap kelas bus; 0 = tanpa tambahan. */
-  readonly tambahanKelas: Readonly<Record<KelasBusId, number>>;
+/** PO yang pernah terdaftar lalu keluar: daftar ulang melanjutkan dari sini. */
+export interface RiwayatPo {
+  readonly xp: number;
+  readonly reputasi: number;
+  readonly rekorLoket: number;
+  readonly harga: HargaPo;
+}
+
+export interface MitraState {
+  /** Urut terdaftar (PO pertama = PO awal game). */
+  readonly terdaftar: readonly PoTerdaftar[];
+  readonly riwayat: Readonly<Partial<Record<PoId, RiwayatPo>>>;
+  /** PO yang diputus kontraknya tidak bisa didaftarkan lagi sebelum detik main ini. */
+  readonly jedaSampai: Readonly<Partial<Record<PoId, number>>>;
+  /** PO eksklusif hadiah event yang sudah didapat (boleh didaftarkan gratis). */
+  readonly hadiahEvent: readonly PoId[];
+}
+
+/** Kemajuan permanen terminal: tidak ikut Renovasi. */
+export interface PerkembanganState {
+  /** XP terminal = penumpang yang diberangkatkan (offline dihitung × efisiensiOffline). */
+  readonly xpTerminal: number;
+  /** Tahap perluasan yang sudah selesai dibangun. */
+  readonly perluasan: number;
+  /** Sisa detik main proyek perluasan yang sedang dibangun (0 = tidak ada proyek). */
+  readonly proyekDetik: number;
 }
 
 /**
@@ -135,7 +195,7 @@ export interface TransaksiState {
 }
 
 /**
- * Rekor pribadi: tetap walau naik kelas. Hitungan harian (hari terminal, main
+ * Rekor pribadi: tetap walau Renovasi. Hitungan harian (hari terminal, main
  * aktif) disimpan lalu dibandingkan dengan rekor saat hari berganti.
  */
 export interface RekorState {
@@ -168,7 +228,7 @@ export interface TantanganState {
   readonly penumpang: number;
 }
 
-/** Profil pemain (lihat sim/profil.ts): tetap walau naik kelas. */
+/** Profil pemain (lihat sim/profil.ts): tetap walau Renovasi. */
 export interface ProfilState {
   /** Nama terminal pilihan pemain; kosong = nama bawaan (TERMINAL TIPE C …). */
   readonly namaTerminal: string;
@@ -210,7 +270,9 @@ export interface HadiahState {
 export interface GameState {
   readonly uang: Decimal;
   readonly terminal: TerminalState;
-  readonly prestige: PrestigeState;
+  readonly mitra: MitraState;
+  readonly perkembangan: PerkembanganState;
+  readonly renovasi: RenovasiState;
   readonly statistik: StatistikState;
   readonly harian: HarianState;
   readonly pencapaian: PencapaianState;
@@ -221,8 +283,6 @@ export interface GameState {
   readonly benihCuaca: number;
   readonly hadiah: HadiahState;
   readonly sewaKios: SewaKiosState;
-  readonly armada: ArmadaState;
-  readonly harga: HargaState;
   readonly transaksi: TransaksiState;
   readonly event: EventState;
   readonly profil: ProfilState;
@@ -236,12 +296,12 @@ export interface GameState {
 }
 
 /**
- * - potensial: kapasitas terminal (tahap paling lambat) dengan harga normal;
- *   dasar target & hadiah, jadi tidak bisa digelembungkan lewat harga tiket.
+ * - potensial: kapasitas terminal (tahap paling lambat), semua kursi terisi,
+ *   harga normal; dasar target & hadiah, jadi tidak bisa digelembungkan lewat harga tiket.
  * - aktif: arus nyata saat main = kapasitas × kursi terisi (penumpang yang
- *   datang menurut kepuasan, jam, & harga tiket; lihat arusHarga).
+ *   datang menurut kepuasan, jam, reputasi, & harga tiket; lihat sim/segmen.ts).
  * - offline: saat game ditutup; 0 kalau ada tahap tanpa Kepala. Ikut harga
- *   tiket, tanpa kepuasan & jam.
+ *   tiket tanpa kepuasan & jam, dan tidak pernah melebihi hasil harga normal.
  */
 export type ModeThroughput = 'potensial' | 'aktif' | 'offline';
 
@@ -263,22 +323,45 @@ export function buatTahapAwal(): TahapState {
 }
 
 export function buatTerminalAwal(cfg: KonfigEkonomi = EKONOMI): TerminalState {
+  void cfg;
   return {
     id: ID_TERMINAL_AWAL,
     tahap: petakanTahap(() => buatTahapAwal()),
     fasilitas: petakan(FASILITAS_IDS, () => 0),
-    jurusanBuka: Math.min(cfg.jurusanAwal, cfg.jurusan.length),
     teknologi: petakan(TEKNOLOGI_IDS, () => false),
-    kelasBus: petakan(KELAS_BUS_IDS, (id) => id === 'ekonomi'),
     jalur: 1,
+    loketKosong: 0,
   };
 }
 
+/** PO baru terdaftar dengan sekian loket; riwayat (bila pernah terdaftar) dilanjutkan. */
+export function buatPoTerdaftar(id: PoId, loket: number, cfg: KonfigEkonomi = EKONOMI, riwayat?: RiwayatPo): PoTerdaftar {
+  return {
+    id,
+    xp: riwayat?.xp ?? 0,
+    loket,
+    rekorLoket: Math.max(loket, riwayat?.rekorLoket ?? 0),
+    reputasi: riwayat?.reputasi ?? tingkatPo(id, cfg).reputasiAwal,
+    harga: riwayat?.harga ?? {},
+    kontrakDetik: hariKontrakPertama(id, cfg) * DETIK_SEHARI,
+  };
+}
+
+/** Game baru: PO awal (EKONOMI.mitra sumber 'awal') menyewa satu loket, seperti satu-satunya loket v1. */
+export function buatMitraAwal(cfg: KonfigEkonomi = EKONOMI): MitraState {
+  const awal = PO_IDS.filter((id) => cfg.mitra.po[id].sumber === 'awal');
+  return { terdaftar: awal.map((id) => buatPoTerdaftar(id, 1, cfg)), riwayat: {}, jedaSampai: {}, hadiahEvent: [] };
+}
+
 export function buatStateBaru(sekarangMs: number, cfg: KonfigEkonomi = EKONOMI): GameState {
+  const mitra = buatMitraAwal(cfg);
+  const terminal = buatTerminalAwal(cfg);
   return {
     uang: new Decimal(cfg.uangAwal),
-    terminal: buatTerminalAwal(cfg),
-    prestige: { poin: new Decimal(0), jumlahReset: 0 },
+    terminal: aturLevelLoket(terminal, mitra),
+    mitra,
+    perkembangan: { xpTerminal: 0, perluasan: 0, proyekDetik: 0 },
+    renovasi: { poin: new Decimal(0), jumlah: 0 },
     statistik: {
       totalPendapatanRun: new Decimal(0),
       totalPendapatanSepanjangMasa: new Decimal(0),
@@ -290,8 +373,6 @@ export function buatStateBaru(sekarangMs: number, cfg: KonfigEkonomi = EKONOMI):
     benihCuaca: benihCuacaDari(sekarangMs),
     hadiah: buatHadiahAwal(cfg),
     sewaKios: buatSewaKiosAwal(),
-    armada: buatArmadaAwal(),
-    harga: buatHargaAwal(cfg),
     transaksi: { sisaPenumpang: 0, sisaBus: 0 },
     event: buatEventAwal(),
     profil: { namaTerminal: '', ikutPeringkat: false },
@@ -313,15 +394,6 @@ export function buatEventAwal(): EventState {
   return { aktif: null, edisi: null, progres: 0, diklaim: 0, target: [] };
 }
 
-export function buatArmadaAwal(): ArmadaState {
-  return { po: [] };
-}
-
-/** Semua harga normal: harga jurusan 100 %, tanpa tambahan kelas. */
-export function buatHargaAwal(cfg: KonfigEkonomi = EKONOMI): HargaState {
-  return { jurusan: cfg.jurusan.map(() => 100), tambahanKelas: petakan(KELAS_BUS_IDS, () => 0) };
-}
-
 export function buatSewaKiosAwal(): SewaKiosState {
   return { terkumpul: new Decimal(0), terakhir: new Decimal(0), hariTerakhir: -1 };
 }
@@ -330,8 +402,75 @@ export function buatHadiahAwal(cfg: KonfigEkonomi = EKONOMI): HadiahState {
   return { boostDetik: 0, busEmas: { tungguDetik: cfg.hadiah.busEmasSelangDetik[0], aktifDetik: 0, jumlah: 0 }, bonusOffline: new Decimal(0) };
 }
 
+/** Level tahap Loket = loket milik terminal (disewa + kosong). Dijaga sinkron setiap kali loket berubah (juga saat save dimuat). */
+export function aturLevelLoket(terminal: TerminalState, mitra: MitraState): TerminalState {
+  const level = Math.max(1, mitra.terdaftar.reduce((a, p) => a + p.loket, 0) + terminal.loketKosong);
+  const t = terminal.tahap.loket;
+  return t.level === level ? terminal : { ...terminal, tahap: { ...terminal.tahap, loket: { ...t, level } } };
+}
+
 // ---------------------------------------------------------------------------
-// Turunan (read-only)
+// Turunan: level terminal & mitra PO
+
+/** Level terminal dari XP-nya (penumpang). */
+export function levelTerminal(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
+  return levelTerminalDariXp(state.perkembangan.xpTerminal, cfg);
+}
+
+/** Kelas terminal dari level: 0 = Tipe C, 1 = Tipe B, 2 = Tipe A, 3+ = Terpadu (★ bertambah). */
+export function kelasTerminal(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
+  return kelasDariLevel(levelTerminal(state, cfg), cfg);
+}
+
+/** Slot PO sekarang (level terminal & aula kedua dari perluasan). */
+export function slotPoState(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
+  return slotPo(levelTerminal(state, cfg), state.perkembangan.perluasan, cfg);
+}
+
+export function levelPo(p: PoTerdaftar, cfg: KonfigEkonomi = EKONOMI): number {
+  return levelPoDariXp(p.xp, cfg);
+}
+
+/** Jatah loket PO ini sekarang (level PO + perluasan). */
+export function jatahLoketPo(state: GameState, p: PoTerdaftar, cfg: KonfigEkonomi = EKONOMI): number {
+  return jatahLoket(levelPo(p, cfg), bonusJatahPerluasan(state.perkembangan.perluasan, cfg), cfg);
+}
+
+export function cariPo(state: GameState, id: PoId): PoTerdaftar | undefined {
+  return state.mitra.terdaftar.find((p) => p.id === id);
+}
+
+/** Loket yang disewa semua PO (yang melayani penumpang). */
+export function loketTerisi(state: GameState): number {
+  return state.mitra.terdaftar.reduce((a, p) => a + p.loket, 0);
+}
+
+function poSegmen(state: GameState, cfg: KonfigEkonomi): PoSegmen[] {
+  return state.mitra.terdaftar.map((p) => ({ id: p.id, level: levelPo(p, cfg), loket: p.loket, reputasi: p.reputasi, harga: p.harga }));
+}
+
+/** Penumpang & tiket per segmen pada permintaan tertentu (lihat sim/segmen.ts). */
+export function segmenState(state: GameState, permintaan: number, cfg: KonfigEkonomi = EKONOMI, opsi: OpsiSegmen = {}): HasilSegmen {
+  return hitungSegmen(poSegmen(state, cfg), permintaan, kelasTerminal(state, cfg), cfg, opsi);
+}
+
+/** Semua kursi penuh, harga normal: dasar hadiah, target, dan biaya perpanjang kontrak. */
+function segmenPotensial(state: GameState, cfg: KonfigEkonomi): HasilSegmen {
+  return segmenState(state, Number.POSITIVE_INFINITY, cfg, { hargaNormal: true });
+}
+
+/** Jurusan (indeks EKONOMI.jurusan) yang sedang dilayani PO terdaftar yang punya loket. */
+export function jurusanDilayani(state: GameState, cfg: KonfigEkonomi = EKONOMI): boolean[] {
+  return jurusanDilayaniPo(state.mitra.terdaftar, kelasTerminal(state, cfg), cfg);
+}
+
+/** Kelas bus yang dioperasikan PO mana pun yang punya loket (urut KELAS_BUS_IDS). */
+export function kelasBusBeroperasi(state: GameState, cfg: KonfigEkonomi = EKONOMI): KelasBusId[] {
+  return kelasBusDioperasikan(state.mitra.terdaftar, kelasTerminal(state, cfg), cfg);
+}
+
+// ---------------------------------------------------------------------------
+// Turunan: kapasitas & pendapatan (read-only)
 
 /** Pengali kapasitas tahap dari modernisasi yang sudah dipasang. */
 export function multTeknologi(state: GameState, id: TahapId, cfg: KonfigEkonomi = EKONOMI): number {
@@ -350,15 +489,13 @@ export function multJalur(state: GameState, id: TahapId, cfg: KonfigEkonomi = EK
   return id === 'loket' ? 1 : 1 + cfg.jalur.bonusKapasitas * (state.terminal.jalur - 1);
 }
 
+/** Kapasitas tahap. Loket: dari loket yang disewa PO (loket kosong tidak melayani). */
 export function kapasitasTahap(state: GameState, id: TahapId, cfg: KonfigEkonomi = EKONOMI): number {
+  if (id === 'loket') {
+    const n = loketTerisi(state);
+    return n > 0 ? kapasitas('loket', n, cfg) * multTeknologi(state, id, cfg) : 0;
+  }
   return kapasitas(id, state.terminal.tahap[id].level, cfg) * multTeknologi(state, id, cfg) * multJalur(state, id, cfg);
-}
-
-/** Pengali harga tiket dari jurusan yang sudah dibuka (jurusan jauh lebih mahal). */
-export function multJurusan(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
-  let mult = 1;
-  for (let i = 0; i < Math.min(state.terminal.jurusanBuka, cfg.jurusan.length); i++) mult += cfg.jurusan[i]!.bonusTiket;
-  return mult;
 }
 
 /** Efek satu fasilitas pada levelnya sekarang (nilaiPerLevel × level; artinya lihat KonfigFasilitas). */
@@ -366,21 +503,10 @@ export function nilaiFasilitas(state: GameState, id: FasilitasId, cfg: KonfigEko
   return cfg.fasilitas[id].nilaiPerLevel * state.terminal.fasilitas[id];
 }
 
-/** Pengali harga tiket dari mitra PO yang sudah bergabung. */
-export function multPo(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
-  return 1 + cfg.po.bonusTiket * state.armada.po.length;
-}
-
-/** Pengali harga tiket dari kelas bus yang beroperasi (bus yang lebih mewah, tiket lebih mahal). */
-export function multKelasBus(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
-  let mult = 1;
-  for (const id of KELAS_BUS_IDS) if (state.terminal.kelasBus[id]) mult += cfg.kelasBus[id].bonusTiket;
-  return mult;
-}
-
-/** Harga tiket normal per penumpang (× bonus jurusan × bonus mitra PO × bonus kelas bus), sebelum harga yang diatur pemain. */
+/** Harga tiket normal rata-rata per penumpang (semua kursi penuh, harga normal), sebelum harga yang diatur pemain. */
 export function nilaiPerPenumpangState(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
-  return cfg.nilaiPerPenumpang * multJurusan(state, cfg) * multPo(state, cfg) * multKelasBus(state, cfg);
+  const s = segmenPotensial(state, cfg);
+  return s.terisi > 0 ? s.tiket / s.terisi : 0;
 }
 
 /** Belanja per penumpang di kios (jadi sewa harian): level kios × (1 + bonus toilet & musholla). */
@@ -394,11 +520,11 @@ export function tarifRetribusiPerBus(state: GameState, cfg: KonfigEkonomi = EKON
 }
 
 /**
- * Pendapatan per detik dari tiap sumber (sudah × prestige, event musiman & kepuasan, belum × boost):
- * tiket di loket, retribusi tiap bus parkir, parkir kendaraan pengantar, dan
- * belanja kios yang terkumpul lalu dibayar sebagai sewa harian. Semuanya
- * mengikuti arus penumpang (lihat ModeThroughput). Toilet & musholla tidak
- * menghasilkan uang; ia menaikkan belanja di kios.
+ * Pendapatan per detik dari tiap sumber (sudah × Renovasi, level terminal, event
+ * musiman & kepuasan, belum × boost): tiket di loket PO, retribusi tiap bus
+ * parkir, parkir kendaraan pengantar, dan belanja kios yang terkumpul lalu
+ * dibayar sebagai sewa harian. Toilet & musholla tidak menghasilkan uang; ia
+ * menaikkan belanja di kios.
  */
 export interface RincianPendapatan {
   readonly tiket: Decimal;
@@ -407,24 +533,37 @@ export interface RincianPendapatan {
   readonly sewaKios: Decimal;
 }
 
+/** Uang lain per penumpang selain tiket (parkir bus dibagi rata ke penumpangnya, parkir kendaraan, belanja kios). */
+function lainPerPenumpang(state: GameState, cfg: KonfigEkonomi): number {
+  return tarifRetribusiPerBus(state, cfg) / cfg.penumpangPerBus + nilaiFasilitas(state, 'parkir', cfg) + belanjaKiosPerPenumpang(state, cfg);
+}
+
 export function rincianPendapatan(state: GameState, mode: ModeThroughput = 'potensial', cfg: KonfigEkonomi = EKONOMI): RincianPendapatan {
-  const { arus, harga } = arusDanHarga(state, mode, cfg);
+  const { arus, tiketPerPenumpang } = arusDanTiket(state, mode, cfg);
   const mult = pengaliPendapatan(state, cfg);
   const per = (rpPerPenumpang: number): Decimal => mult.times(arus * rpPerPenumpang);
   return {
-    tiket: per(nilaiPerPenumpangState(state, cfg) * harga),
+    tiket: per(tiketPerPenumpang),
     retribusi: per(tarifRetribusiPerBus(state, cfg) / cfg.penumpangPerBus),
     parkir: per(nilaiFasilitas(state, 'parkir', cfg)),
     sewaKios: per(belanjaKiosPerPenumpang(state, cfg)),
   };
 }
 
-/** Pengali semua pendapatan (prestige × event musiman × kepuasan), belum × boost. */
-export function pengaliPendapatan(state: GameState, cfg: KonfigEkonomi = EKONOMI): Decimal {
-  return multiplierPrestige(state.prestige.poin, cfg).times(pengaliEvent(state, cfg) * pengaliKepuasan(state, cfg));
+/** Pengali bonus Renovasi (+bonusPrestige per poin). */
+export function multRenovasi(state: GameState, cfg: KonfigEkonomi = EKONOMI): Decimal {
+  return multiplierPrestige(state.renovasi.poin, cfg);
 }
 
-/** Kepuasan penumpang sekarang (lihat sim/kepuasan.ts), termasuk kekecewaan karena tiket terlalu mahal. */
+/** Pengali semua pendapatan (Renovasi × level terminal × event musiman × kepuasan), belum × boost. */
+export function pengaliPendapatan(state: GameState, cfg: KonfigEkonomi = EKONOMI): Decimal {
+  return multRenovasi(state, cfg).times(pengaliLevelTerminal(levelTerminal(state, cfg), cfg) * pengaliEvent(state, cfg) * pengaliKepuasan(state, cfg));
+}
+
+/**
+ * Kepuasan penumpang sekarang (lihat sim/kepuasan.ts). Tiket yang terlalu mahal
+ * tidak lagi menurunkan kepuasan terminal: di v2 ia menurunkan reputasi PO-nya.
+ */
 export function kepuasanTerminal(state: GameState, cfg: KonfigEkonomi = EKONOMI): Kepuasan {
   const kap = semuaKapasitas(state, cfg);
   return hitungKepuasan(
@@ -434,7 +573,6 @@ export function kepuasanTerminal(state: GameState, cfg: KonfigEkonomi = EKONOMI)
       levelFasilitas: state.terminal.fasilitas.kios + state.terminal.fasilitas.toilet,
       jalur: state.terminal.jalur,
       jalurMaks: jumlahJalurMaks(cfg),
-      penaltiHarga: penaltiHarga(state, cfg),
     },
     cfg,
   );
@@ -456,6 +594,13 @@ export function dayaTarikKepuasan(nilai: number, cfg: KonfigEkonomi = EKONOMI): 
   return cfg.permintaan.dasar + cfg.permintaan.perKepuasan * nilai;
 }
 
+/** Permintaan dari kepuasan yang sudah dihitung (tick memakainya supaya kepuasan tidak dihitung dua kali). */
+function permintaanDari(state: GameState, kepuasan: number, cfg: KonfigEkonomi): number {
+  const p = cfg.permintaan;
+  const ritme = p.ritmeMin + (1 - p.ritmeMin) * keramaianTerminal(waktuTerminalState(state));
+  return dayaTarikKepuasan(kepuasan, cfg) * ritme;
+}
+
 /**
  * Calon penumpang yang datang sekarang dibanding kapasitas terminal: daya tarik
  * kepuasan × ritme jam & hari. Ritmenya dilandaikan dari keramaian di adegan
@@ -463,14 +608,12 @@ export function dayaTarikKepuasan(nilai: number, cfg: KonfigEkonomi = EKONOMI): 
  * Lebih dari 1 = lebih banyak dari yang bisa dilayani (antre di tahap paling lambat).
  */
 export function permintaanPenumpang(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
-  const p = cfg.permintaan;
-  const ritme = p.ritmeMin + (1 - p.ritmeMin) * keramaianTerminal(waktuTerminalState(state));
-  return dayaTarikKepuasan(kepuasanTerminal(state, cfg).nilai, cfg) * ritme;
+  return permintaanDari(state, kepuasanTerminal(state, cfg).nilai, cfg);
 }
 
-/** Bagian kursi (kapasitas) yang terisi sekarang, 0–1: penumpang yang datang menurut kepuasan, jam, & harga tiket. */
+/** Bagian kursi (kapasitas) yang terisi sekarang, 0–1: penumpang yang datang menurut kepuasan, jam, reputasi, & harga tiket. */
 export function keterisianTerminal(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
-  return arusHarga(state, permintaanPenumpang(state, cfg), cfg).terisi;
+  return segmenState(state, permintaanPenumpang(state, cfg), cfg).terisi;
 }
 
 /** Uang yang langsung masuk per detik (tiket + retribusi + parkir), belum × boost. */
@@ -488,33 +631,39 @@ export function semuaOtomatis(state: GameState): boolean {
   return TAHAP_IDS.every((id) => state.terminal.tahap[id].kepala.direkrut);
 }
 
-export function throughputState(
-  state: GameState,
-  mode: ModeThroughput = 'potensial',
-  cfg: KonfigEkonomi = EKONOMI,
-): number {
-  return arusDanHarga(state, mode, cfg).arus;
+export function throughputState(state: GameState, mode: ModeThroughput = 'potensial', cfg: KonfigEkonomi = EKONOMI): number {
+  return arusDanTiket(state, mode, cfg).arus;
 }
 
-/** Arus penumpang (pnp/dtk) & harga rata-rata yang dibayar (× harga normal) menurut mode. */
-function arusDanHarga(state: GameState, mode: ModeThroughput, cfg: KonfigEkonomi): { arus: number; harga: number } {
-  if (mode === 'offline' && !semuaOtomatis(state)) return { arus: 0, harga: 1 };
+/** Arus penumpang (pnp/dtk) & tiket rata-rata yang dibayar per penumpang (Rp) menurut mode. */
+function arusDanTiket(state: GameState, mode: ModeThroughput, cfg: KonfigEkonomi): { arus: number; tiketPerPenumpang: number } {
+  if (mode === 'offline' && !semuaOtomatis(state)) return { arus: 0, tiketPerPenumpang: 0 };
   const kap = throughput(semuaKapasitas(state, cfg));
-  if (mode === 'potensial') return { arus: kap, harga: 1 };
-  // Offline: Kepala menjalankan terminal tanpa jam & kepuasan, tapi penumpang tetap memilih menurut harga.
-  const a = arusHarga(state, mode === 'aktif' ? permintaanPenumpang(state, cfg) : 1, cfg);
-  return { arus: kap * a.terisi, harga: a.harga };
+  const dari = (s: HasilSegmen): { arus: number; tiketPerPenumpang: number } => ({ arus: kap * s.terisi, tiketPerPenumpang: s.terisi > 0 ? s.tiket / s.terisi : 0 });
+  if (mode === 'potensial') return dari(segmenPotensial(state, cfg));
+  if (mode === 'aktif') return dari(segmenState(state, permintaanPenumpang(state, cfg), cfg));
+  // Offline: Kepala menjalankan terminal tanpa jam & kepuasan; penumpang tetap memilih menurut harga, tapi
+  // hasilnya tidak pernah melebihi harga normal (harga tinggi tidak bisa dipakai untuk menimbun uang saat pergi).
+  const pemain = segmenState(state, 1, cfg);
+  const normal = segmenState(state, 1, cfg, { hargaNormal: true });
+  const lain = lainPerPenumpang(state, cfg);
+  const nilai = (s: HasilSegmen): number => s.tiket + s.terisi * lain;
+  return dari(nilai(pemain) <= nilai(normal) ? pemain : normal);
 }
 
 /** Rata-rata pendapatan per detik dari semua sumber (belum × boost). */
-export function pendapatanPerDetikState(
-  state: GameState,
-  mode: ModeThroughput = 'potensial',
-  cfg: KonfigEkonomi = EKONOMI,
-): Decimal {
+export function pendapatanPerDetikState(state: GameState, mode: ModeThroughput = 'potensial', cfg: KonfigEkonomi = EKONOMI): Decimal {
   // Rata-rata semua sumber, termasuk sewa kios yang dibayar harian (dasar offline & hadiah "N menit pendapatan").
   const r = rincianPendapatan(state, mode, cfg);
   return r.tiket.add(r.retribusi).add(r.parkir).add(r.sewaKios);
+}
+
+/** Pendapatan tiket potensial PO ini per detik (harga normal, sudah × pengali): dasar biaya perpanjang kontrak. */
+export function pendapatanPoPerDetik(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): Decimal {
+  const s = segmenPotensial(state, cfg);
+  const po = s.po.find((p) => p.id === id);
+  if (!po) return new Decimal(0);
+  return pengaliPendapatan(state, cfg).times(throughput(semuaKapasitas(state, cfg)) * po.tiket);
 }
 
 /** Semua tahap yang sedang jadi bottleneck (berdasarkan kapasitas), urut rantai. */
@@ -538,18 +687,29 @@ export function biayaUpgradeState(state: GameState, id: TahapId, cfg: KonfigEkon
  * Majukan simulasi sebanyak `dtDetik`. Dipanggil dengan fixed timestep
  * (lihat `majukanWaktu` di loop.ts), tapi tetap benar untuk dt berapa pun.
  *
- * Semua tahap selalu berjalan. Arusnya = penumpang yang datang (kepuasan,
- * jam, & harga tiket; lihat arusHarga), paling banyak sebesar kapasitas.
+ * Semua tahap selalu berjalan. Arusnya = penumpang yang datang (kepuasan, jam,
+ * reputasi & harga tiket per PO; lihat sim/segmen.ts), paling banyak sebesar
+ * kapasitas.
  *
  * Uang masuk per transaksi (lihat TransaksiState): tiap penumpang yang membeli
  * tiket membayar tiket & parkir kendaraan pengantarnya dan berbelanja di kios
  * (dikumpulkan jadi sewa harian); tiap bus membayar parkir bus. Totalnya sama
  * dengan arus × harga; hanya dicairkan per kejadian.
+ *
+ * Ekonomi v2 juga dimajukan di sini: XP PO dari bus yang datang, XP terminal
+ * dari penumpang, reputasi PO, sisa kontrak, proyek perluasan, dan Kepala
+ * Kemitraan (isi loket kosong & perpanjang kontrak).
  */
 export function tick(state: GameState, dtDetik: number, cfg: KonfigEkonomi = EKONOMI): GameState {
   if (!(dtDetik > 0)) return state;
 
-  const { arus, harga } = arusDanHarga(state, 'aktif', cfg);
+  const kap = semuaKapasitas(state, cfg);
+  const thr = throughput(kap);
+  const kepuasan = kepuasanTerminal(state, cfg);
+  const seg = segmenState(state, permintaanDari(state, kepuasan.nilai, cfg), cfg);
+  const arus = thr * seg.terisi;
+  const tiketPerPenumpang = seg.terisi > 0 ? seg.tiket / seg.terisi : 0;
+
   const penumpang = arus * dtDetik;
   const sisaPenumpang = state.transaksi.sisaPenumpang + penumpang;
   const tiket = Math.floor(sisaPenumpang + EPSILON_TRANSAKSI);
@@ -560,7 +720,7 @@ export function tick(state: GameState, dtDetik: number, cfg: KonfigEkonomi = EKO
     sisaBus: Math.max(0, sisaBus - bus * cfg.penumpangPerBus),
   };
   const mult = tiket > 0 || bus > 0 ? pengaliPendapatan(state, cfg).times(pengaliBoost(state, cfg)) : null;
-  const perPenumpang = nilaiPerPenumpangState(state, cfg) * harga + nilaiFasilitas(state, 'parkir', cfg);
+  const perPenumpang = tiketPerPenumpang + nilaiFasilitas(state, 'parkir', cfg);
   const pendapatan = mult ? mult.times(perPenumpang * tiket + tarifRetribusiPerBus(state, cfg) * bus) : new Decimal(0);
   const omzetKios = mult ? mult.times(belanjaKiosPerPenumpang(state, cfg) * tiket) : new Decimal(0);
 
@@ -576,9 +736,38 @@ export function tick(state: GameState, dtDetik: number, cfg: KonfigEkonomi = EKO
     event: state.event.aktif && penumpang > 0 ? { ...state.event, progres: state.event.progres + penumpang } : state.event,
     rekor: majukanRekor(state.rekor, waktuTerminal(waktuMainDetik).hariKe, penumpang, dapat, throughputState(state, 'potensial', cfg)),
     tantangan: majukanTantangan(state, penumpang, dapat, dtDetik, cfg),
+    mitra: majukanMitra(state.mitra, seg, thr, kepuasan.nilai, dtDetik, 1, cfg),
+    perkembangan: majukanPerkembangan(state.perkembangan, penumpang, dtDetik),
   };
   const denganSewa = majukanSewaKios(dasar, omzetKios, waktuTerminal(state.statistik.waktuMainDetik).hariKe, waktuTerminal(waktuMainDetik).hariKe);
-  return perbaruiArmada(perbaruiPencapaian(tambahPendapatan(denganSewa, pendapatan), cfg), cfg);
+  return perbaruiPencapaian(urusKontrak(kepalaKemitraan(tambahPendapatan(denganSewa, pendapatan), cfg), cfg), cfg);
+}
+
+/**
+ * XP PO dari bus yang datang (1 XP per penumpangPerBus penumpangnya) dan
+ * reputasi PO menuju targetnya. `efisiensi` < 1 untuk penghasilan offline.
+ */
+function majukanMitra(m: MitraState, seg: HasilSegmen, thr: number, kepuasan: number, dt: number, efisiensi: number, cfg: KonfigEkonomi): MitraState {
+  if (m.terdaftar.length === 0) return m;
+  const terdaftar = m.terdaftar.map((p, i) => {
+    const h = seg.po[i];
+    if (!h) return p;
+    const bus = (thr * h.terisi * dt * efisiensi) / cfg.penumpangPerBus;
+    const reputasi = majukanReputasi(p.reputasi, targetReputasi(kepuasan, h.hargaRataPersen, h.kelas.length, cfg), dt, cfg);
+    return { ...p, xp: p.xp + bus, reputasi, kontrakDetik: efisiensi < 1 ? p.kontrakDetik : p.kontrakDetik - dt };
+  });
+  return { ...m, terdaftar };
+}
+
+/** XP terminal dari penumpang; proyek perluasan selesai setelah waktunya habis. */
+function majukanPerkembangan(p: PerkembanganState, penumpang: number, dt: number): PerkembanganState {
+  let x = p;
+  if (penumpang > 0) x = { ...x, xpTerminal: x.xpTerminal + penumpang };
+  if (x.proyekDetik > 0) {
+    const sisa = x.proyekDetik - dt;
+    x = sisa > 1e-9 ? { ...x, proyekDetik: sisa } : { ...x, proyekDetik: 0, perluasan: x.perluasan + 1 };
+  }
+  return x;
 }
 
 /** Hitungan harian & rekor: saat hari terminal berganti, hari yang lewat dibandingkan dengan rekornya. */
@@ -631,9 +820,6 @@ function majukanSewaKios(state: GameState, omzet: Decimal, hariLama: number, har
 // ---------------------------------------------------------------------------
 // Target harian
 
-/** Lama satu hari terminal dalam detik main. */
-const DETIK_SEHARI = 24 * WAKTU.detikPerJam;
-
 /** Bulatkan ke 2 angka penting (target yang enak dibaca: 31.000, bukan 31.680). */
 function bulatkanTarget(n: number): number {
   if (n < 100) return Math.max(10, Math.round(n / 10) * 10);
@@ -681,6 +867,15 @@ export function klaimTarget(state: GameState, cfg: KonfigEkonomi = EKONOMI, gand
   return { ...tambahPendapatan(state, hadiah), harian: { ...state.harian, diklaim: true } };
 }
 
+/** Upgrade (tahap atau loket) menambah progres target harian "upgrade" & tantangan mingguan "upgrade". */
+function catatUpgrade(state: GameState): GameState {
+  return {
+    ...state,
+    harian: state.harian.jenis === 'upgrade' ? tambahProgres(state.harian, 1) : state.harian,
+    tantangan: tambahProgresTantangan(state.tantangan, 'upgrade', 1),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Pencapaian
 
@@ -705,363 +900,284 @@ export function klaimPencapaian(state: GameState, id: PencapaianId, cfg: KonfigE
 }
 
 // ---------------------------------------------------------------------------
-// Mitra PO
+// Mitra PO: daftar, putus, perpanjang, loket, harga
 
-export function poBergabung(state: GameState, id: PoId): boolean {
-  return state.armada.po.includes(id);
+/** Ganti daftar PO & loket kosong sekaligus, menjaga level tahap Loket tetap sinkron. */
+function denganMitra(state: GameState, mitra: MitraState, loketKosong: number = state.terminal.loketKosong, loketBaruDibangun = 0): GameState {
+  const terminal = { ...state.terminal, loketKosong: Math.max(0, loketKosong) };
+  const level = state.terminal.tahap.loket.level + loketBaruDibangun;
+  const denganLevel = { ...terminal, tahap: { ...terminal.tahap, loket: { ...terminal.tahap.loket, level } } };
+  return { ...state, mitra, terminal: aturLevelLoket(denganLevel, mitra) };
 }
 
-/** PO yang bergabung otomatis (bukan lewat kontrak) dan syaratnya sudah terpenuhi. */
-function poSiapBergabung(state: GameState, id: PoId, cfg: KonfigEkonomi): boolean {
-  const s = cfg.po.syarat[id];
-  if (s.jenis === 'jurusan') return state.terminal.jurusanBuka > s.ke;
-  if (s.jenis === 'kelas') return kelasTerminal(state) >= s.kelas;
-  return false;
+function gantiPo(state: GameState, id: PoId, ubah: (p: PoTerdaftar) => PoTerdaftar): MitraState {
+  return { ...state.mitra, terdaftar: state.mitra.terdaftar.map((p) => (p.id === id ? ubah(p) : p)) };
 }
 
-/** Catat PO yang baru memenuhi syarat bergabung otomatis (state sama persis kalau tidak ada). */
-export function perbaruiArmada(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameState {
-  const baru = PO_IDS.filter((id) => !poBergabung(state, id) && poSiapBergabung(state, id, cfg));
-  if (baru.length === 0) return state;
-  return { ...state, armada: { ...state.armada, po: [...state.armada.po, ...baru] } };
+/** Syarat yang masih kurang untuk mendaftarkan PO ini (null = boleh, tinggal uangnya). */
+export type KurangDaftarPo = SyaratDaftarKurang | { readonly jenis: 'terdaftar' } | { readonly jenis: 'slot' } | { readonly jenis: 'jeda'; readonly sampaiDetik: number };
+
+export function syaratDaftarPoKurang(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): KurangDaftarPo | null {
+  if (cariPo(state, id)) return { jenis: 'terdaftar' };
+  const syarat = syaratDaftarKurang(id, { kelasTerminal: kelasTerminal(state, cfg), kepuasan: kepuasanTerminal(state, cfg).nilai, hadiahEvent: state.mitra.hadiahEvent.includes(id) }, cfg);
+  if (syarat) return syarat;
+  const jeda = state.mitra.jedaSampai[id];
+  if (jeda !== undefined && jeda > state.statistik.waktuMainDetik) return { jenis: 'jeda', sampaiDetik: jeda };
+  if (state.mitra.terdaftar.length >= slotPoState(state, cfg)) return { jenis: 'slot' };
+  return null;
 }
 
-/** Biaya kontrak PO, atau null kalau PO itu bergabung dengan cara lain. */
-export function biayaKontrakPo(id: PoId, cfg: KonfigEkonomi = EKONOMI): Decimal | null {
-  const s = cfg.po.syarat[id];
-  return s.jenis === 'kontrak' ? new Decimal(s.biaya) : null;
-}
-
-/** Kepuasan minimal agar PO kontrak ini mau bergabung, atau null kalau tanpa syarat. */
-export function kepuasanMinPo(id: PoId, cfg: KonfigEkonomi = EKONOMI): number | null {
-  const s = cfg.po.syarat[id];
-  return s.jenis === 'kontrak' && s.kepuasanMin !== undefined ? s.kepuasanMin : null;
-}
-
-export function bisaKontrakPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): boolean {
-  const biaya = biayaKontrakPo(id, cfg);
-  const min = kepuasanMinPo(id, cfg);
-  return biaya !== null && !poBergabung(state, id) && state.uang.gte(biaya) && (min === null || kepuasanTerminal(state, cfg).nilai >= min);
-}
-
-export function kontrakPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): GameState {
-  if (!bisaKontrakPo(state, id, cfg)) return state;
-  return { ...state, uang: kurangiUang(state.uang, biayaKontrakPo(id, cfg)!), armada: { ...state.armada, po: [...state.armada.po, id] } };
-}
-
-// ---------------------------------------------------------------------------
-// Kelas bus
-
-/** Kelas bus yang beroperasi, urut dari ekonomi (untuk adegan: bus yang datang memakai salah satunya). */
-export function kelasBusBeroperasi(state: GameState): KelasBusId[] {
-  return KELAS_BUS_IDS.filter((id) => state.terminal.kelasBus[id]);
-}
-
-/** Kelas bus berikutnya yang bisa didatangkan (berurutan), null kalau semua sudah beroperasi. */
-export function kelasBusBerikutnya(state: GameState): KelasBusId | null {
-  return KELAS_BUS_IDS.find((id) => !state.terminal.kelasBus[id]) ?? null;
+export function bisaDaftarPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): boolean {
+  return syaratDaftarPoKurang(state, id, cfg) === null && state.uang.gte(biayaDaftarPo(id, cfg));
 }
 
 /**
- * Yang masih kurang untuk mendatangkan kelas bus ini: terminal belum cukup
- * tinggi kelasnya (disebut lebih dulu: syarat jangka panjang), atau kelas bus
- * sebelumnya belum beroperasi. null = syarat terpenuhi (tinggal uangnya);
- * kelas yang sudah beroperasi juga null.
+ * Daftarkan PO: menempati slot dan langsung menyewa loket bawaannya. Loket
+ * kosong dipakai lebih dulu; kekurangannya dibangun PO sendiri (pemain tidak
+ * membayar, tapi loket milik terminal bertambah). Riwayat dilanjutkan.
  */
-export function syaratKelasBusKurang(
-  state: GameState,
-  id: KelasBusId,
-  cfg: KonfigEkonomi = EKONOMI,
-): { readonly jenis: 'sebelumnya'; readonly kelas: KelasBusId } | { readonly jenis: 'terminal'; readonly kelas: number } | null {
-  if (state.terminal.kelasBus[id]) return null;
-  const minimal = cfg.kelasBus[id].kelasTerminal;
-  if (kelasTerminal(state) < minimal) return { jenis: 'terminal', kelas: minimal };
-  const sebelumnya = KELAS_BUS_IDS[KELAS_BUS_IDS.indexOf(id) - 1];
-  return sebelumnya && !state.terminal.kelasBus[sebelumnya] ? { jenis: 'sebelumnya', kelas: sebelumnya } : null;
+export function daftarPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (!bisaDaftarPo(state, id, cfg)) return state;
+  const bawaan = tingkatPo(id, cfg).loketBawaan;
+  const dariKosong = Math.min(state.terminal.loketKosong, bawaan);
+  const riwayat = { ...state.mitra.riwayat };
+  const lama = riwayat[id];
+  delete riwayat[id];
+  const mitra: MitraState = { ...state.mitra, riwayat, terdaftar: [...state.mitra.terdaftar, buatPoTerdaftar(id, bawaan, cfg, lama)] };
+  const s = denganMitra({ ...state, uang: kurangiUang(state.uang, biayaDaftarPo(id, cfg)) }, mitra, state.terminal.loketKosong - dariKosong, bawaan - dariKosong);
+  return isiLoketKosong(s, null, cfg);
 }
 
-export function bisaBeliKelasBus(state: GameState, id: KelasBusId, cfg: KonfigEkonomi = EKONOMI): boolean {
-  return !state.terminal.kelasBus[id] && syaratKelasBusKurang(state, id, cfg) === null && state.uang.gte(cfg.kelasBus[id].biaya);
+/** PO keluar (putus atau kontrak habis): loketnya jadi kosong, data PO disimpan di riwayat. */
+function keluarkanPo(state: GameState, id: PoId, putus: boolean, cfg: KonfigEkonomi): GameState {
+  const p = cariPo(state, id);
+  if (!p) return state;
+  const k = cfg.mitra.kontrak;
+  const riwayat = { ...state.mitra.riwayat, [id]: { xp: p.xp, reputasi: Math.max(0, p.reputasi - (putus ? k.penaltiReputasiPutus : 0)), rekorLoket: p.rekorLoket, harga: p.harga } };
+  const jedaSampai = putus ? { ...state.mitra.jedaSampai, [id]: state.statistik.waktuMainDetik + k.jedaPutusHari * DETIK_SEHARI } : state.mitra.jedaSampai;
+  const mitra: MitraState = { ...state.mitra, riwayat, jedaSampai, terdaftar: state.mitra.terdaftar.filter((x) => x.id !== id) };
+  return denganMitra(state, mitra, state.terminal.loketKosong + p.loket);
 }
 
-export function beliKelasBus(state: GameState, id: KelasBusId, cfg: KonfigEkonomi = EKONOMI): GameState {
-  if (!bisaBeliKelasBus(state, id, cfg)) return state;
-  return {
-    ...state,
-    uang: kurangiUang(state.uang, new Decimal(cfg.kelasBus[id].biaya)),
-    terminal: { ...state.terminal, kelasBus: { ...state.terminal.kelasBus, [id]: true } },
+/** PO terakhir tidak bisa diputus: terminal selalu punya minimal satu PO. */
+export function bisaPutusPo(state: GameState, id: PoId): boolean {
+  return cariPo(state, id) !== undefined && state.mitra.terdaftar.length > 1;
+}
+
+/** Putus kontrak: gratis, PO langsung keluar, reputasinya turun, dan tidak bisa didaftarkan lagi selama masa jeda. */
+export function putusPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (!bisaPutusPo(state, id)) return state;
+  return keluarkanPo(state, id, true, cfg);
+}
+
+export function biayaPerpanjangPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): Decimal {
+  return biayaPerpanjang(pendapatanPoPerDetik(state, id, cfg), cfg);
+}
+
+/** Sisa kontrak sudah maksimal, atau PO premium menolak karena kepuasan kurang. */
+export function bisaPerpanjangPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): boolean {
+  const p = cariPo(state, id);
+  if (!p) return false;
+  const k = cfg.mitra.kontrak;
+  if (p.kontrakDetik >= k.hariMaks * DETIK_SEHARI - 1e-6) return false;
+  const min = cfg.mitra.po[id].kepuasanMin;
+  if (min !== undefined && kepuasanTerminal(state, cfg).nilai < min) return false;
+  return state.uang.gte(biayaPerpanjangPo(state, id, cfg));
+}
+
+export function perpanjangPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (!bisaPerpanjangPo(state, id, cfg)) return state;
+  const biaya = biayaPerpanjangPo(state, id, cfg);
+  const mitra = gantiPo(state, id, (p) => ({ ...p, kontrakDetik: sisaSetelahPerpanjang(p.kontrakDetik / DETIK_SEHARI, cfg) * DETIK_SEHARI }));
+  return { ...state, uang: kurangiUang(state.uang, biaya), mitra };
+}
+
+/**
+ * Kontrak yang habis: PO keluar, kecuali PO terakhir (diperpanjang gratis supaya
+ * terminal tidak pernah tanpa PO).
+ */
+function urusKontrak(state: GameState, cfg: KonfigEkonomi): GameState {
+  if (!state.mitra.terdaftar.some((p) => p.kontrakDetik <= 0)) return state;
+  let s = state;
+  for (const p of state.mitra.terdaftar) {
+    if (p.kontrakDetik > 0) continue;
+    if (s.mitra.terdaftar.length > 1) s = keluarkanPo(s, p.id, false, cfg);
+    else s = { ...s, mitra: gantiPo(s, p.id, (x) => ({ ...x, kontrakDetik: x.kontrakDetik + cfg.mitra.kontrak.hari * DETIK_SEHARI })) };
+  }
+  return s;
+}
+
+/** Kepala Kemitraan (Kepala Loket): isi loket kosong, dan perpanjang kontrak yang tinggal ≤ 1 hari bila uang cukup. */
+function kepalaKemitraan(state: GameState, cfg: KonfigEkonomi): GameState {
+  if (!state.terminal.tahap.loket.kepala.direkrut) return state;
+  let s = state.terminal.loketKosong > 0 ? isiLoketKosong(state, null, cfg) : state;
+  for (const p of s.mitra.terdaftar) if (p.kontrakDetik <= DETIK_SEHARI && bisaPerpanjangPo(s, p.id, cfg)) s = perpanjangPo(s, p.id, cfg);
+  return s;
+}
+
+/** Nilai tiket per kursi tiap PO (semua kursi penuh, harga normal): PO mana yang paling menguntungkan diberi loket. */
+function nilaiKursiPo(state: GameState, cfg: KonfigEkonomi): Map<PoId, number> {
+  const s = segmenPotensial(state, cfg);
+  const hasil = new Map<PoId, number>();
+  for (const p of s.po) hasil.set(p.id, p.kursi > 0 ? p.tiket / p.kursi : 0);
+  return hasil;
+}
+
+/** PO yang jatahnya masih ada, urut paling menguntungkan per kursi. */
+function poBerjatah(state: GameState, cfg: KonfigEkonomi): PoTerdaftar[] {
+  const nilai = nilaiKursiPo(state, cfg);
+  return state.mitra.terdaftar.filter((p) => p.loket < jatahLoketPo(state, p, cfg)).sort((a, b) => (nilai.get(b.id) ?? 0) - (nilai.get(a.id) ?? 0));
+}
+
+/** PO yang akan menerima loket baru bila tidak dipilih: yang jatahnya masih ada dan paling menguntungkan. */
+export function poTujuanLoket(state: GameState, cfg: KonfigEkonomi = EKONOMI): PoId | null {
+  return poBerjatah(state, cfg)[0]?.id ?? null;
+}
+
+/** Biaya loket berikutnya (dari banyaknya loket milik terminal). */
+export function biayaLoketBaru(state: GameState, cfg: KonfigEkonomi = EKONOMI): Decimal {
+  return biayaUpgradeState(state, 'loket', cfg);
+}
+
+export function bisaBangunLoket(state: GameState, po: PoId | null = null, cfg: KonfigEkonomi = EKONOMI): boolean {
+  const tujuan = po ?? poTujuanLoket(state, cfg);
+  const p = tujuan ? cariPo(state, tujuan) : undefined;
+  return p !== undefined && p.loket < jatahLoketPo(state, p, cfg) && state.uang.gte(biayaLoketBaru(state, cfg));
+}
+
+/**
+ * Bangun satu loket untuk PO (bawaan: yang paling menguntungkan). Loket yang
+ * melampaui rekor PO itu memberi XP (lihat xpLoketBaru).
+ */
+export function bangunLoket(state: GameState, po: PoId | null = null, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (!bisaBangunLoket(state, po, cfg)) return state;
+  const tujuan = (po ?? poTujuanLoket(state, cfg))!;
+  const biaya = biayaLoketBaru(state, cfg);
+  const mitra = gantiPo(state, tujuan, (p) => {
+    const loket = p.loket + 1;
+    const xp = loket > p.rekorLoket ? xpLoketBaru(levelPo(p, cfg), cfg) : 0;
+    return { ...p, loket, rekorLoket: Math.max(p.rekorLoket, loket), xp: p.xp + xp };
+  });
+  return catatUpgrade(denganMitra({ ...state, uang: kurangiUang(state.uang, biaya) }, mitra, state.terminal.loketKosong, 1));
+}
+
+/** Isi loket kosong (gratis, tanpa XP) ke PO tertentu atau ke PO yang paling menguntungkan sampai jatahnya penuh. */
+export function isiLoketKosong(state: GameState, po: PoId | null = null, cfg: KonfigEkonomi = EKONOMI): GameState {
+  let kosong = state.terminal.loketKosong;
+  if (kosong <= 0) return state;
+  const urutan = po ? state.mitra.terdaftar.filter((p) => p.id === po) : poBerjatah(state, cfg);
+  const tambah = new Map<PoId, number>();
+  for (const p of urutan) {
+    const n = Math.min(kosong, Math.max(0, jatahLoketPo(state, p, cfg) - p.loket));
+    if (n > 0) tambah.set(p.id, n);
+    kosong -= n;
+    if (kosong <= 0) break;
+  }
+  if (tambah.size === 0) return state;
+  const mitra: MitraState = {
+    ...state.mitra,
+    terdaftar: state.mitra.terdaftar.map((p) => {
+      const n = tambah.get(p.id) ?? 0;
+      return n > 0 ? { ...p, loket: p.loket + n, rekorLoket: Math.max(p.rekorLoket, p.loket + n) } : p;
+    }),
   };
+  return denganMitra(state, mitra, kosong);
 }
 
-// ---------------------------------------------------------------------------
-// Harga tiket per jurusan & kelas bus
-
-/** Kursi terisi & harga rata-rata dari harga tiket per jurusan × kelas bus (lihat arusHarga). */
-export interface ArusHarga {
-  /** Bagian kursi (kapasitas) yang terisi, 0–1. */
-  readonly terisi: number;
-  /** Tiket rata-rata yang dibayar penumpang dibanding harga normal (1 = normal). */
-  readonly harga: number;
-  /** Calon penumpang dibanding saat semua harga normal (tanpa batas kursi). */
-  readonly peminat: number;
-  /**
-   * Per jurusan (indeks EKONOMI.jurusan; 0 bila belum dibuka) & per kelas bus (0 bila belum
-   * beroperasi): kursinya yang terisi (0–1), calon penumpang dibanding kursinya (bisa > 1 = penuh,
-   * ada yang tidak terangkut), dan bagiannya dari semua penumpang (jumlahnya 1).
-   */
-  readonly terisiJurusan: readonly number[];
-  readonly minatJurusan: readonly number[];
-  readonly bagianJurusan: readonly number[];
-  readonly terisiKelas: Readonly<Record<KelasBusId, number>>;
-  readonly minatKelas: Readonly<Record<KelasBusId, number>>;
-  readonly bagianKelas: Readonly<Record<KelasBusId, number>>;
-}
-
-/**
- * Satu segmen harga: pasangan jurusan terbuka × kelas bus beroperasi. Jatah
- * kursinya = bobotJ × bobotK (peminat, dinormalkan), `r` = tiketnya dibanding
- * harga normal (harga jurusan + tambahan kelas), `d` = calon penumpangnya
- * dibanding saat harga normal.
- */
-interface SegmenHarga {
-  readonly j: number;
-  readonly k: KelasBusId;
-  readonly bobotJ: number;
-  readonly bobotK: number;
-  readonly r: number;
-  readonly d: number;
-}
-
-/** Harga jurusan dirapikan: kelipatan langkah di antara min & maks (persen harga normal). */
+/** Harga tiket dirapikan: kelipatan langkah di antara min & maks (persen harga normal). */
 export function rapikanHarga(persen: number, cfg: KonfigEkonomi = EKONOMI): number {
   const h = cfg.harga;
   if (!Number.isFinite(persen)) return 100;
   return Math.min(h.maks, Math.max(h.min, Math.round(persen / h.langkah) * h.langkah));
 }
 
-/** Tambahan harga kelas bus dirapikan: kelipatan langkah di antara 0 & tambahanMaks (persen harga normal). */
-export function rapikanTambahan(persen: number, cfg: KonfigEkonomi = EKONOMI): number {
-  const h = cfg.harga;
-  if (!Number.isFinite(persen)) return 0;
-  return Math.min(h.tambahanMaks, Math.max(0, Math.round(persen / h.langkah) * h.langkah));
-}
-
-/**
- * Calon penumpang pada harga ini dibanding harga normal. Penumpang memilih
- * jurusan menurut harga jurusannya (hj^(−ej)), lalu kelas menurut tiketnya
- * dibanding harga jurusan itu ((tiket ÷ hj)^(−ek)).
- * @param persenJurusan harga jurusan & @param persenTambahan tambahan kelas, dalam persen harga normal
- */
-export function faktorPeminat(persenJurusan: number, persenTambahan: number, elastisitasJurusan: number, elastisitasKelas: number): number {
-  return Math.pow(persenJurusan / 100, -elastisitasJurusan) * Math.pow((persenJurusan + persenTambahan) / persenJurusan, -elastisitasKelas);
-}
-
-/** Segmen harga terminal sekarang; `ganti` mencoba harga lain untuk satu jurusan atau satu kelas (saran harga). */
-function daftarSegmen(
-  state: GameState,
-  cfg: KonfigEkonomi,
-  ganti: { readonly jurusan?: readonly [number, number]; readonly kelas?: readonly [KelasBusId, number] } = {},
-): SegmenHarga[] {
-  const nJ = Math.min(state.terminal.jurusanBuka, cfg.jurusan.length);
-  const kelas = kelasBusBeroperasi(state);
-  let totalJ = 0;
-  for (let j = 0; j < nJ; j++) totalJ += cfg.jurusan[j]!.peminat;
-  let totalK = 0;
-  for (const k of kelas) totalK += cfg.kelasBus[k].peminat;
-  const hasil: SegmenHarga[] = [];
-  for (let j = 0; j < nJ; j++) {
-    const cj = cfg.jurusan[j]!;
-    const pj = ganti.jurusan?.[0] === j ? ganti.jurusan[1] : (state.harga.jurusan[j] ?? 100);
-    const bobotJ = totalJ > 0 ? cj.peminat / totalJ : 1 / nJ;
-    for (const k of kelas) {
-      const pk = ganti.kelas?.[0] === k ? ganti.kelas[1] : state.harga.tambahanKelas[k];
-      const bobotK = totalK > 0 ? cfg.kelasBus[k].peminat / totalK : 1 / kelas.length;
-      hasil.push({ j, k, bobotJ, bobotK, r: (pj + pk) / 100, d: faktorPeminat(pj, pk, cj.elastisitas, cfg.kelasBus[k].elastisitas) });
-    }
-  }
-  return hasil;
-}
-
-/**
- * Tiap pasangan jurusan terbuka × kelas bus beroperasi punya jatah kursi tetap
- * (peminat jurusan × peminat kelas, dinormalkan). Calon penumpangnya =
- * permintaan × faktor peminat harganya, paling banyak sebanyak jatahnya: kursi
- * yang kosong karena harga tidak diisi penumpang segmen lain. Semua harga
- * normal → terisi = min(1, permintaan).
- * @param permintaan calon penumpang dibanding kapasitas pada harga normal (permintaanPenumpang; 1 = tepat penuh).
- */
-export function arusHarga(state: GameState, permintaan: number, cfg: KonfigEkonomi = EKONOMI): ArusHarga {
-  const terisiJurusan = cfg.jurusan.map(() => 0);
-  const minatJurusan = cfg.jurusan.map(() => 0);
-  const bobotJurusan = cfg.jurusan.map(() => 0);
-  const terisiKelas = petakan(KELAS_BUS_IDS, () => 0);
-  const minatKelas = petakan(KELAS_BUS_IDS, () => 0);
-  const bobotKelas = petakan(KELAS_BUS_IDS, () => 0);
-  let terisi = 0;
-  let bayar = 0;
-  let peminat = 0;
-  for (const s of daftarSegmen(state, cfg)) {
-    const w = s.bobotJ * s.bobotK;
-    const minat = permintaan * s.d;
-    const isi = Math.min(1, minat);
-    terisi += w * isi;
-    bayar += w * isi * s.r;
-    peminat += w * s.d;
-    terisiJurusan[s.j]! += s.bobotK * isi;
-    minatJurusan[s.j]! += s.bobotK * minat;
-    bobotJurusan[s.j] = s.bobotJ;
-    terisiKelas[s.k] += s.bobotJ * isi;
-    minatKelas[s.k] += s.bobotJ * minat;
-    bobotKelas[s.k] = s.bobotK;
-  }
-  const bagianJurusan = terisiJurusan.map((x, j) => (terisi > 0 ? (bobotJurusan[j]! * x) / terisi : 0));
-  const bagianKelas = petakan(KELAS_BUS_IDS, (k) => (terisi > 0 ? (bobotKelas[k] * terisiKelas[k]) / terisi : 0));
-  return { terisi, harga: terisi > 0 ? bayar / terisi : 1, peminat, terisiJurusan, minatJurusan, bagianJurusan, terisiKelas, minatKelas, bagianKelas };
-}
-
-/** Kelebihan tiket di atas ambangMahal (pecahan harga normal), rata-rata berbobot kursi: semua, per jurusan, per kelas. */
-export interface KelebihanHarga {
-  readonly total: number;
-  readonly jurusan: readonly number[];
-  readonly kelas: Readonly<Record<KelasBusId, number>>;
-}
-
-/** Seberapa jauh tiket melewati harga yang masih diterima penumpang (0 = tidak ada yang kecewa). */
-export function kelebihanHarga(state: GameState, cfg: KonfigEkonomi = EKONOMI): KelebihanHarga {
-  const ambang = cfg.harga.ambangMahal / 100;
-  const nJ = Math.min(state.terminal.jurusanBuka, cfg.jurusan.length);
-  const kelas = kelasBusBeroperasi(state);
-  let totalJ = 0;
-  for (let j = 0; j < nJ; j++) totalJ += cfg.jurusan[j]!.peminat;
-  let totalK = 0;
-  for (const k of kelas) totalK += cfg.kelasBus[k].peminat;
-  const jurusan = cfg.jurusan.map(() => 0);
-  const perKelas = petakan(KELAS_BUS_IDS, () => 0);
-  let total = 0;
-  for (let j = 0; j < nJ; j++) {
-    const bobotJ = totalJ > 0 ? cfg.jurusan[j]!.peminat / totalJ : 1 / nJ;
-    for (const k of kelas) {
-      const lebih = Math.max(0, ((state.harga.jurusan[j] ?? 100) + state.harga.tambahanKelas[k]) / 100 - ambang);
-      if (lebih <= 0) continue;
-      const bobotK = totalK > 0 ? cfg.kelasBus[k].peminat / totalK : 1 / kelas.length;
-      total += bobotJ * bobotK * lebih;
-      jurusan[j]! += bobotK * lebih;
-      perKelas[k] += bobotJ * lebih;
-    }
-  }
-  return { total, jurusan, kelas: perKelas };
-}
-
-/** Bagian kepuasan yang hilang karena tiket terlalu mahal (0 … penaltiMaks). */
-export function penaltiHarga(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
-  return Math.min(cfg.harga.penaltiMaks, cfg.harga.penaltiMahal * kelebihanHarga(state, cfg).total);
-}
-
-/** Saran harga (persen harga normal): per jurusan terbuka & per kelas beroperasi; null bila belum dibuka/beroperasi. */
-export interface SaranHarga {
-  readonly jurusan: readonly (number | null)[];
-  readonly tambahanKelas: Readonly<Record<KelasBusId, number | null>>;
+/** Atur harga tiket PO untuk salah satu jurusannya (persen harga normal, dirapikan). */
+export function aturHargaPo(state: GameState, id: PoId, jurusan: number, persen: number, cfg: KonfigEkonomi = EKONOMI): GameState {
+  const p = cariPo(state, id);
+  const nama = cfg.jurusan[jurusan]?.nama;
+  if (!p || nama === undefined || !cfg.mitra.po[id].jurusan.includes(nama)) return state;
+  const h = rapikanHarga(persen, cfg);
+  if ((p.harga[jurusan] ?? 100) === h) return state;
+  const harga: Partial<Record<number, number>> = { ...p.harga };
+  if (h === 100) delete harga[jurusan];
+  else harga[jurusan] = h;
+  return { ...state, mitra: gantiPo(state, id, (x) => ({ ...x, harga })) };
 }
 
 /** Keramaian tiap jam di hari biasa (Selasa), untuk menilai harga sepanjang hari. */
 const KERAMAIAN_SEHARI: readonly number[] = Array.from({ length: 24 }, (_, jam) => keramaianTerminal({ jamDesimal: jam + 0.5, indeksHari: 1 }));
 
 /**
- * Saran harga tiap jurusan & tiap kelas: yang paling banyak mendatangkan uang
- * tiket dalam sehari biasa (kepuasan sekarang, harga lain tetap), tanpa membuat
- * tiket segmennya melewati ambangMahal (penumpang tidak kecewa).
+ * Saran harga tiap jurusan PO: yang paling banyak mendatangkan uang tiket PO
+ * itu dalam sehari biasa (kepuasan sekarang, harga PO lain tetap), paling
+ * tinggi `hargaSaranMaks` supaya reputasinya tidak jatuh. null = jurusan belum dilayani.
  */
-export function saranHarga(state: GameState, cfg: KonfigEkonomi = EKONOMI): SaranHarga {
+export function saranHargaPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): Readonly<Record<number, number>> {
+  const p = cariPo(state, id);
+  if (!p) return {};
   const h = cfg.harga;
-  const p = cfg.permintaan;
   const tarik = dayaTarikKepuasan(kepuasanTerminal(state, cfg).nilai, cfg);
-  const permintaanJam = KERAMAIAN_SEHARI.map((r) => tarik * (p.ritmeMin + (1 - p.ritmeMin) * r));
-  const nilai = (segmen: readonly SegmenHarga[]): number => {
+  const permintaanJam = KERAMAIAN_SEHARI.map((r) => tarik * (cfg.permintaan.ritmeMin + (1 - cfg.permintaan.ritmeMin) * r));
+  const indeks = state.mitra.terdaftar.indexOf(p);
+  const nilai = (harga: HargaPo): number => {
+    const s = { ...state, mitra: gantiPo(state, id, (x) => ({ ...x, harga })) };
     let total = 0;
-    for (const s of segmen) {
-      let isi = 0;
-      for (const d of permintaanJam) isi += Math.min(1, d * s.d);
-      total += s.bobotJ * s.bobotK * isi * s.r;
-    }
+    for (const d of permintaanJam) total += segmenState(s, d, cfg).po[indeks]!.tiket;
     return total;
   };
-  /** Kandidat terbaik dari `mulai` sampai `batas` (inklusif); paling murah bila semuanya melewati batas. */
-  const terbaik = (mulai: number, batas: number, coba: (persen: number) => number): number => {
-    let pilih = mulai;
+  const hasil: Record<number, number> = {};
+  for (const j of jurusanAktif(id, levelPo(p, cfg), kelasTerminal(state, cfg), cfg)) {
+    let pilih = 100;
     let nilaiPilih = Number.NEGATIVE_INFINITY;
-    for (let persen = mulai; persen <= batas + 1e-9; persen += h.langkah) {
-      const v = coba(persen);
+    for (let persen = h.min; persen <= Math.min(h.maks, HARGA_SARAN_MAKS) + 1e-9; persen += h.langkah) {
+      const v = nilai({ ...p.harga, [j]: persen });
       if (v > nilaiPilih + 1e-12) {
         nilaiPilih = v;
         pilih = persen;
       }
     }
-    return pilih;
+    hasil[j] = pilih;
+  }
+  return hasil;
+}
+
+/** Saran harga paling tinggi (persen): di atas ini skor harga reputasi turun di bawah separuh. */
+const HARGA_SARAN_MAKS = 120;
+
+// ---------------------------------------------------------------------------
+// Perluasan terminal
+
+export function bisaMulaiPerluasan(state: GameState, cfg: KonfigEkonomi = EKONOMI): boolean {
+  const p = state.perkembangan;
+  const biaya = biayaPerluasan(p.perluasan, cfg);
+  return p.proyekDetik <= 0 && biaya !== null && levelCukupPerluasan(p.perluasan, levelTerminal(state, cfg), cfg) && state.uang.gte(biaya);
+}
+
+/** Bayar & mulai proyek tahap perluasan berikutnya; efeknya aktif setelah proyek selesai (lihat majukanPerkembangan). */
+export function mulaiPerluasan(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (!bisaMulaiPerluasan(state, cfg)) return state;
+  return {
+    ...state,
+    uang: kurangiUang(state.uang, biayaPerluasan(state.perkembangan.perluasan, cfg)!),
+    perkembangan: { ...state.perkembangan, proyekDetik: cfg.mitra.detikProyek },
   };
-  const nJ = Math.min(state.terminal.jurusanBuka, cfg.jurusan.length);
-  const kelas = kelasBusBeroperasi(state);
-  const tambahanTertinggi = Math.max(0, ...kelas.map((k) => state.harga.tambahanKelas[k]));
-  let hargaTertinggi = 0;
-  for (let j = 0; j < nJ; j++) hargaTertinggi = Math.max(hargaTertinggi, state.harga.jurusan[j] ?? 100);
-  const jurusan = cfg.jurusan.map((_, j) =>
-    j < nJ ? terbaik(h.min, Math.min(h.maks, h.ambangMahal - tambahanTertinggi), (persen) => nilai(daftarSegmen(state, cfg, { jurusan: [j, persen] }).filter((s) => s.j === j))) : null,
-  );
-  const tambahanKelas = petakan(KELAS_BUS_IDS, (k) =>
-    state.terminal.kelasBus[k] ? terbaik(0, Math.min(h.tambahanMaks, h.ambangMahal - hargaTertinggi), (persen) => nilai(daftarSegmen(state, cfg, { kelas: [k, persen] }).filter((s) => s.k === k))) : null,
-  );
-  return { jurusan, tambahanKelas };
-}
-
-/** Atur harga tiket jurusan ke-`indeks` yang sudah dibuka (persen harga normal, dirapikan). */
-export function aturHargaJurusan(state: GameState, indeks: number, persen: number, cfg: KonfigEkonomi = EKONOMI): GameState {
-  if (!Number.isInteger(indeks) || indeks < 0 || indeks >= Math.min(state.terminal.jurusanBuka, cfg.jurusan.length)) return state;
-  const p = rapikanHarga(persen, cfg);
-  if (state.harga.jurusan[indeks] === p) return state;
-  return { ...state, harga: { ...state.harga, jurusan: state.harga.jurusan.map((x, i) => (i === indeks ? p : x)) } };
-}
-
-/** Atur tambahan harga tiket kelas bus yang beroperasi (persen harga normal, dirapikan). */
-export function aturTambahanKelas(state: GameState, id: KelasBusId, persen: number, cfg: KonfigEkonomi = EKONOMI): GameState {
-  if (!state.terminal.kelasBus[id]) return state;
-  const p = rapikanTambahan(persen, cfg);
-  if (state.harga.tambahanKelas[id] === p) return state;
-  return { ...state, harga: { ...state.harga, tambahanKelas: { ...state.harga.tambahanKelas, [id]: p } } };
 }
 
 // ---------------------------------------------------------------------------
-// Profil
-
-/** Ganti nama terminal (dirapikan; kosong = nama bawaan). */
-export function aturNamaTerminal(state: GameState, nama: string): GameState {
-  const namaTerminal = rapikanNamaTerminal(nama);
-  return namaTerminal === state.profil.namaTerminal ? state : { ...state, profil: { ...state.profil, namaTerminal } };
-}
-
-/** Ikut/keluar papan peringkat (UI baru mengirimnya setelah pemain login & menyetujui, atau setelah server menghapus skornya). */
-export function aturIkutPeringkat(state: GameState, ikut: boolean): GameState {
-  return ikut === state.profil.ikutPeringkat ? state : { ...state, profil: { ...state.profil, ikutPeringkat: ikut } };
-}
-
-// ---------------------------------------------------------------------------
-// Aksi pemain
+// Aksi pemain: tahap, fasilitas, jalur, modernisasi, Kepala
 
 export function bisaUpgrade(state: GameState, id: TahapId, cfg: KonfigEkonomi = EKONOMI): boolean {
+  if (id === 'loket') return bisaBangunLoket(state, null, cfg);
   return state.uang.gte(biayaUpgradeState(state, id, cfg));
 }
 
+/** Upgrade tahap. Loket: bangun satu loket untuk PO yang paling menguntungkan (lihat bangunLoket). */
 export function beliUpgrade(state: GameState, id: TahapId, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (id === 'loket') return bangunLoket(state, null, cfg);
   if (!bisaUpgrade(state, id, cfg)) return state;
   const t = state.terminal.tahap[id];
-  return {
-    ...ubahTahap(state, id, { ...t, level: t.level + 1 }),
-    uang: kurangiUang(state.uang, biayaUpgradeState(state, id, cfg)),
-    harian: state.harian.jenis === 'upgrade' ? tambahProgres(state.harian, 1) : state.harian,
-    tantangan: tambahProgresTantangan(state.tantangan, 'upgrade', 1),
-  };
+  return catatUpgrade({ ...ubahTahap(state, id, { ...t, level: t.level + 1 }), uang: kurangiUang(state.uang, biayaUpgradeState(state, id, cfg)) });
 }
-
-// ---------------------------------------------------------------------------
-// Fasilitas, jurusan, modernisasi
 
 /** Biaya menaikkan fasilitas dari levelnya sekarang (level 0 = membangun). */
 export function biayaFasilitas(state: GameState, id: FasilitasId, cfg: KonfigEkonomi = EKONOMI): Decimal {
@@ -1103,12 +1219,6 @@ export function bukaJalur(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameS
   };
 }
 
-/** Biaya membuka jurusan berikutnya, atau null kalau semua sudah dibuka. */
-export function biayaJurusanBerikutnya(state: GameState, cfg: KonfigEkonomi = EKONOMI): Decimal | null {
-  const j = cfg.jurusan[state.terminal.jurusanBuka];
-  return j ? new Decimal(j.biaya) : null;
-}
-
 /** Jurusan ke-i rute antarpulau (menyeberang dengan feri)? */
 export function jurusanAntarpulau(i: number, cfg: KonfigEkonomi = EKONOMI): boolean {
   return cfg.jurusan[i]?.feri !== undefined;
@@ -1117,30 +1227,6 @@ export function jurusanAntarpulau(i: number, cfg: KonfigEkonomi = EKONOMI): bool
 /** Banyaknya jurusan Jawa–Bali (bukan antarpulau). */
 export function jumlahJurusanDarat(cfg: KonfigEkonomi = EKONOMI): number {
   return cfg.jurusan.filter((j) => j.feri === undefined).length;
-}
-
-/** Kelas terminal minimal untuk membuka jurusan berikutnya bila belum tercapai, selain itu null. */
-export function kelasKurangJurusan(state: GameState, cfg: KonfigEkonomi = EKONOMI): number | null {
-  const minimal = cfg.jurusan[state.terminal.jurusanBuka]?.kelasTerminal ?? 0;
-  return kelasTerminal(state) < minimal ? minimal : null;
-}
-
-export function bisaBukaJurusan(state: GameState, cfg: KonfigEkonomi = EKONOMI): boolean {
-  const biaya = biayaJurusanBerikutnya(state, cfg);
-  return biaya !== null && kelasKurangJurusan(state, cfg) === null && state.uang.gte(biaya);
-}
-
-/** Buka jurusan berikutnya; mitra PO kotanya langsung bergabung. */
-export function bukaJurusan(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameState {
-  if (!bisaBukaJurusan(state, cfg)) return state;
-  return perbaruiArmada(
-    {
-      ...state,
-      uang: kurangiUang(state.uang, biayaJurusanBerikutnya(state, cfg)!),
-      terminal: { ...state.terminal, jurusanBuka: state.terminal.jurusanBuka + 1 },
-    },
-    cfg,
-  );
 }
 
 /** Syarat modernisasi terpenuhi (teknologi pendahulunya sudah dipasang). */
@@ -1176,6 +1262,20 @@ export function rekrutKepala(state: GameState, id: TahapId, cfg: KonfigEkonomi =
 }
 
 // ---------------------------------------------------------------------------
+// Profil
+
+/** Ganti nama terminal (dirapikan; kosong = nama bawaan). */
+export function aturNamaTerminal(state: GameState, nama: string): GameState {
+  const namaTerminal = rapikanNamaTerminal(nama);
+  return namaTerminal === state.profil.namaTerminal ? state : { ...state, profil: { ...state.profil, namaTerminal } };
+}
+
+/** Ikut/keluar papan peringkat (UI baru mengirimnya setelah pemain login & menyetujui, atau setelah server menghapus skornya). */
+export function aturIkutPeringkat(state: GameState, ikut: boolean): GameState {
+  return ikut === state.profil.ikutPeringkat ? state : { ...state, profil: { ...state.profil, ikutPeringkat: ikut } };
+}
+
+// ---------------------------------------------------------------------------
 // Waktu nyata & offline
 
 /** Catat timestamp "terakhir aktif". Panggil sebelum save dan saat pause. */
@@ -1200,7 +1300,9 @@ export function hitungOffline(state: GameState, sekarangMs: number, cfg: KonfigE
 
 /**
  * Terapkan penghasilan offline lalu set `waktuTerakhirMs` ke sekarang.
- * Selisih waktu negatif menghasilkan 0 (lihat `detikOffline`).
+ * Selisih waktu negatif menghasilkan 0 (lihat `detikOffline`). XP PO & XP
+ * terminal ikut bertambah dengan efisiensi offline, dan proyek perluasan tetap
+ * berjalan; kontrak tidak berkurang karena hari terminal berhenti.
  */
 export function terapkanOffline(
   state: GameState,
@@ -1210,7 +1312,19 @@ export function terapkanOffline(
   const laporan = hitungOffline(state, sekarangMs, cfg);
   // Bonus 2× offline ditawarkan untuk laporan ini saja; boost berkurang selama pergi.
   const hadiah = { ...state.hadiah, boostDetik: Math.max(0, state.hadiah.boostDetik - laporan.detik), bonusOffline: laporan.pendapatan };
-  const ditandai = { ...tandaiWaktu(state, sekarangMs), hadiah };
+  let ditandai: GameState = { ...tandaiWaktu(state, sekarangMs), hadiah };
+  // Proyek perluasan dikerjakan kontraktor: tetap berjalan walau belum semua tahap punya Kepala.
+  if (laporan.detik > 0) ditandai = { ...ditandai, perkembangan: majukanPerkembangan(ditandai.perkembangan, 0, laporan.detik) };
+  if (laporan.detik > 0 && semuaOtomatis(state)) {
+    const kap = throughput(semuaKapasitas(state, cfg));
+    const seg = segmenState(state, 1, cfg);
+    const e = cfg.efisiensiOffline;
+    ditandai = {
+      ...ditandai,
+      mitra: majukanMitra(ditandai.mitra, seg, kap, kepuasanTerminal(state, cfg).nilai, laporan.detik, e, cfg),
+      perkembangan: { ...ditandai.perkembangan, xpTerminal: ditandai.perkembangan.xpTerminal + kap * seg.terisi * laporan.detik * e },
+    };
+  }
   return {
     state: laporan.pendapatan.gt(0) ? tambahPendapatan(ditandai, laporan.pendapatan) : ditandai,
     laporan,
@@ -1355,7 +1469,7 @@ export function hadiahTahapEvent(state: GameState, cfg: KonfigEkonomi = EKONOMI)
   return id ? hadiahMenit(state, cfg.event[id].hadiahMenit[state.event.diklaim] ?? 0, cfg) : new Decimal(0);
 }
 
-/** Klaim hadiah tahap event berikutnya; tahap terakhir juga membawa mitra PO eksklusif event itu. */
+/** Klaim hadiah tahap event berikutnya; tahap terakhir juga membuka PO eksklusif event itu (boleh didaftarkan gratis). */
 export function klaimEvent(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameState {
   const id = idEdisiEvent(state.event.edisi);
   if (!id || !bisaKlaimEvent(state)) return state;
@@ -1363,8 +1477,8 @@ export function klaimEvent(state: GameState, cfg: KonfigEkonomi = EKONOMI): Game
   const po = cfg.event[id].po;
   const terakhir = e.diklaim === e.target.length - 1;
   const dapat = tambahPendapatan(state, hadiahTahapEvent(state, cfg));
-  const armada = terakhir && !poBergabung(state, po) ? { ...state.armada, po: [...state.armada.po, po] } : state.armada;
-  return { ...dapat, armada, event: { ...e, diklaim: e.diklaim + 1 } };
+  const mitra = terakhir && !state.mitra.hadiahEvent.includes(po) ? { ...state.mitra, hadiahEvent: [...state.mitra.hadiahEvent, po] } : state.mitra;
+  return { ...dapat, mitra, event: { ...e, diklaim: e.diklaim + 1 } };
 }
 
 // ---------------------------------------------------------------------------
@@ -1423,62 +1537,41 @@ export function perbaruiJamNyata(state: GameState, sekarangMs: number, cfg: Konf
 }
 
 // ---------------------------------------------------------------------------
-// Prestige = naik kelas terminal
+// Renovasi (pengganti prestige naik kelas)
 
-/** Kelas terminal = banyaknya naik kelas: 0 = Tipe C, 1 = Tipe B, 2 = Tipe A, 3+ = Terpadu (★ bertambah). */
-export function kelasTerminal(state: GameState): number {
-  return state.prestige.jumlahReset;
-}
-
-/** Poin prestige minimal dari satu run untuk naik dari kelas `kelas` ke berikutnya. */
-export function poinMinimalNaikKelas(kelas: number, cfg: KonfigEkonomi = EKONOMI): number {
-  const d = cfg.kelas.poinMinimal;
-  return kelas < d.length ? d[kelas]! : d[d.length - 1]! + cfg.kelas.tambahPoinMinimal * (kelas - d.length + 1);
-}
-
-/** Run ini sudah cukup untuk naik kelas (poin yang didapat ≥ poin minimal kelas sekarang). */
-export function bisaNaikKelas(state: GameState, cfg: KonfigEkonomi = EKONOMI): boolean {
-  return poinPrestigeTersedia(state, cfg).gte(poinMinimalNaikKelas(kelasTerminal(state), cfg));
-}
-
-/**
- * Naik kelas: terminal dibangun ulang dari awal (lakukanPrestige) dengan poin
- * prestige tambahan. Mitra PO hadiah kelas langsung bergabung, dan target
- * harian penumpang yang belum selesai dihitung ulang untuk terminal baru
- * (targetnya dihitung dari arus terminal lama, jadi tidak mungkin tercapai).
- */
-export function naikKelas(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameState {
-  if (!bisaNaikKelas(state, cfg)) return state;
-  const baru = lakukanPrestige(state, cfg);
-  const hitungUlang = state.harian.jenis === 'penumpang' && !targetHarianSelesai(state);
-  const harian = hitungUlang ? buatTargetHarian(baru, state.harian.hariKe, cfg) : baru.harian;
-  return perbaruiArmada(perbaruiPencapaian({ ...baru, harian }, cfg), cfg);
-}
-
-export function poinPrestigeTersedia(state: GameState, cfg: KonfigEkonomi = EKONOMI): Decimal {
+/** Poin Renovasi yang didapat bila Renovasi sekarang (rumus prestige v1 dari pendapatan sejak Renovasi terakhir). */
+export function poinRenovasiTersedia(state: GameState, cfg: KonfigEkonomi = EKONOMI): Decimal {
   return poinPrestigeDidapat(state.statistik.totalPendapatanRun, cfg);
 }
 
-export function bisaPrestige(state: GameState, cfg: KonfigEkonomi = EKONOMI): boolean {
-  return poinPrestigeTersedia(state, cfg).gt(0);
+export function bisaRenovasi(state: GameState, cfg: KonfigEkonomi = EKONOMI): boolean {
+  return poinRenovasiTersedia(state, cfg).gte(cfg.mitra.poinMinRenovasi);
 }
 
 /**
- * Reset terminal (level & Kepala) dan uang ke awal, tambah poin prestige.
- * Statistik sepanjang masa dan waktu main tetap.
+ * Renovasi: kapasitas dibangun ulang dari awal dengan bonus pendapatan
+ * permanen. Direset: uang, level Peron & Keberangkatan, semua Kepala, loket
+ * (tiap PO kembali ke loket bawaannya), fasilitas, modernisasi. Tetap: level &
+ * kelas terminal, perluasan, jalur, PO terdaftar beserta level/reputasi/harga/
+ * kontraknya, riwayat, statistik sepanjang masa, dan semua yang di luar terminal.
+ * Target harian penumpang yang belum selesai dihitung ulang untuk kapasitas
+ * baru (targetnya dari arus terminal lama, jadi tidak mungkin tercapai).
  */
-export function lakukanPrestige(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameState {
-  if (!bisaPrestige(state, cfg)) return state;
-  return {
+export function renovasi(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (!bisaRenovasi(state, cfg)) return state;
+  const awal = buatTerminalAwal(cfg);
+  const mitra: MitraState = { ...state.mitra, terdaftar: state.mitra.terdaftar.map((p) => ({ ...p, loket: Math.max(1, tingkatPo(p.id, cfg).loketBawaan) })) };
+  const terminal = aturLevelLoket({ ...awal, id: state.terminal.id, jalur: state.terminal.jalur }, mitra);
+  const baru: GameState = {
     ...state,
     uang: new Decimal(cfg.uangAwal),
-    terminal: { ...buatTerminalAwal(cfg), id: state.terminal.id },
-    prestige: {
-      poin: state.prestige.poin.add(poinPrestigeTersedia(state, cfg)),
-      jumlahReset: state.prestige.jumlahReset + 1,
-    },
+    terminal,
+    mitra,
+    renovasi: { poin: state.renovasi.poin.add(poinRenovasiTersedia(state, cfg)), jumlah: state.renovasi.jumlah + 1 },
     statistik: { ...state.statistik, totalPendapatanRun: new Decimal(0) },
   };
+  const hitungUlang = state.harian.jenis === 'penumpang' && !targetHarianSelesai(state);
+  return perbaruiPencapaian(hitungUlang ? { ...baru, harian: buatTargetHarian(baru, state.harian.hariKe, cfg) } : baru, cfg);
 }
 
 // ---------------------------------------------------------------------------

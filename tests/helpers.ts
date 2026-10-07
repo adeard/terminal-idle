@@ -1,20 +1,65 @@
 import Decimal from 'break_infinity.js';
 import { EKONOMI } from '../src/config/economy.config';
 import { WAKTU } from '../src/config/waktu.config';
-import { buatStateBaru, tick, type GameState } from '../src/sim/state';
+import type { PoId } from '../src/sim/fitur';
+import { xpKumulatifTerminal } from '../src/sim/level-terminal';
+import { tingkatPo, xpKumulatifPo } from '../src/sim/mitra';
+import { aturLevelLoket, buatPoTerdaftar, buatStateBaru, tick, type GameState } from '../src/sim/state';
 import { TAHAP_IDS, type TahapId } from '../src/sim/tahap';
 
 export const T0 = Date.UTC(2026, 0, 1);
 export const DT = 0.1;
 
-/** State baru dengan level tertentu dan semua Kepala sudah direkrut (gratis, untuk setup test). */
+/** Reputasi netral: faktor reputasi 1, jadi pendapatan sama dengan rumus dasar (v1). */
+export const REPUTASI_NETRAL = 50;
+
+/**
+ * State baru dengan level tertentu dan semua Kepala sudah direkrut (gratis, untuk setup test).
+ * Level Loket = banyaknya loket: semuanya disewa PO awal (tetap Lv 1, reputasi netral),
+ * jadi kapasitas & pendapatannya sama dengan rumus dasar satu PO.
+ */
 export function stateOtomatis(level: Partial<Record<TahapId, number>> = {}, uang: number = EKONOMI.uangAwal): GameState {
   const s = buatStateBaru(T0);
   const tahap = { ...s.terminal.tahap };
   for (const id of TAHAP_IDS) {
     tahap[id] = { ...tahap[id], level: level[id] ?? 1, kepala: { direkrut: true } };
   }
-  return { ...s, uang: new Decimal(uang), terminal: { ...s.terminal, tahap } };
+  const loket = level.loket ?? 1;
+  const mitra = {
+    ...s.mitra,
+    terdaftar: s.mitra.terdaftar.map((p, i) => (i === 0 ? { ...p, loket, rekorLoket: Math.max(p.rekorLoket, loket), reputasi: REPUTASI_NETRAL } : p)),
+  };
+  return { ...s, uang: new Decimal(uang), mitra, terminal: aturLevelLoket({ ...s.terminal, tahap }, mitra) };
+}
+
+/** Uang berlimpah untuk setup tes. */
+export function kaya(state: GameState, uang = 1e15): GameState {
+  return { ...state, uang: new Decimal(uang) };
+}
+
+/**
+ * Daftarkan (atau ubah) PO langsung, tanpa syarat & biaya (setup tes): level lewat
+ * XP kumulatifnya, loket (bawaan: loket bawaan tingkatnya), reputasi (bawaan: netral).
+ * Level Loket terminal dihitung ulang.
+ */
+export function denganPo(state: GameState, id: PoId, o: { readonly level?: number; readonly loket?: number; readonly reputasi?: number } = {}): GameState {
+  const lama = state.mitra.terdaftar.find((p) => p.id === id);
+  const dasar = lama ?? buatPoTerdaftar(id, tingkatPo(id).loketBawaan);
+  const p = {
+    ...dasar,
+    xp: o.level !== undefined ? xpKumulatifPo(o.level) : dasar.xp,
+    loket: o.loket ?? dasar.loket,
+    rekorLoket: Math.max(dasar.rekorLoket, o.loket ?? dasar.loket),
+    reputasi: o.reputasi ?? (lama ? lama.reputasi : REPUTASI_NETRAL),
+  };
+  const terdaftar = lama ? state.mitra.terdaftar.map((x) => (x.id === id ? p : x)) : [...state.mitra.terdaftar, p];
+  const mitra = { ...state.mitra, terdaftar };
+  return { ...state, mitra, terminal: aturLevelLoket(state.terminal, mitra) };
+}
+
+/** Terminal pada level tertentu (XP kumulatifnya); perluasan tidak berubah. */
+export function denganLevelTerminal(state: GameState, level: number): GameState {
+  return { ...state, perkembangan: { ...state.perkembangan, xpTerminal: xpKumulatifTerminal(level) } };
 }
 
 /** State yang sama pada jam terminal `jam` di hari ke-`hariKe` (0 = Senin; waktu main disesuaikan). */

@@ -51,8 +51,18 @@ export interface HasilSegmen {
   readonly terisi: number;
   /** Uang tiket per detik per 1 pnp/dtk throughput (Rp): pendapatan tiket = throughput × tiket. */
   readonly tiket: number;
+  /**
+   * Calon penumpang per kursi dibanding permintaan (tanpa batas kursi): reputasi,
+   * harga, persaingan, & kejenuhan. Dipakai adegan untuk ramainya bus yang datang.
+   */
+  readonly peminat: number;
+  /** Bagian penumpang tiap jurusan (indeks EKONOMI.jurusan) & tiap kelas bus; jumlahnya 1 (0 semua bila sepi). */
+  readonly bagianJurusan: readonly number[];
+  readonly bagianKelas: Readonly<Record<KelasBusId, number>>;
   readonly po: readonly HasilSegmenPo[];
 }
+
+const nolKelas = (): Record<KelasBusId, number> => ({ ekonomi: 0, patas: 0, eksekutif: 0, sleeper: 0, tingkat: 0 });
 
 interface InfoPo {
   readonly p: PoSegmen;
@@ -76,7 +86,14 @@ export function hitungSegmen(daftar: readonly PoSegmen[], permintaan: number, ke
   const m = cfg.mitra;
   const nTerisi = daftar.reduce((a, p) => a + Math.max(0, p.loket), 0);
   if (!(nTerisi > 0)) {
-    return { terisi: 0, tiket: 0, po: daftar.map((p) => ({ id: p.id, kursi: 0, terisi: 0, tiket: 0, hargaRataPersen: 100, jurusan: [], kelas: [] })) };
+    return {
+      terisi: 0,
+      tiket: 0,
+      peminat: 0,
+      bagianJurusan: cfg.jurusan.map(() => 0),
+      bagianKelas: nolKelas(),
+      po: daftar.map((p) => ({ id: p.id, kursi: 0, terisi: 0, tiket: 0, hargaRataPersen: 100, jurusan: [], kelas: [] })),
+    };
   }
 
   const info: InfoPo[] = daftar.map((p) => {
@@ -113,6 +130,9 @@ export function hitungSegmen(daftar: readonly PoSegmen[], permintaan: number, ke
 
   let terisi = 0;
   let tiket = 0;
+  let peminat = 0;
+  const isiJurusan = cfg.jurusan.map(() => 0);
+  const isiKelas = nolKelas();
   const hasilPo: HasilSegmenPo[] = info.map((x) => {
     let isiPo = 0;
     let tiketPo = 0;
@@ -132,9 +152,12 @@ export function hitungSegmen(daftar: readonly PoSegmen[], permintaan: number, ke
           const ck = cfg.kelasBus[k];
           const w = x.kursi * bobotJ * (ck.peminat / x.totalPeminatKelas);
           const elastisitas = (cj.elastisitas + ck.elastisitas) / 2;
-          const minat = permintaan * x.faktor * Math.pow(h / 100, -elastisitas) * persaingan * kejenuhan;
-          const isi = Math.min(1, minat);
+          const faktorMinat = x.faktor * Math.pow(h / 100, -elastisitas) * persaingan * kejenuhan;
+          const isi = Math.min(1, permintaan * faktorMinat);
+          peminat += w * faktorMinat;
           isiPo += w * isi;
+          isiJurusan[j]! += w * isi;
+          isiKelas[k] += w * isi;
           tiketPo += w * isi * cfg.nilaiPerPenumpang * nilaiJurusan(j, cfg) * m.kelas[k].nilai * x.nilaiPo * (h / 100);
         }
       }
@@ -151,5 +174,8 @@ export function hitungSegmen(daftar: readonly PoSegmen[], permintaan: number, ke
       kelas: x.kelas,
     };
   });
-  return { terisi, tiket, po: hasilPo };
+  const bagi = (x: number): number => (terisi > 0 ? x / terisi : 0);
+  const bagianKelas = nolKelas();
+  for (const k of Object.keys(isiKelas) as KelasBusId[]) bagianKelas[k] = bagi(isiKelas[k]);
+  return { terisi, tiket, peminat, bagianJurusan: isiJurusan.map(bagi), bagianKelas, po: hasilPo };
 }

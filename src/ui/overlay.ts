@@ -9,15 +9,17 @@ import type { PengendaliGame } from '../app/pengendali';
 import { PILIHAN_KECEPATAN } from '../config/waktu.config';
 import { keHexCss, WARNA_TAHAP } from '../config/tema';
 import type { Aksi } from '../sim/aksi';
+import type { PoId } from '../sim/fitur';
 import { TAHAP_IDS, type TahapId } from '../sim/tahap';
 import { formatAngka, formatUang } from './format';
-import { buatTabArmada, buatTabFasilitas, buatTabJurusan, buatTabModern, buatTabTarget, type IklanMenu, type IsiTab } from './menu';
+import { buatTabFasilitas, buatTabModern, buatTabPo, buatTabTarget, buatTabTerminal, type IklanMenu, type IsiTab } from './menu';
 import { buatModel, type ModelEvent, type ModelHud, type ModelTahap, type ModelTampilan } from './model';
-import { tampilkanPopupKelas } from './popup-kelas';
+import { notifikasiPerubahan } from './notifikasi';
 import { tanyaNamaTerminal } from './popup-nama';
 import { tampilkanPopupKepuasan, tingkatKepuasan, wajahKepuasan } from './popup-kepuasan';
+import { tampilkanPopupRenovasi } from './popup-renovasi';
 import { buatKartuPeringkat, type OpsiPeringkatUi } from './peringkat';
-import { LABEL_KERAMAIAN, namaKelas, NAMA_EVENT, NAMA_PENCAPAIAN, NAMA_PO, NAMA_TAHAP, TEKS, NAMA_KELAS_BUS } from './teks';
+import { LABEL_KERAMAIAN, namaKelas, NAMA_EVENT, NAMA_PO, NAMA_TAHAP, TEKS } from './teks';
 
 export interface Overlay {
   /** Area adegan 3D; tombol yang melayang di atas adegan ditambahkan ke `kontrol`. */
@@ -55,13 +57,13 @@ export interface OpsiOverlay {
   readonly peringkat?: Omit<OpsiPeringkatUi, 'ambilModel' | 'mintaNama'>;
 }
 
-const ID_TAB = ['tahap', 'fasilitas', 'jurusan', 'armada', 'modern', 'target'] as const;
+const ID_TAB = ['tahap', 'fasilitas', 'po', 'terminal', 'modern', 'target'] as const;
 type IdTab = (typeof ID_TAB)[number];
 const LABEL_TAB: Readonly<Record<IdTab, () => string>> = {
   tahap: () => TEKS.tabTahap,
   fasilitas: () => TEKS.tabFasilitas,
-  jurusan: () => TEKS.tabJurusan,
-  armada: () => TEKS.tabArmada,
+  po: () => TEKS.tabPo,
+  terminal: () => TEKS.tabTerminal,
   modern: () => TEKS.tabModern,
   target: () => TEKS.tabTarget,
 };
@@ -76,7 +78,10 @@ function petakanObjek<K extends string, A, B>(o: Readonly<Record<K, A>>, f: (a: 
 const CHEVRON = { atas: 'M6 15l6-6 6 6', bawah: 'M6 9l6 6 6-6' } as const;
 
 export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, opsi: OpsiOverlay = {}): Overlay {
+  // PO yang diputus pemain sendiri: keluarnya tidak diberi notifikasi "kontrak habis".
+  const diputus = new Set<PoId>();
   const kirim = (aksi: Aksi): void => {
+    if (aksi.jenis === 'putusPo') diputus.add(aksi.po);
     pengendali.kirim(aksi);
   };
 
@@ -101,7 +106,7 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   }
   /** Popup nama terminal; nama baru dikirim sebagai aksi. Hasil: nama sekarang (null = batal atau kosong). */
   const mintaNama = async (): Promise<string | null> => {
-    const k = buatModel(pengendali.state).kelas;
+    const k = buatModel(pengendali.state).terminal;
     const nama = await tanyaNamaTerminal(akar, k.nama, namaKelas(k.kelas));
     if (nama === null) return null;
     if (nama !== k.nama) {
@@ -110,16 +115,17 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     }
     return nama || null;
   };
-  // Tab: tiga tahap, lalu pengelolaan terminal (fasilitas, jurusan, modernisasi, target).
+  // Tab: tiga tahap, lalu pengelolaan terminal (fasilitas, mitra PO, terminal, modernisasi, target).
   const tabLain: Record<Exclude<IdTab, 'tahap'>, IsiTab> = {
     fasilitas: buatTabFasilitas(kirim),
-    jurusan: buatTabJurusan(kirim),
-    armada: buatTabArmada(kirim),
+    po: buatTabPo(kirim),
+    terminal: buatTabTerminal(kirim, {
+      konfirmasiRenovasi: (m) => void tampilkanPopupRenovasi(akar, m).then((ya) => ya && kirim({ jenis: 'renovasi' })),
+      ubahNama: () => void mintaNama(),
+    }),
     modern: buatTabModern(kirim),
     target: buatTabTarget(kirim, {
       ...(opsi.iklan ? { iklan: opsi.iklan } : {}),
-      konfirmasiNaikKelas: (m) => void tampilkanPopupKelas(akar, m).then((ya) => ya && kirim({ jenis: 'naikKelas' })),
-      ubahNama: () => void mintaNama(),
       ...(opsi.peringkat
         ? { kartuPeringkat: buatKartuPeringkat(akar, { ...opsi.peringkat, ambilModel: () => buatModel(pengendali.state).peringkat, mintaNama }) }
         : {}),
@@ -213,34 +219,11 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     setHidden(lencanaTarget, model.jumlahKlaim === 0);
     tombolRingkas.classList.toggle('ada-klaim', model.jumlahKlaim > 0);
     if (modelLalu) {
-      const baru = model.pencapaian.find((p, i) => p.tercapai && !modelLalu!.pencapaian[i]!.tercapai);
-      const poBaru = model.armada.daftar.filter((p, i) => p.bergabung && !modelLalu!.armada.daftar[i]!.bergabung);
-      const kelasBusBaru = model.armada.kelasBus.find((k, i) => k.beroperasi && !modelLalu!.armada.kelasBus[i]!.beroperasi);
-      const ruteBaru = model.jurusan.daftar.find((d, i) => d.buka && d.feri !== null && !modelLalu!.jurusan.daftar[i]!.buka);
-      // Tantangan yang baru tercapai (minggu yang sama) & rekor harian yang baru dipecahkan.
-      const lalu = modelLalu.mingguan;
-      const tantanganBaru = model.mingguan !== null && lalu !== null && model.mingguan.selesaiMs === lalu.selesaiMs && model.mingguan.daftar.some((t, i) => t.selesai && !lalu.daftar[i]?.selesai);
-      const rekorBaru = model.rekor.penumpangHarian > modelLalu.rekor.penumpangHarian && modelLalu.rekor.penumpangHarian > 0;
-      const ev = model.event;
-      if (ev?.aktif && !modelLalu.event?.aktif) tampilkanNotif(TEKS.notifEventMulai(NAMA_EVENT[ev.id].ikon, NAMA_EVENT[ev.id].nama, formatAngka(ev.pengali, { desimalKecil: 2 })));
-      else if (ev?.bisaKlaim && !modelLalu.event?.bisaKlaim) tampilkanNotif(TEKS.notifEventTahap);
-      else if (model.kelas.kelas > modelLalu.kelas.kelas) tampilkanNotif(TEKS.notifNaikKelas(namaKelas(model.kelas.kelas)));
-      else if (model.kelas.bisa && !modelLalu.kelas.bisa) tampilkanNotif(TEKS.notifSiapNaikKelas(namaKelas(model.kelas.kelas + 1)));
-      else if (ruteBaru) {
-        // Mitra PO kotanya bergabung bersamaan: satu notifikasi untuk keduanya.
-        const po = poBaru.find((x) => x.syarat.jenis === 'jurusan' && x.syarat.kota === ruteBaru.nama);
-        tampilkanNotif(po ? TEKS.notifAntarpulauPo(ruteBaru.nama, NAMA_PO[po.id].nama) : TEKS.notifAntarpulau(ruteBaru.nama, ruteBaru.feri!));
-      } else if (model.jalur.jumlah > modelLalu.jalur.jumlah) tampilkanNotif(TEKS.notifJalur(model.jalur.jumlah));
-      else if (kelasBusBaru) tampilkanNotif(TEKS.notifKelasBus(NAMA_KELAS_BUS[kelasBusBaru.id].nama, Math.round(kelasBusBaru.bonusTiket * 100)));
-      else if (baru) tampilkanNotif(TEKS.notifPencapaian(NAMA_PENCAPAIAN[baru.id].nama));
-      else if (tantanganBaru) tampilkanNotif(TEKS.notifTantangan);
-      else if (rekorBaru) tampilkanNotif(TEKS.notifRekor(formatAngka(Math.floor(model.rekor.penumpangHarian))));
-      else if (poBaru.length === 1) tampilkanNotif(TEKS.notifPo(NAMA_PO[poBaru[0]!.id].nama));
-      else if (poBaru.length > 1) tampilkanNotif(TEKS.notifPoBanyak(poBaru.length));
-      else if (model.target.selesai && !modelLalu.target.selesai && !model.target.diklaim) tampilkanNotif(TEKS.notifTarget);
-      else if (model.sewaKios.hariKe !== modelLalu.sewaKios.hariKe && model.sewaKios.hari && model.sewaKios.terakhir.gt(0)) {
-        tampilkanNotif(TEKS.notifSewaKios(model.sewaKios.hari, formatUang(model.sewaKios.terakhir)));
-      }
+      const lalu = modelLalu;
+      const pesan = notifikasiPerubahan(lalu, model, diputus);
+      // PO yang sudah keluar tidak perlu diingat lagi (bisa didaftarkan & diputus ulang nanti).
+      for (const p of lalu.mitra.terdaftar) if (!model.mitra.terdaftar.some((x) => x.id === p.id)) diputus.delete(p.id);
+      if (pesan) tampilkanNotif(pesan);
     }
     modelLalu = model;
   });
@@ -344,7 +327,7 @@ function buatHud(kecepatanAwal: number, saatPilih: (kecepatan: number) => void, 
       pendapatan.classList.toggle('boost', boost !== '');
       setTeks(pendapatanRingkas, TEKS.hudHariIniRingkas(formatUang(m.hariIni.pendapatan)));
       setTeks(arus, `${TEKS.arus} ${formatAngka(m.arusAktif)} ${TEKS.satuanArus}`);
-      setTeks(kelas, namaKelas(m.kelas));
+      setTeks(kelas, TEKS.hudKelas(namaKelas(m.kelas), m.level));
       if (kelas.dataset['kelas'] !== String(Math.min(m.kelas, 3))) kelas.dataset['kelas'] = String(Math.min(m.kelas, 3));
       const puas = m.kepuasan.nilai;
       setTeks(kepuasan, TEKS.kepuasanHud(wajahKepuasan(puas), Math.round(puas * 100)));
@@ -377,6 +360,9 @@ function buatPanelTahap(id: TahapId, kirim: (aksi: Aksi) => void): PanelTahap {
   const atas = el('div', 'panel-atas');
   const level = el('span', 'panel-level');
   atas.append(el('span', 'panel-nama', NAMA_TAHAP[id]), level);
+  // Loket: PO yang menerima loket berikutnya, loket kosong, atau jatah semua PO penuh.
+  const tujuan = el('span', 'panel-tujuan');
+  if (id === 'loket') atas.append(tujuan);
 
   const status = el('div', 'panel-status');
   const kap = el('span', 'panel-kapasitas');
@@ -424,6 +410,11 @@ function buatPanelTahap(id: TahapId, kirim: (aksi: Aksi) => void): PanelTahap {
 
       setTeks(level, TEKS.level(m.level));
       setTeks(kap, `${formatAngka(m.kapasitas)} ${TEKS.satuanArus}`);
+      if (m.loket) {
+        const l = m.loket;
+        setTeks(tujuan, l.kosong > 0 ? TEKS.panelLoketKosong(l.kosong) : l.tujuan ? TEKS.panelLoketUntuk(NAMA_PO[l.tujuan].nama) : TEKS.panelJatahPenuh);
+        tujuan.classList.toggle('peringatan', l.kosong > 0 || l.tujuan === null);
+      }
 
       const ms = m.milestone;
       setTeks(milestoneTeks, ms.ke === null ? TEKS.milestoneSelesai : TEKS.milestoneMenuju(ms.ke, m.multMilestone));

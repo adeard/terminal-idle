@@ -92,13 +92,14 @@ async function mulai(): Promise<void> {
   // Ringkasan tiap sesi main (dikirim saat game dijeda / ditutup).
   let awalSesi = { state: sesi.pengendali.state, waktu: performance.now() };
   analitik.catat('mulai_game', { save: status, akun: uidAktif !== null ? 'login' : 'tamu' });
+  // Mitra PO didaftarkan & diputus lewat aksi (daftar_po, putus_po); yang keluar karena kontrak habis lewat state.
   sesi.pengendali.pantauAksi((aksi, lama, baru) => analitik.catatAksi(aksi, lama, baru));
-  // Mitra PO yang bergabung (bersama jurusan atau lewat kontrak).
-  let jumlahPo = sesi.pengendali.state.armada.po.length;
+  let poTerdaftar = new Set(sesi.pengendali.state.mitra.terdaftar.map((p) => p.id));
   sesi.pengendali.berlangganan((s) => {
-    const po = s.armada.po;
-    for (const id of po.slice(jumlahPo)) analitik.catat('po_bergabung', { po: id, cara: EKONOMI.po.syarat[id].jenis });
-    jumlahPo = po.length;
+    const sekarang = new Set(s.mitra.terdaftar.map((p) => p.id));
+    // Diputus pemain = sedang masa jeda; selain itu kontraknya habis.
+    for (const id of poTerdaftar) if (!sekarang.has(id) && (s.mitra.jedaSampai[id] ?? 0) <= s.statistik.waktuMainDetik) analitik.catat('po_keluar', { po: id });
+    poTerdaftar = sekarang;
   });
 
   // Pilihan panel ringkas disimpan per perangkat.

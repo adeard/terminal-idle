@@ -3,38 +3,45 @@ import { describe, expect, it } from 'vitest';
 import { EKONOMI } from '../src/config/economy.config';
 import { WAKTU } from '../src/config/waktu.config';
 import { terapkanAksi } from '../src/sim/aksi';
-import { FASILITAS_IDS, KELAS_BUS_IDS, PENCAPAIAN_IDS, TEKNOLOGI_IDS, type FasilitasId } from '../src/sim/fitur';
+import { FASILITAS_IDS, PENCAPAIAN_IDS, TEKNOLOGI_IDS, type FasilitasId, type PoId } from '../src/sim/fitur';
+import { levelMinimalKelas } from '../src/sim/level-terminal';
+import { targetReputasi } from '../src/sim/mitra';
 import { deserialisasi, serialisasi } from '../src/sim/save';
 import {
   bangunFasilitas,
   belanjaKiosPerPenumpang,
-  beliKelasBus,
   bukaJalur,
   beliTeknologi,
   biayaFasilitas,
   bisaBeliTeknologi,
-  bukaJurusan,
-  buatStateBaru,
   hadiahMenit,
   hitungOffline,
   kapasitasTahap,
   klaimPencapaian,
+  kelasBusBeroperasi,
+  kepuasanTerminal,
   klaimTarget,
-  lakukanPrestige,
-  multJurusan,
   nilaiPerPenumpangState,
   pendapatanLangsungPerDetik,
   pendapatanPerDetikState,
   pengaliKepuasan,
+  renovasi,
   rincianPendapatan,
   tandaiWaktu,
   throughputState,
   tick,
   type GameState,
 } from '../src/sim/state';
-import { jalankan, stateOtomatis, T0 } from './helpers';
+import { denganLevelTerminal, denganPo, jalankan, kaya, stateOtomatis, T0 } from './helpers';
 
-const kaya = (s: GameState, uang = 1e12): GameState => ({ ...s, uang: new Decimal(uang) });
+/**
+ * Pendapatan per penumpang yang tidak berubah selama tes panjang: PO & terminal di
+ * level tinggi (naik level berikutnya butuh jauh lebih lama) dan reputasi PO sudah di targetnya.
+ */
+function beku(s: GameState): GameState {
+  const t = denganLevelTerminal(denganPo(s, 'ondelOndel', { level: 40 }), 40);
+  return denganPo(t, 'ondelOndel', { reputasi: targetReputasi(kepuasanTerminal(t).nilai, 100, kelasBusBeroperasi(t).length) });
+}
 /** Detik main sampai pukul 00.00 hari ke-`hari` (hari 0 dimulai pukul jamAwal). */
 const detikKeHari = (hari: number): number => (hari * 24 - WAKTU.jamAwal) * WAKTU.detikPerJam;
 
@@ -91,7 +98,7 @@ describe('sumber pendapatan: tiket, retribusi bus, parkir, sewa kios harian', ()
   });
 
   it('belanja kios terkumpul sepanjang hari, dibayar sekaligus saat hari berganti', () => {
-    let s = dengan(dasar, { kios: 3 });
+    let s = beku(dengan(dasar, { kios: 3 }));
     const sewaPerDetik = rincianPendapatan(s).sewaKios.toNumber();
     const langsung = pendapatanLangsungPerDetik(s).toNumber();
     const sampaiTengahMalam = detikKeHari(1) - s.statistik.waktuMainDetik;
@@ -124,26 +131,6 @@ describe('sumber pendapatan: tiket, retribusi bus, parkir, sewa kios harian', ()
   });
 });
 
-describe('jurusan', () => {
-  it('mulai dengan jurusan awal; dibuka berurutan, tiket makin mahal; berhenti di jurusan terakhir', () => {
-    let s = kaya(buatStateBaru(T0));
-    expect(s.terminal.jurusanBuka).toBe(EKONOMI.jurusanAwal);
-    expect(multJurusan(s)).toBe(1);
-    const uangAwal = s.uang;
-    s = bukaJurusan(s);
-    expect(s.terminal.jurusanBuka).toBe(EKONOMI.jurusanAwal + 1);
-    expect(uangAwal.sub(s.uang).toNumber()).toBe(EKONOMI.jurusan[EKONOMI.jurusanAwal]!.biaya);
-    expect(multJurusan(s)).toBeCloseTo(1 + EKONOMI.jurusan[EKONOMI.jurusanAwal]!.bonusTiket, 10);
-    // Rute antarpulau terakhir butuh Terminal Terpadu (dan uang ±Rp 1,3 T).
-    s = kaya({ ...s, prestige: { ...s.prestige, jumlahReset: 3 } }, 1e15);
-    for (let i = 0; i < 30; i++) s = bukaJurusan(s);
-    expect(s.terminal.jurusanBuka).toBe(EKONOMI.jurusan.length);
-    const semua = EKONOMI.jurusan.reduce((a, j) => a + j.bonusTiket, 1);
-    expect(multJurusan(s)).toBeCloseTo(semua, 10);
-    expect(bukaJurusan(s)).toBe(s);
-  });
-});
-
 describe('modernisasi', () => {
   it('butuh teknologi pendahulu; menambah kapasitas tahapnya saja; sekali beli', () => {
     let s = kaya(stateOtomatis({ peron: 5, loket: 5, keberangkatan: 5 }));
@@ -166,7 +153,7 @@ describe('target harian', () => {
     let s = kaya(stateOtomatis({ peron: 5, loket: 5, keberangkatan: 5 }), 1e9);
     expect(s.harian).toMatchObject({ hariKe: 0, jenis: 'upgrade', target: EKONOMI.harian.targetUpgrade, progres: 0 });
     expect(klaimTarget(s)).toBe(s);
-    for (let i = 0; i < EKONOMI.harian.targetUpgrade; i++) s = terapkanAksi(s, { jenis: 'upgrade', tahap: 'loket' });
+    for (let i = 0; i < EKONOMI.harian.targetUpgrade; i++) s = terapkanAksi(s, { jenis: 'upgrade', tahap: 'peron' });
     expect(s.harian.progres).toBe(EKONOMI.harian.targetUpgrade);
     expect(s.harian.jumlahSelesai).toBe(1);
     const hadiah = hadiahMenit(s, EKONOMI.harian.hadiahMenit);
@@ -210,10 +197,11 @@ describe('pencapaian', () => {
 
   it('semua pencapaian bisa diraih', () => {
     let s = kaya(stateOtomatis({ peron: 100, loket: 100, keberangkatan: 100 }), 1e15);
-    // Terminal Terpadu: semua rute antarpulau & kelas bus bisa dibuka.
-    s = { ...s, prestige: { ...s.prestige, jumlahReset: 3 } };
+    // Terminal Terpadu: semua rute antarpulau & kelas bus bisa dilayani PO yang levelnya cukup.
+    s = denganLevelTerminal(s, levelMinimalKelas(3));
+    const po: PoId[] = ['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa', 'sigerSakti', 'rinjaniIndah', 'rumahGadang', 'danauToba', 'kecakLaju'];
+    for (const id of po) s = denganPo(s, id, { level: 15 });
     for (const id of FASILITAS_IDS) for (let i = 0; i < 10; i++) s = bangunFasilitas(s, id);
-    for (let i = 0; i < 30; i++) s = bukaJurusan(s);
     for (let i = 0; i < 10; i++) s = bukaJalur(s);
     for (const id of TEKNOLOGI_IDS) s = beliTeknologi(s, id);
     s = {
@@ -221,31 +209,28 @@ describe('pencapaian', () => {
       statistik: { ...s.statistik, totalPenumpang: 1e7, waktuMainDetik: detikKeHari(7) + 1 },
       harian: { ...s.harian, jumlahSelesai: 1 },
     };
-    for (const id of KELAS_BUS_IDS) s = beliKelasBus(s, id);
     s = tick(s, 0.1);
     expect([...s.pencapaian.tercapai].sort()).toEqual([...PENCAPAIAN_IDS].sort());
   });
 });
 
-describe('prestige & save', () => {
-  it('prestige mengosongkan fasilitas, jurusan, modernisasi; pencapaian tetap', () => {
+describe('Renovasi & save', () => {
+  it('Renovasi mengosongkan fasilitas & modernisasi; pencapaian tetap', () => {
     let s = kaya(stateOtomatis());
-    s = tick(bukaJurusan(beliTeknologi(bangunFasilitas(s, 'kios'), 'mesinTiket')), 0.1);
-    s = { ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e6) } };
-    const p = lakukanPrestige(s);
+    s = tick(beliTeknologi(bangunFasilitas(s, 'kios'), 'mesinTiket'), 0.1);
+    s = { ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e9) } };
+    const p = renovasi(s);
     expect(p.terminal.fasilitas.kios).toBe(0);
-    expect(p.terminal.jurusanBuka).toBe(EKONOMI.jurusanAwal);
     expect(p.terminal.teknologi.mesinTiket).toBe(false);
     expect(p.pencapaian).toEqual(s.pencapaian);
   });
 
   it('round-trip save; save lama tanpa blok fitur dimuat dengan nilai awal', () => {
     let s = kaya(stateOtomatis({ peron: 30, loket: 30, keberangkatan: 30 }));
-    s = tick(bukaJurusan(beliTeknologi(bangunFasilitas(bangunFasilitas(s, 'parkir'), 'parkir'), 'jadwalDigital')), 0.1);
+    s = tick(beliTeknologi(bangunFasilitas(bangunFasilitas(s, 'parkir'), 'parkir'), 'jadwalDigital'), 0.1);
     s = klaimPencapaian(s, 'semuaOtomatis');
     const hasil = deserialisasi(serialisasi(s), 0);
     expect(hasil.terminal.fasilitas).toEqual(s.terminal.fasilitas);
-    expect(hasil.terminal.jurusanBuka).toBe(s.terminal.jurusanBuka);
     expect(hasil.terminal.teknologi).toEqual(s.terminal.teknologi);
     expect(hasil.harian).toEqual(s.harian);
     expect(hasil.pencapaian).toEqual(s.pencapaian);
@@ -254,13 +239,11 @@ describe('prestige & save', () => {
     const lama = JSON.parse(serialisasi(s)) as Record<string, unknown>;
     const terminal = lama['terminal'] as Record<string, unknown>;
     delete terminal['fasilitas'];
-    delete terminal['jurusanBuka'];
     delete terminal['teknologi'];
     delete lama['harian'];
     delete lama['pencapaian'];
     const dimuat = deserialisasi(JSON.stringify(lama), 0);
     expect(dimuat.terminal.fasilitas.parkir).toBe(0);
-    expect(dimuat.terminal.jurusanBuka).toBe(EKONOMI.jurusanAwal);
     expect(dimuat.pencapaian).toEqual({ tercapai: [], diklaim: [] });
   });
 });

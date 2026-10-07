@@ -17,7 +17,8 @@ describe('tutorial terpandu', () => {
     // Terminal berjalan sendiri sejak awal: sudah ada penumpang tapi belum membeli apa pun = tetap baru.
     expect(cocokUntukTutorial(jalankan(baru(), 5))).toBe(true);
     expect(cocokUntukTutorial(stateOtomatis({ peron: 10, loket: 10, keberangkatan: 10 }))).toBe(false);
-    expect(cocokUntukTutorial({ ...baru(), prestige: { ...baru().prestige, poin: new Decimal(1) } })).toBe(false);
+    expect(cocokUntukTutorial({ ...baru(), renovasi: { ...baru().renovasi, poin: new Decimal(1) } })).toBe(false);
+    expect(cocokUntukTutorial({ ...baru(), renovasi: { ...baru().renovasi, jumlah: 1 } })).toBe(false);
   });
 
   it('langkah maju sendiri saat syaratnya terpenuhi: upgrade → Kepala → fasilitas → Jalur 2 → tamat', () => {

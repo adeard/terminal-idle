@@ -8,7 +8,8 @@ import * as THREE from 'three';
 import type { PembacaState } from '../app/pengendali';
 import { cuacaTerminal, cuacaTerminalState, kilatPada, type Cuaca } from '../sim/cuaca';
 import type { FasilitasId, TeknologiId } from '../sim/fitur';
-import { busEmasAktif, kelasTerminal, type GameState } from '../sim/state';
+import type { PoId } from '../sim/fitur';
+import { busEmasAktif, kelasBusBeroperasi, kelasTerminal, type GameState } from '../sim/state';
 import { keramaianTerminal, waktuTerminal, waktuTerminalState } from '../sim/waktu';
 import { URL_ATLAS } from './aset';
 import { Adegan } from './adegan';
@@ -22,7 +23,7 @@ import { HiasanKelas } from './kelas3d';
 import { HiasanEvent, RAMAI_EVENT } from './event3d';
 import { PembangunanTerminal } from './pembangunan3d';
 import { ArmadaKendaraan } from './kendaraan3d';
-import { hitungLajuVisual, terapkanRitme, type LajuVisual } from './laju';
+import { hitungLajuVisual, maskJurusanState, terapkanRitme, type LajuVisual } from './laju';
 import { Hujan3D } from './hujan3d';
 import { formatJamJadwal, JadwalKeberangkatan } from './jadwal';
 import {
@@ -65,6 +66,7 @@ import {
   PERON_BERANGKAT,
   LOKET,
   MAKS_ORANG,
+  MASK_SEMUA_JURUSAN,
   PINTU_MASUK,
   POS_RETRIBUSI,
   RUANG_TUNGGU,
@@ -172,16 +174,19 @@ interface OrangStatis {
   readonly teknologi?: TeknologiId;
   /** Penjaga toko: pulang saat tokonya tutup (lihat JAM_BUKA). */
   readonly toko?: JenisToko;
-  /** Petugas jendela loket ke-i: tidak ada saat loketnya tutup (malam hari, atau jurusannya belum dibuka). */
+  /** Petugas jendela loket ke-i: tidak ada saat loketnya tutup (malam hari, atau jurusannya tidak dilayani). */
   readonly loket?: number;
 }
 
-/** Orang statis ini sedang bertugas/berada di terminal menurut state (fasilitas, modernisasi, jam buka). */
-function hadir(s: OrangStatis, state: GameState, jam: number): boolean {
+/**
+ * Orang statis ini sedang bertugas/berada di terminal menurut state (fasilitas, modernisasi, jam buka).
+ * @param maskJurusan jurusan yang dilayani mitra PO (lihat maskJurusanState)
+ */
+function hadir(s: OrangStatis, state: GameState, jam: number, maskJurusan: number): boolean {
   if (s.fasilitas && state.terminal.fasilitas[s.fasilitas] === 0) return false;
   if (s.teknologi && !state.terminal.teknologi[s.teknologi]) return false;
   if (s.toko && !tokoBuka(s.toko, jam)) return false;
-  if (s.loket !== undefined && !loketBuka(jam, state.terminal.jurusanBuka).includes(s.loket)) return false;
+  if (s.loket !== undefined && !loketBuka(jam, maskJurusan).includes(s.loket)) return false;
   return true;
 }
 
@@ -366,6 +371,10 @@ export class Terminal3D {
   private detikPatroli = 0;
   /** Jam terminal frame ini (0–24). */
   private jam = 0;
+  /** Jurusan yang dilayani mitra PO (bitmask), diperbarui tiap frame dari state. */
+  private maskJurusan = MASK_SEMUA_JURUSAN;
+  /** Id mitra PO terdaftar (livery bus); diganti hanya bila daftarnya berubah. */
+  private idPo: readonly PoId[] = [];
   private readonly jadwal = new JadwalKeberangkatan();
   private readonly anakTelolet = new AnakTelolet();
   /** Klakson telolet yang diketuk sejak frame lalu (dibunyikan di kirimSuara). */
@@ -446,14 +455,14 @@ export class Terminal3D {
     const hiasanEvent = new HiasanEvent(m);
     // Bagian terminal yang belum dibangun (jalur & parkir jurusan yang belum dibuka).
     const pembangunan = new PembangunanTerminal();
-    pembangunan.perbarui(pembaca.state.terminal.jalur, pembaca.state.terminal.jurusanBuka);
+    pembangunan.perbarui(pembaca.state.terminal.jalur, maskJurusanState(pembaca.state));
     adegan.scene.add(pembangunan.objek);
     adegan.scene.add(spanduk.objek, hiasanKelas.objek, hiasanEvent.objek);
-    // Papan jurusan (ikut jurusan yang dibuka) & perlengkapan modernisasi (tampil setelah dibeli).
+    // Papan jurusan (ikut jurusan yang dilayani mitra PO) & perlengkapan modernisasi (tampil setelah dibeli).
     const papanJurusan = new PapanJurusan(m);
     const modernisasi = new Modernisasi(m);
     adegan.scene.add(papanJurusan.objek, modernisasi.objek);
-    papanJurusan.perbarui(pembaca.state.terminal.jurusanBuka);
+    papanJurusan.perbarui(maskJurusanState(pembaca.state));
     modernisasi.perbarui(pembaca.state.terminal.teknologi);
     // Kehidupan malam (rolling door), luar pagar (ojek & ojol), papan jadwal dari bus yang ada.
     const rollingDoor = new RollingDoor(m);
@@ -548,14 +557,15 @@ export class Terminal3D {
     this.keramaian = eventAktif ? Math.max(keramaianTerminal(w), RAMAI_EVENT[eventAktif.id]) : keramaianTerminal(w);
     this.adegan.aturSuasana(suasana);
     this.material.aturMalam(suasana.malam);
-    this.papanJurusan.perbarui(state.terminal.jurusanBuka);
-    this.pembangunan.perbarui(state.terminal.jalur, state.terminal.jurusanBuka);
+    this.maskJurusan = maskJurusanState(state);
+    this.papanJurusan.perbarui(this.maskJurusan);
+    this.pembangunan.perbarui(state.terminal.jalur, this.maskJurusan);
     this.modernisasi.perbarui(state.terminal.teknologi);
     this.hiasanKelas.perbarui(kelasTerminal(state), state.profil.namaTerminal);
     this.hiasanEvent.perbarui(state.event.aktif?.id ?? null);
     this.jam = w.jamDesimal;
     this.detikPatroli += dt;
-    this.rollingDoor.perbarui(this.jam, state.terminal.jurusanBuka, state.terminal.fasilitas.kios > 0, state.terminal.jalur);
+    this.rollingDoor.perbarui(this.jam, this.maskJurusan, state.terminal.fasilitas.kios > 0, state.terminal.jalur);
     this.luar.perbarui(this.jam, this.keramaian);
     this.material.aturBasah(this.basah);
     this.laluLintas.kepadatan = kepadatanLuar(this.keramaian);
@@ -565,7 +575,7 @@ export class Terminal3D {
     // kejadian bus (untuk suara) dari semua langkah dikumpulkan.
     const laju = {
       ...lajuBerirama(state, this.keramaian),
-      loketBuka: loketBuka(this.jam, state.terminal.jurusanBuka),
+      loketBuka: loketBuka(this.jam, this.maskJurusan),
       jam: this.jam,
       busEmas: busEmasAktif(state) && this.tampilkanBusEmas(),
     };
@@ -584,8 +594,10 @@ export class Terminal3D {
     const jamMutlak = w.hariKe * 24 + w.jamDesimal;
     this.papanJadwal.perbarui(this.jadwal.perbarui(this.dunia.bus, jamMutlak), formatJamJadwal(jamMutlak));
     // Lampu kendaraan menyala saat hujan walau siang; bus terminal baru memakai kelas bus & livery mitra PO.
-    this.armada.aturPo(state.armada.po);
-    this.armada.aturKelasBus(state.terminal.kelasBus, laju.bagianKelas);
+    const po = state.mitra.terdaftar;
+    if (po.length !== this.idPo.length || po.some((p, i) => p.id !== this.idPo[i])) this.idPo = po.map((p) => p.id);
+    this.armada.aturPo(this.idPo);
+    this.armada.aturKelasBus(kelasBusBeroperasi(state), laju.bagianKelas);
     this.armada.perbarui(this.dunia.bus, dt, this.waktu, Math.max(suasana.malam, 0.8 * this.hujan));
     // Genangan cahaya lampu jalan hanya terlihat saat benar-benar gelap (bukan siang mendung).
     this.cahaya.perbarui(Math.max(langit.malam, 0.3 * suasana.malam), this.dunia.bus);
@@ -731,7 +743,7 @@ export class Terminal3D {
     const state = this.pembaca.state;
     const patroli = dalamRentang(this.jam, JAM_PATROLI);
     for (const s of this.statis) {
-      if (this.keramaian < s.ambang || !hadir(s, state, this.jam)) continue;
+      if (this.keramaian < s.ambang || !hadir(s, state, this.jam, this.maskJurusan)) continue;
       // Malam: satpam luar berkeliling plaza (siang berjaga di posnya).
       const orang = s.orang.id === ID_STATIS && patroli ? this.satpamBerpatroli(s.orang) : s.orang;
       if (berteduh && diLuar(orang)) {

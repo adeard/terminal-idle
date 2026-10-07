@@ -38,7 +38,8 @@ function teksturRolling(): THREE.CanvasTexture {
 /** Keadaan terminal yang menentukan pintu mana yang tertutup. */
 interface KeadaanPintu {
   readonly jam: number;
-  readonly jurusanBuka: number;
+  /** Jurusan yang dilayani (lihat MASK_SEMUA_JURUSAN). */
+  readonly maskJurusan: number;
   readonly kiosDibangun: boolean;
   /** Jalur bus yang sudah dibangun (gerbang JALUR 1 … jalur terbuka). */
   readonly jalur: number;
@@ -84,7 +85,7 @@ export class RollingDoor {
     const tulisan = m.teks('TUTUP', { lebar: 128, tinggi: 48, latar: '#b91c1c', warna: '#ffffff', ukuranHuruf: 32 });
     X_LOKET.forEach((x, i) => {
       this.tambah(
-        (k) => !loketBuka(k.jam, k.jurusanBuka).includes(i),
+        (k) => !loketBuka(k.jam, k.maskJurusan).includes(i),
         (k) => {
           const w = LOKET.setengahLebar;
           const y = LOKET.yMeja - 0.085;
@@ -118,12 +119,12 @@ export class RollingDoor {
 
   /**
    * @param jam jam terminal (0–24)
-   * @param jurusanBuka jendela loket yang jurusannya belum dibuka juga tertutup
+   * @param maskJurusan jendela loket yang jurusannya tidak dilayani juga tertutup
    * @param kiosDibangun fasilitas Kios & Minimarket sudah dibangun
    * @param jalur jalur bus yang sudah dibangun: gerbang jalur lain tertutup
    */
-  perbarui(jam: number, jurusanBuka: number, kiosDibangun: boolean, jalur = GERBANG_X.length): void {
-    const k: KeadaanPintu = { jam, jurusanBuka, kiosDibangun, jalur };
+  perbarui(jam: number, maskJurusan: number, kiosDibangun: boolean, jalur = GERBANG_X.length): void {
+    const k: KeadaanPintu = { jam, maskJurusan, kiosDibangun, jalur };
     for (const p of this.pintu) p.grup.visible = p.tutup(k);
   }
 

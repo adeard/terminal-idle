@@ -15,7 +15,7 @@ import {
   hadiahTantangan,
   kepuasanTerminal,
   klaimTantangan,
-  naikKelas,
+  renovasi,
   perbaruiTantangan,
   tandaiWaktu,
   tick,
@@ -171,7 +171,7 @@ describe('rekor pribadi', () => {
   it('tetap walau naik kelas & tersimpan', () => {
     let s = jalankan(kaya(stateOtomatis({ peron: 20, loket: 20, keberangkatan: 20 })), 30);
     s = { ...s, rekor: { ...s.rekor, penumpangHarian: 12_345, pendapatanHarian: 6_789, arusTertinggi: 99 } };
-    const naik = naikKelas({ ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e8) } });
+    const naik = renovasi({ ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e9) } });
     expect(naik.rekor).toEqual(s.rekor);
     expect(deserialisasi(serialisasi(s), RABU).rekor).toEqual(s.rekor);
     const mentah = JSON.parse(serialisasi(s)) as Record<string, unknown>;

@@ -59,7 +59,9 @@ import {
   MASUK_SIRKULASI,
   MULUT_ANTREAN,
   PANJANG_PINDAH_LAJUR,
+  jurusanDiMask,
   type KelompokParkir,
+  MASK_SEMUA_JURUSAN,
   PARKIR_SERONG,
   PERON,
   PERON_BERANGKAT,
@@ -474,11 +476,11 @@ export class DuniaVisual {
   private lajuLayan = 0;
   /** Pengali kecepatan transaksi yang sedang berjalan: 1 = santai, lebih besar saat petugas bergegas. */
   private faktorBergegas = 1;
-  /** Banyaknya jurusan terbuka (urut TUJUAN_BUS): bus hanya melayani jurusan ini. */
-  private jurusanBuka = TUJUAN_BUS.length;
+  /** Jurusan yang dilayani mitra PO (bitmask, lihat MASK_SEMUA_JURUSAN): bus hanya melayani jurusan ini. */
+  private maskJurusan = MASK_SEMUA_JURUSAN;
   /** Bagian penumpang tiap jurusan (harga tiket); null = sama rata. */
   private bagianJurusan: readonly number[] | null = null;
-  /** Jendela loket yang melayani (jurusannya dibuka; malam hari separuh tutup); pembeli hanya dipanggil ke jendela ini. */
+  /** Jendela loket yang melayani (jurusannya dilayani; malam hari separuh tutup); pembeli hanya dipanggil ke jendela ini. */
   private loketBuka: readonly number[] = SEMUA_LOKET;
   /** Jam terminal (jam buka toko & kios, waktu sholat). */
   private jam = 12;
@@ -506,7 +508,8 @@ export class DuniaVisual {
     this.transaksi.length = 0;
     if (!(dt > 0)) return;
     this.faktorKecepatan = laju.faktorKecepatanBus;
-    this.jurusanBuka = Math.max(1, Math.min(TUJUAN_BUS.length, laju.jurusanBuka ?? TUJUAN_BUS.length));
+    // Paling sedikit satu jurusan (jaga-jaga): tanpa jurusan, bus tidak punya kelompok parkir.
+    this.maskJurusan = (laju.maskJurusan ?? MASK_SEMUA_JURUSAN) % (MASK_SEMUA_JURUSAN + 1) || 1;
     this.bagianJurusan = laju.bagianJurusan ?? null;
     // Jalur yang belum dibangun: halte kedatangan & keberangkatan paling belakang tidak dipakai.
     this.halteDatang.aktif = Math.max(1, Math.min(HALTE_DATANG_X.length, laju.jalur ?? HALTE_DATANG_X.length));
@@ -883,12 +886,12 @@ export class DuniaVisual {
    * Petak untuk bus yang keluar dari halte kedatangan: kelompok jurusan dengan
    * petak kosong terbanyak yang bisa dicapai (seri → diundi, supaya semua
    * kelompok terisi merata), lalu salah satu petak kosongnya secara acak.
-   * Kelompok yang jurusannya belum dibuka dipagari (pembangunan3d.ts) dan
+   * Kelompok yang belum ada jurusannya dilayani dipagari (pembangunan3d.ts) dan
    * tidak dipakai; bila yang terbuka penuh, bus langsung keluar terminal.
    * @param lurus bus bisa maju lurus di lajur halte (semua petak terjangkau), bukan menyalip lewat sirkulasi.
    */
   private pilihPetak(lurus: boolean): number {
-    const buka = KELOMPOK_PARKIR.filter((k) => k.tujuan.some((t) => t < this.jurusanBuka));
+    const buka = KELOMPOK_PARKIR.filter((k) => k.tujuan.some((t) => jurusanDiMask(this.maskJurusan, t)));
     return this.pilihPetakDari(buka, lurus) ?? -1;
   }
 
@@ -910,11 +913,11 @@ export class DuniaVisual {
 
   private masukPetak(b: BusVisual, petak: number, awal: Titik[]): void {
     this.petak[petak] = b.id;
-    // Jurusan bus mengikuti kelompok petaknya (kota yang sudah dibuka, sebanding bagian penumpangnya).
-    // pilihPetak hanya memberi petak di kelompok yang sudah dibuka; cadangan semua jurusan terbuka hanya jaga-jaga.
+    // Jurusan bus mengikuti kelompok petaknya (kota yang dilayani, sebanding bagian penumpangnya).
+    // pilihPetak hanya memberi petak di kelompok yang dilayani; cadangan semua jurusan yang dilayani hanya jaga-jaga.
     const kelompok = KELOMPOK_PARKIR.find((k) => k.petak.includes(petak));
-    const bukaDiKelompok = kelompok ? kelompok.tujuan.filter((t) => t < this.jurusanBuka) : [];
-    const pilihan = bukaDiKelompok.length > 0 ? bukaDiKelompok : Array.from({ length: this.jurusanBuka }, (_, i) => i);
+    const bukaDiKelompok = kelompok ? kelompok.tujuan.filter((t) => jurusanDiMask(this.maskJurusan, t)) : [];
+    const pilihan = bukaDiKelompok.length > 0 ? bukaDiKelompok : TUJUAN_BUS.map((_, i) => i).filter((i) => jurusanDiMask(this.maskJurusan, i));
     b.tujuan = pilihTujuan(pilihan, this.bagianJurusan, b.id);
     this.halteDatang.lepas(b.halte, b.id);
     b.halte = -1;

@@ -113,7 +113,8 @@ describe('event musiman di game', () => {
       const sebelum = s.uang.toNumber();
       s = klaimEvent(s);
       expect(s.uang.toNumber()).toBeCloseTo(sebelum + hadiah, 6);
-      expect(s.armada.po.includes('mudikCeria')).toBe(terakhir);
+      // PO eksklusif jadi bisa didaftarkan (gratis), belum langsung terdaftar.
+      expect(s.mitra.hadiahEvent.includes('mudikCeria')).toBe(terakhir);
     }
     expect(bisaKlaimEvent(s)).toBe(false);
     expect(klaimEvent(s)).toBe(s);

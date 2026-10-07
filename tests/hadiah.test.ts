@@ -13,7 +13,7 @@ import {
   hadiahMenit,
   klaimBonusOffline,
   klaimBusEmas,
-  lakukanPrestige,
+  renovasi,
   pendapatanPerDetikState,
   pengaliBoost,
   terapkanOffline,
@@ -59,9 +59,11 @@ describe('boost pendapatan', () => {
     expect(state.hadiah.boostDetik).toBe(0);
   });
 
-  it('prestige tidak menghapus boost', () => {
-    const s = denganBoost({ ...stateOtomatis(), statistik: { ...stateOtomatis().statistik, totalPendapatanRun: new Decimal(1e7) } }, 900);
-    expect(lakukanPrestige(s).hadiah.boostDetik).toBe(900);
+  it('Renovasi tidak menghapus boost', () => {
+    const s = denganBoost({ ...stateOtomatis(), statistik: { ...stateOtomatis().statistik, totalPendapatanRun: new Decimal(1e9) } }, 900);
+    const r = renovasi(s);
+    expect(r.renovasi.jumlah).toBe(1);
+    expect(r.hadiah.boostDetik).toBe(900);
   });
 });
 

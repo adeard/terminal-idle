@@ -2,38 +2,37 @@ import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { PencatatAnalitik, peristiwaAksi, type DataAnalitik } from '../src/app/analitik';
 import { EKONOMI } from '../src/config/economy.config';
-import { hitungLajuVisual } from '../src/game/laju';
 import { pilihKelasBus } from '../src/game/kelas-bus';
+import { hitungLajuVisual } from '../src/game/laju';
 import { terapkanAksi } from '../src/sim/aksi';
+import type { PoId } from '../src/sim/fitur';
+import { indeksJurusan, nilaiJurusan, skorHarga, xpKumulatifPo } from '../src/sim/mitra';
 import { deserialisasi, serialisasi } from '../src/sim/save';
 import {
-  arusHarga,
-  aturHargaJurusan,
-  aturTambahanKelas,
-  beliKelasBus,
+  aturHargaPo,
   buatStateBaru,
-  faktorPeminat,
+  cariPo,
+  daftarPo,
   hadiahMenit,
   hitungOffline,
-  kelebihanHarga,
-  kepuasanTerminal,
-  keterisianTerminal,
-  lakukanPrestige,
-  nilaiPerPenumpangState,
-  penaltiHarga,
-  permintaanPenumpang,
+  putusPo,
   rapikanHarga,
-  rapikanTambahan,
+  renovasi,
   rincianPendapatan,
-  saranHarga,
+  saranHargaPo,
+  segmenState,
   throughputState,
   type GameState,
 } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
-import { padaJam, stateOtomatis, T0 } from './helpers';
+import { jalankan, padaJam, stateOtomatis, T0 } from './helpers';
 
 const JAM_MS = 3600 * 1000;
 const H = EKONOMI.harga;
+const JAKARTA = indeksJurusan('JAKARTA');
+const SEMARANG = indeksJurusan('SEMARANG');
+const SURABAYA = indeksJurusan('SURABAYA');
+const BANDUNG = indeksJurusan('BANDUNG');
 
 /** Pendapatan tiket rata-rata sepanjang hari Selasa (sampel tiap 15 menit jam terminal). */
 function tiketSehari(s: GameState): number {
@@ -42,85 +41,69 @@ function tiketSehari(s: GameState): number {
   return total / 96;
 }
 
-const semuaJurusan = (s: GameState): GameState => ({ ...s, terminal: { ...s.terminal, jurusanBuka: EKONOMI.jurusan.length } });
-const hargaSemua = (s: GameState, persen: number): GameState => s.harga.jurusan.reduce((x, _, i) => aturHargaJurusan(x, i, persen), s);
+/** Harga semua jurusan semua PO terdaftar. */
+const hargaSemua = (s: GameState, persen: number): GameState =>
+  s.mitra.terdaftar.reduce((x, p) => EKONOMI.mitra.po[p.id].jurusan.reduce((y, nama) => aturHargaPo(y, p.id, indeksJurusan(nama), persen), x), s);
 const kaya = (s: GameState): GameState => ({ ...s, uang: new Decimal(1e12) });
+/** PO naik ke level tertentu (XP kumulatifnya). */
+const levelkan = (s: GameState, id: PoId, level: number): GameState => ({
+  ...s,
+  mitra: { ...s.mitra, terdaftar: s.mitra.terdaftar.map((p) => (p.id === id ? { ...p, xp: xpKumulatifPo(level) } : p)) },
+});
+const harga = (s: GameState, id: PoId): Readonly<Partial<Record<number, number>>> => cariPo(s, id)!.harga;
 
-describe('harga tiket: dasar', () => {
-  it('semua harga normal: ekonomi sama persis seperti tanpa pengaturan harga', () => {
-    const s = buatStateBaru(T0);
-    for (const p of [0.4, 0.8, 1, 1.3]) {
-      const a = arusHarga(s, p);
-      expect(a.terisi).toBeCloseTo(Math.min(1, p), 12);
-      expect(a.harga).toBeCloseTo(1, 12);
-      expect(a.peminat).toBeCloseTo(1, 12);
-    }
-    const malam = padaJam(s, 2);
-    expect(keterisianTerminal(malam)).toBeCloseTo(Math.min(1, permintaanPenumpang(malam)), 12);
-    expect(penaltiHarga(s)).toBe(0);
-    expect(rincianPendapatan(s, 'aktif').tiket.toNumber()).toBeCloseTo(0.8 * EKONOMI.nilaiPerPenumpang, 10);
-  });
-
-  it('harga jurusan & tambahan kelas dirapikan ke kelipatan langkah di dalam batasnya', () => {
+describe('harga tiket PO: dasar', () => {
+  it('harga dirapikan ke kelipatan langkah di dalam batasnya', () => {
     expect(rapikanHarga(123)).toBe(120);
     expect(rapikanHarga(126)).toBe(130);
     expect(rapikanHarga(10)).toBe(H.min);
     expect(rapikanHarga(999)).toBe(H.maks);
     expect(rapikanHarga(Number.NaN)).toBe(100);
-    expect(rapikanTambahan(-20)).toBe(0);
-    expect(rapikanTambahan(14)).toBe(10);
-    expect(rapikanTambahan(999)).toBe(H.tambahanMaks);
-    expect(rapikanTambahan(Number.NaN)).toBe(0);
   });
 
-  it('hanya jurusan yang sudah dibuka & kelas yang beroperasi yang bisa diatur; nilai sama = state yang sama', () => {
-    let s = buatStateBaru(T0);
-    s = aturHargaJurusan(s, 0, 134);
-    expect(s.harga.jurusan[0]).toBe(130);
-    expect(aturHargaJurusan(s, 0, 130)).toBe(s);
-    expect(aturHargaJurusan(s, EKONOMI.jurusanAwal, 150)).toBe(s); // belum dibuka
-    expect(aturHargaJurusan(s, -1, 150)).toBe(s);
-    expect(aturTambahanKelas(s, 'patas', 20)).toBe(s); // belum beroperasi
-    s = aturTambahanKelas(s, 'ekonomi', 20);
-    expect(s.harga.tambahanKelas.ekonomi).toBe(20);
-    const patas = aturTambahanKelas(beliKelasBus(kaya(s), 'patas'), 'patas', 30);
-    expect(patas.harga.tambahanKelas.patas).toBe(30);
+  it('hanya jurusan milik PO terdaftar yang bisa diatur; nilai sama = state yang sama; 100 tidak disimpan', () => {
+    const s = buatStateBaru(T0);
+    const a = aturHargaPo(s, 'ondelOndel', JAKARTA, 134);
+    expect(harga(a, 'ondelOndel')).toEqual({ [JAKARTA]: 130 });
+    expect(aturHargaPo(a, 'ondelOndel', JAKARTA, 130)).toBe(a);
+    expect(aturHargaPo(a, 'ondelOndel', BANDUNG, 150)).toBe(a); // bukan jurusan Ondel-Ondel
+    expect(aturHargaPo(a, 'lumpiaKilat', SEMARANG, 150)).toBe(a); // belum terdaftar
+    expect(aturHargaPo(a, 'ondelOndel', -1, 150)).toBe(a);
+    // Jurusan yang baru terbuka di level PO lebih tinggi boleh diatur lebih dulu.
+    expect(harga(aturHargaPo(a, 'ondelOndel', SEMARANG, 90), 'ondelOndel')).toEqual({ [JAKARTA]: 130, [SEMARANG]: 90 });
+    expect(harga(aturHargaPo(a, 'ondelOndel', JAKARTA, 100), 'ondelOndel')).toEqual({});
+  });
+
+  it('PO berbeda boleh memasang harga berbeda untuk jurusan yang sama', () => {
+    let s = daftarPo(kaya(stateOtomatis()), 'lumpiaKilat');
+    s = levelkan(s, 'ondelOndel', EKONOMI.mitra.levelJurusan[1]!);
+    s = aturHargaPo(aturHargaPo(s, 'ondelOndel', SEMARANG, 80), 'lumpiaKilat', SEMARANG, 120);
+    expect(harga(s, 'ondelOndel')[SEMARANG]).toBe(80);
+    expect(harga(s, 'lumpiaKilat')[SEMARANG]).toBe(120);
   });
 });
 
-describe('harga tiket: tiket = harga jurusan + tambahan kelas', () => {
-  it('tiket & calon penumpang tiap segmen mengikuti harga jurusan + tambahan kelas', () => {
-    const s = aturTambahanKelas(aturHargaJurusan(buatStateBaru(T0), 0, 120), 'ekonomi', 20);
-    const eJ = EKONOMI.jurusan[0]!.elastisitas;
-    const eB = EKONOMI.jurusan[1]!.elastisitas;
-    const eK = EKONOMI.kelasBus.ekonomi.elastisitas;
-    const bobotJakarta = EKONOMI.jurusan[0]!.peminat / (EKONOMI.jurusan[0]!.peminat + EKONOMI.jurusan[1]!.peminat);
-    const dJ = faktorPeminat(120, 20, eJ, eK);
-    const dB = faktorPeminat(100, 20, eB, eK);
-    expect(dJ).toBeCloseTo(Math.pow(1.2, -eJ) * Math.pow(1.4 / 1.2, -eK), 12);
-    const a = arusHarga(s, 0.8);
-    const isiJ = Math.min(1, 0.8 * dJ);
-    const isiB = Math.min(1, 0.8 * dB);
-    expect(a.terisi).toBeCloseTo(bobotJakarta * isiJ + (1 - bobotJakarta) * isiB, 12);
-    expect(a.harga).toBeCloseTo((bobotJakarta * isiJ * 1.4 + (1 - bobotJakarta) * isiB * 1.2) / a.terisi, 12);
+describe('harga tiket PO: penumpang & pendapatan', () => {
+  it('lebih mahal: peminat turun, tiket per penumpang naik; lebih murah sebaliknya', () => {
+    const s = stateOtomatis();
+    const ukur = (persen: number): { terisi: number; perPenumpang: number } => {
+      const seg = segmenState(aturHargaPo(s, 'ondelOndel', JAKARTA, persen), 0.6);
+      return { terisi: seg.terisi, perPenumpang: seg.tiket / seg.terisi };
+    };
+    const normal = ukur(100);
+    expect(ukur(130).terisi).toBeLessThan(normal.terisi);
+    expect(ukur(130).perPenumpang).toBeCloseTo(normal.perPenumpang * 1.3, 9);
+    expect(ukur(70).terisi).toBeGreaterThan(normal.terisi);
+    expect(ukur(70).perPenumpang).toBeCloseTo(normal.perPenumpang * 0.7, 9);
   });
 
-  it('kursi kosong karena harga tidak diisi penumpang jurusan lain', () => {
-    const s = buatStateBaru(T0);
-    const normal = arusHarga(s, 1.3);
-    const mahal = arusHarga(aturHargaJurusan(s, 0, 200), 1.3);
-    expect(normal.terisiJurusan[1]).toBe(1);
-    expect(mahal.terisiJurusan[1]).toBe(1); // Bandung tetap penuh, tidak bertambah
-    expect(mahal.terisiJurusan[0]).toBeLessThan(1);
-    expect(mahal.terisi).toBeLessThan(normal.terisi);
-  });
-
-  it('jam sibuk & kursi penuh: harga sedikit naik tidak mengurangi penumpang, pendapatan naik', () => {
-    const s = padaJam(buatStateBaru(T0), 7.25);
-    expect(permintaanPenumpang(s)).toBeGreaterThan(1.1);
-    const naik = aturHargaJurusan(s, 0, 110);
-    expect(throughputState(naik, 'aktif')).toBe(throughputState(s, 'aktif'));
-    expect(rincianPendapatan(naik, 'aktif').tiket.gt(rincianPendapatan(s, 'aktif').tiket)).toBe(true);
+  it('kursi penuh (permintaan jauh di atas kapasitas): harga naik tidak mengurangi penumpang, pendapatan naik', () => {
+    const s = stateOtomatis();
+    const normal = segmenState(s, 3);
+    const naik = segmenState(aturHargaPo(s, 'ondelOndel', JAKARTA, 110), 3);
+    expect(normal.terisi).toBe(1);
+    expect(naik.terisi).toBe(1);
+    expect(naik.tiket).toBeCloseTo(normal.tiket * 1.1, 9);
   });
 
   it('terminal baru: harga terlalu murah atau terlalu mahal sama-sama merugikan dalam sehari', () => {
@@ -131,158 +114,126 @@ describe('harga tiket: tiket = harga jurusan + tambahan kelas', () => {
   });
 });
 
-describe('harga tiket: terlalu mahal', () => {
-  it('di bawah ambang penumpang tidak kecewa; di atasnya kepuasan turun sebanding kelebihannya', () => {
-    const s = buatStateBaru(T0);
-    expect(penaltiHarga(hargaSemua(s, 120))).toBe(0);
-    const mahal = hargaSemua(s, 150);
-    const lebih = 1.5 - H.ambangMahal / 100;
-    expect(kelebihanHarga(mahal).total).toBeCloseTo(lebih, 12);
-    expect(penaltiHarga(mahal)).toBeCloseTo(H.penaltiMahal * lebih, 12);
-    expect(kepuasanTerminal(mahal).nilai).toBeCloseTo(kepuasanTerminal(s).nilai * (1 - H.penaltiMahal * lebih), 12);
-    // Kepuasan turun → calon penumpang di semua jurusan ikut turun (bukan hanya karena harganya).
-    expect(permintaanPenumpang(mahal)).toBeLessThan(permintaanPenumpang(s));
-    expect(penaltiHarga(hargaSemua(s, 200))).toBeLessThanOrEqual(H.penaltiMaks);
+describe('harga tiket PO: reputasi', () => {
+  it('skor harga: penuh sampai harga normal-ish, nol di harga sangat mahal', () => {
+    const r = EKONOMI.mitra.reputasi;
+    expect(skorHarga(r.hargaNol - r.rentangHarga)).toBe(1);
+    expect(skorHarga(r.hargaNol)).toBe(0);
+    expect(skorHarga(H.maks)).toBe(0);
+    expect(skorHarga(120)).toBeLessThan(skorHarga(100));
   });
 
-  it('tambahan kelas ikut dihitung: harga jurusan wajar + tambahan besar tetap terlalu mahal', () => {
-    const s = aturTambahanKelas(buatStateBaru(T0), 'ekonomi', 50);
-    const k = kelebihanHarga(s);
-    expect(k.kelas.ekonomi).toBeGreaterThan(0);
-    expect(k.jurusan[0]).toBeGreaterThan(0);
-    expect(penaltiHarga(s)).toBeGreaterThan(0);
+  it('harga di atas normal pelan-pelan menurunkan reputasi PO, harga murah menaikkannya', () => {
+    const s = stateOtomatis({ peron: 10, loket: 10, keberangkatan: 10 });
+    const reputasiSetelah = (persen: number): number => cariPo(jalankan(aturHargaPo(s, 'ondelOndel', JAKARTA, persen), 600), 'ondelOndel')!.reputasi;
+    const mahal = reputasiSetelah(H.maks);
+    const normal = reputasiSetelah(100);
+    const murah = reputasiSetelah(H.min);
+    expect(mahal).toBeLessThan(normal);
+    expect(normal).toBeLessThanOrEqual(murah);
+    // Bergerak pelan (konstanta waktu), tidak langsung loncat ke targetnya.
+    expect(Math.abs(mahal - cariPo(s, 'ondelOndel')!.reputasi)).toBeLessThan(25);
+  });
+
+  it('reputasi tinggi mendatangkan lebih banyak penumpang pada harga yang sama', () => {
+    const s = stateOtomatis();
+    const dengan = (reputasi: number): number =>
+      segmenState({ ...s, mitra: { ...s.mitra, terdaftar: s.mitra.terdaftar.map((p) => ({ ...p, reputasi })) } }, 0.5).terisi;
+    expect(dengan(80)).toBeGreaterThan(dengan(50));
+    expect(dengan(50)).toBeGreaterThan(dengan(20));
   });
 });
 
-describe('harga tiket: saran', () => {
-  it('saran tidak pernah membuat penumpang kecewa, dan hasil sehari tidak lebih buruk dari harga normal', () => {
+describe('harga tiket PO: saran', () => {
+  it('saran hanya untuk jurusan yang dilayani, paling tinggi 120 %, dan hasil sehari tidak lebih buruk dari harga normal', () => {
     const s = buatStateBaru(T0);
-    const saran = saranHarga(s);
-    expect(saran.jurusan[EKONOMI.jurusanAwal]).toBeNull();
-    expect(saran.tambahanKelas.patas).toBeNull();
-    let x = s;
-    saran.jurusan.forEach((p, i) => {
-      if (p !== null) x = aturHargaJurusan(x, i, p);
-    });
-    x = aturTambahanKelas(x, 'ekonomi', saran.tambahanKelas.ekonomi!);
-    expect(penaltiHarga(x)).toBe(0);
+    const saran = saranHargaPo(s, 'ondelOndel');
+    expect(Object.keys(saran).map(Number)).toEqual([JAKARTA]); // Semarang baru di Lv 6
+    expect(saran[JAKARTA]!).toBeLessThanOrEqual(120);
+    const x = aturHargaPo(s, 'ondelOndel', JAKARTA, saran[JAKARTA]!);
     expect(tiketSehari(x)).toBeGreaterThanOrEqual(tiketSehari(s) - 1e-9);
+    expect(saranHargaPo(s, 'lumpiaKilat')).toEqual({});
   });
 
-  it('rute yang kurang peka harga disarankan lebih mahal daripada rute pendek, tetap di bawah ambang', () => {
-    const s = semuaJurusan(stateOtomatis());
-    const saran = saranHarga(s);
-    const terakhir = EKONOMI.jurusan.length - 1;
-    expect(saran.jurusan[terakhir]!).toBeGreaterThan(saran.jurusan[0]!);
-    expect(saran.jurusan[terakhir]!).toBeLessThanOrEqual(H.ambangMahal);
-    // Tambahan kelas yang terpasang ikut membatasi saran harga jurusan.
-    const bertambahan = saranHarga(aturTambahanKelas(s, 'ekonomi', 20));
-    for (const p of bertambahan.jurusan) if (p !== null) expect(p + 20).toBeLessThanOrEqual(H.ambangMahal);
+  it('rute jauh yang kurang peka harga disarankan tidak lebih murah daripada rute pendek', () => {
+    const s = levelkan(stateOtomatis({ peron: 10, loket: 10, keberangkatan: 10 }), 'ondelOndel', EKONOMI.mitra.levelJurusan[2]!);
+    const saran = saranHargaPo(s, 'ondelOndel');
+    expect(Object.keys(saran).map(Number).sort((a, b) => a - b)).toEqual([JAKARTA, SEMARANG, SURABAYA]);
+    expect(saran[SURABAYA]!).toBeGreaterThanOrEqual(saran[JAKARTA]!);
   });
 });
 
 describe('harga tiket tidak bisa dipakai menggelembungkan hadiah & offline', () => {
-  it('hadiah "N menit pendapatan" & target memakai harga normal', () => {
+  it('hadiah "N menit pendapatan" & arus potensial memakai harga normal', () => {
     const s = stateOtomatis({ peron: 10, loket: 10, keberangkatan: 10 });
-    const mahal = aturTambahanKelas(hargaSemua(s, 200), 'ekonomi', 100);
-    // Kepuasan ikut turun (tiket terlalu mahal), jadi hadiah tidak mungkin lebih besar.
-    expect(hadiahMenit(mahal, 5).lte(hadiahMenit(s, 5))).toBe(true);
+    const mahal = hargaSemua(s, H.maks);
+    expect(hadiahMenit(mahal, 5).eq(hadiahMenit(s, 5))).toBe(true);
     expect(throughputState(mahal)).toBe(throughputState(s));
   });
 
-  it('offline: harga di atas atau di bawah normal selalu menghasilkan lebih sedikit', () => {
+  it('offline: harga di atas atau di bawah normal tidak pernah menghasilkan lebih banyak', () => {
     const s = stateOtomatis({ peron: 10, loket: 10, keberangkatan: 10 });
     const offline = (x: GameState): number => hitungOffline(x, T0 + JAM_MS).pendapatan.toNumber();
     const normal = offline(s);
     expect(normal).toBeGreaterThan(0);
-    for (const persen of [50, 80, 120, 200]) expect(offline(hargaSemua(s, persen))).toBeLessThan(normal);
-    expect(offline(aturTambahanKelas(s, 'ekonomi', 30))).toBeLessThan(normal);
+    for (const persen of [50, 80, 120, 200]) expect(offline(hargaSemua(s, persen))).toBeLessThanOrEqual(normal + 1e-9);
+    expect(offline(hargaSemua(s, 200))).toBeLessThan(normal);
   });
 });
 
-describe('harga tiket: save, naik kelas, aksi, analitik', () => {
-  it('ikut tersimpan; save lama tanpa blok harga = normal; nilai aneh dirapikan; tipe salah ditolak', () => {
-    const s = aturTambahanKelas(aturHargaJurusan(buatStateBaru(T0), 1, 70), 'ekonomi', 30);
-    const dimuat = deserialisasi(serialisasi(s), T0);
-    expect(dimuat.harga.jurusan[1]).toBe(70);
-    expect(dimuat.harga.tambahanKelas.ekonomi).toBe(30);
-    expect(dimuat.harga.jurusan).toHaveLength(EKONOMI.jurusan.length);
-
-    const mentah = JSON.parse(serialisasi(s)) as Record<string, unknown>;
-    delete mentah['harga'];
-    const lama = deserialisasi(JSON.stringify(mentah), T0).harga;
-    expect(lama.jurusan.every((x) => x === 100)).toBe(true);
-    expect(lama.tambahanKelas.ekonomi).toBe(0);
-    const aneh = { ...mentah, harga: { jurusan: [123, 5], tambahanKelas: { ekonomi: 999 }, kelas: { ekonomi: 150 } } };
-    const dirapikan = deserialisasi(JSON.stringify(aneh), T0).harga;
-    expect(dirapikan.jurusan.slice(0, 3)).toEqual([120, H.min, 100]);
-    expect(dirapikan.tambahanKelas.ekonomi).toBe(H.tambahanMaks);
-    expect(() => deserialisasi(JSON.stringify({ ...mentah, harga: { jurusan: 'murah' } }), T0)).toThrow();
+describe('harga tiket PO: save, Renovasi, aksi, analitik', () => {
+  it('tersimpan per PO, tetap walau Renovasi, dan ikut riwayat saat PO keluar lalu kembali', () => {
+    let s = aturHargaPo(stateOtomatis({ peron: 30, loket: 30, keberangkatan: 30 }), 'ondelOndel', JAKARTA, 120);
+    expect(harga(deserialisasi(serialisasi(s), T0), 'ondelOndel')).toEqual({ [JAKARTA]: 120 });
+    const kayaRun = { ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e9) } };
+    expect(harga(renovasi(kayaRun), 'ondelOndel')).toEqual({ [JAKARTA]: 120 });
+    s = aturHargaPo(daftarPo(kaya(s), 'lumpiaKilat'), 'lumpiaKilat', SEMARANG, 80);
+    const keluar = putusPo(s, 'lumpiaKilat');
+    expect(keluar.mitra.riwayat.lumpiaKilat?.harga).toEqual({ [SEMARANG]: 80 });
+    const kembali = daftarPo({ ...keluar, mitra: { ...keluar.mitra, jedaSampai: {} } }, 'lumpiaKilat');
+    expect(harga(kembali, 'lumpiaKilat')).toEqual({ [SEMARANG]: 80 });
   });
 
-  it('tetap walau naik kelas terminal', () => {
-    let s = aturHargaJurusan(stateOtomatis({ peron: 30, loket: 30, keberangkatan: 30 }), 0, 120);
-    s = { ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(400_000) } };
-    expect(lakukanPrestige(s).harga.jurusan[0]).toBe(120);
-  });
-
-  it('aksi diteruskan ke sim; analitik dicatat sekali per sesi per jurusan/kelas', () => {
+  it('aksi diteruskan ke sim; analitik dicatat sekali per sesi per PO & jurusan', () => {
     const s = buatStateBaru(T0);
-    const baru = terapkanAksi(s, { jenis: 'aturHargaJurusan', indeks: 0, persen: 110 });
-    expect(baru.harga.jurusan[0]).toBe(110);
-    expect(peristiwaAksi({ jenis: 'aturHargaJurusan', indeks: 0, persen: 110 }, s, baru)).toEqual([{ nama: 'atur_harga', data: { jurusan: 'JAKARTA' } }]);
-    const kelas = terapkanAksi(s, { jenis: 'aturTambahanKelas', kelas: 'ekonomi', persen: 10 });
-    expect(kelas.harga.tambahanKelas.ekonomi).toBe(10);
-    expect(peristiwaAksi({ jenis: 'aturTambahanKelas', kelas: 'ekonomi', persen: 10 }, s, kelas)).toEqual([{ nama: 'atur_harga', data: { kelas: 'ekonomi' } }]);
+    const aksi = { jenis: 'aturHargaPo', po: 'ondelOndel', jurusan: JAKARTA, persen: 110 } as const;
+    const baru = terapkanAksi(s, aksi);
+    expect(harga(baru, 'ondelOndel')[JAKARTA]).toBe(110);
+    expect(peristiwaAksi(aksi, s, baru)).toEqual([{ nama: 'atur_harga', data: { po: 'ondelOndel', jurusan: 'JAKARTA' } }]);
 
     const catatan: { nama: string; data: DataAnalitik | undefined }[] = [];
     const p = new PencatatAnalitik({ catat: (nama, data) => catatan.push({ nama, data }) });
-    for (let i = 0; i < 5; i++) p.catat('atur_harga', { jurusan: 'JAKARTA' });
-    p.catat('atur_harga', { jurusan: 'BANDUNG' });
+    for (let i = 0; i < 5; i++) p.catat('atur_harga', { po: 'ondelOndel', jurusan: 'JAKARTA' });
+    p.catat('atur_harga', { po: 'lumpiaKilat', jurusan: 'JAKARTA' });
     expect(catatan).toHaveLength(2);
   });
 });
 
-describe('harga tiket: tampilan', () => {
-  it('model dalam Rupiah: harga, langkah, saran, batas tombol, tanda terlalu mahal', () => {
-    let s = aturHargaJurusan(buatStateBaru(T0), 0, H.maks);
-    s = aturTambahanKelas(s, 'ekonomi', 0);
-    const m = buatModel(s);
-    const normal = nilaiPerPenumpangState(s);
-    const jakarta = m.jurusan.daftar[0]!.harga!;
-    expect(jakarta.rupiah).toBeCloseTo((normal * H.maks) / 100, 12);
-    expect(jakarta.langkahRupiah).toBeCloseTo((normal * H.langkah) / 100, 12);
+describe('harga tiket PO: tampilan', () => {
+  it('model dalam Rupiah: harga normal & sekarang, langkah, saran, batas tombol, jurusan terkunci', () => {
+    const s = aturHargaPo(buatStateBaru(T0), 'ondelOndel', JAKARTA, H.maks);
+    const po = buatModel(s).mitra.terdaftar[0]!;
+    const jakarta = po.jurusan.find((j) => j.jurusan === JAKARTA)!;
+    const normal = EKONOMI.nilaiPerPenumpang * nilaiJurusan(JAKARTA);
+    expect(jakarta.aktif).toBe(true);
+    expect(jakarta.normalRupiah).toBeCloseTo(normal, 9);
+    expect(jakarta.rupiah).toBeCloseTo((normal * H.maks) / 100, 9);
+    expect(jakarta.langkahRupiah).toBeCloseTo((normal * H.langkah) / 100, 9);
     expect(jakarta.bisaNaik).toBe(false);
-    expect(jakarta.terlaluMahal).toBe(true);
-    expect(jakarta.saranPersen).toBeLessThanOrEqual(H.ambangMahal);
-    expect(jakarta.saranRupiah).toBeCloseTo((normal * jakarta.saranPersen) / 100, 12);
-    expect(jakarta.peminat).toBeCloseTo(faktorPeminat(H.maks, 0, EKONOMI.jurusan[0]!.elastisitas, 0) - 1, 12);
-    expect(m.jurusan.daftar[1]!.harga!.terlaluMahal).toBe(false);
-    expect(m.jurusan.daftar[EKONOMI.jurusanAwal]!.harga).toBeNull();
-    expect(m.jurusan.penaltiHarga).toBeGreaterThan(0);
-    expect(m.hud.kepuasan.penaltiHarga).toBe(m.jurusan.penaltiHarga);
-    expect(m.jurusan.batasWajar).toBeCloseTo((normal * H.ambangMahal) / 100, 12);
-    const ekonomi = m.armada.kelasBus.find((k) => k.id === 'ekonomi')!.harga!;
-    expect(ekonomi.rupiah).toBe(0);
-    expect(ekonomi.bisaTurun).toBe(false);
-    expect(m.armada.kelasBus.find((k) => k.id === 'patas')!.harga).toBeNull();
-  });
-
-  it('tanda terlalu mahal hanya pada penyumbangnya: jurusan di atas normal atau kelas bertambahan', () => {
-    const jurusanMahal = buatModel(aturHargaJurusan(buatStateBaru(T0), 0, 160));
-    expect(jurusanMahal.jurusan.daftar[0]!.harga!.terlaluMahal).toBe(true);
-    expect(jurusanMahal.armada.kelasBus.find((k) => k.id === 'ekonomi')!.harga!.terlaluMahal).toBe(false);
-    const kelasMahal = buatModel(aturTambahanKelas(buatStateBaru(T0), 'ekonomi', 50));
-    expect(kelasMahal.armada.kelasBus.find((k) => k.id === 'ekonomi')!.harga!.terlaluMahal).toBe(true);
-    expect(kelasMahal.jurusan.daftar[0]!.harga!.terlaluMahal).toBe(false);
-    expect(kelasMahal.jurusan.penaltiHarga).toBeGreaterThan(0);
+    expect(jakarta.bisaTurun).toBe(true);
+    expect(jakarta.saranPersen).toBeLessThanOrEqual(120);
+    expect(jakarta.saranRupiah).toBeCloseTo((normal * jakarta.saranPersen) / 100, 9);
+    const semarang = po.jurusan.find((j) => j.jurusan === SEMARANG)!;
+    expect(semarang.aktif).toBe(false);
+    expect(semarang.levelBuka).toBe(EKONOMI.mitra.levelJurusan[1]);
+    expect(po.hargaRata).toBe(H.maks);
   });
 
   it('adegan (malam, kursi belum penuh): jurusan yang lebih murah kebagian lebih banyak bus; tiket murah mendatangkan lebih banyak bus', () => {
-    const s = padaJam(buatStateBaru(T0), 2);
+    const s = padaJam(levelkan(buatStateBaru(T0), 'ondelOndel', EKONOMI.mitra.levelJurusan[1]!), 2);
     const biasa = hitungLajuVisual(s);
-    const murah = hitungLajuVisual(aturHargaJurusan(s, 1, 60));
-    expect(murah.bagianJurusan![1]).toBeGreaterThan(biasa.bagianJurusan![1]!);
+    const murah = hitungLajuVisual(aturHargaPo(s, 'ondelOndel', SEMARANG, 60));
+    expect(murah.bagianJurusan![SEMARANG]).toBeGreaterThan(biasa.bagianJurusan![SEMARANG]!);
     expect(murah.busDatang).toBeGreaterThan(biasa.busDatang);
     expect(biasa.bagianJurusan!.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 12);
   });

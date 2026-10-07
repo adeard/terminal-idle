@@ -2,39 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { acakBerbenih, DuniaVisual, kurvaKeluarPetak, kurvaMasukPetak, petugasCuci, posisiPetugasCuci, ruteKeGerbang, ruteKeKursi, saatLewat, tingkatKotor, type BusVisual, type FaseBus } from '../src/game/dunia-visual';
 import { Jalur, lintasanS } from '../src/game/jalur';
 import { loketBuka } from '../src/game/kehidupan-malam';
-import { batasArusJurusan, hitungLajuVisual, lajuDasar, terapkanRitme, type LajuVisual } from '../src/game/laju';
+import { batasArusJurusan, hitungLajuVisual, lajuDasar, maskJurusanState, terapkanRitme, type LajuVisual } from '../src/game/laju';
 import { EKONOMI } from '../src/config/economy.config';
 import { MEJA_TUNGGU, Y_MEJA_TUNGGU } from '../src/game/gedung3d';
-import {
-  BLOK_KURSI,
-  BUS,
-  CUCI,
-  diGedung,
-  GERBANG_KELUAR_X,
-  GERBANG_X,
-  JUMLAH_ORANG_LABIRIN,
-  JUMLAH_SLOT_LABIRIN,
-  KECEPATAN_JALAN,
-  KIOS_TUNGGU,
-  KURSI_TUNGGU,
-  LAJUR,
-  LEBAR_GERBANG_PAGAR,
-  LOKET,
-  LORONG_PARKIR,
-  MAKS_ORANG,
-  PARKIR_SERONG,
-  PERON,
-  PERON_BERANGKAT,
-  PINTU_BUS,
-  PINTU_RUANG_TUNGGU,
-  RUANG_TUNGGU,
-  TALI_LABIRIN,
-  VARIASI_JALAN,
-  X_LOKET,
-  Y_PAGAR,
-} from '../src/game/tata-letak';
+import { BLOK_KURSI, BUS, CUCI, diGedung, GERBANG_KELUAR_X, GERBANG_X, JUMLAH_ORANG_LABIRIN, JUMLAH_SLOT_LABIRIN, KECEPATAN_JALAN, KIOS_TUNGGU, KURSI_TUNGGU, LAJUR, LEBAR_GERBANG_PAGAR, LOKET, LORONG_PARKIR, MAKS_ORANG, maskAwal, PARKIR_SERONG, PERON, PERON_BERANGKAT, PINTU_BUS, PINTU_RUANG_TUNGGU, RUANG_TUNGGU, TALI_LABIRIN, VARIASI_JALAN, X_LOKET, Y_PAGAR } from '../src/game/tata-letak';
 import { buatStateBaru, kepuasanTerminal } from '../src/sim/state';
-import { jarakPoligon, jarakTitikPoligon, jejakBus, ruasBerpotongan, stateOtomatis, T0 } from './helpers';
+import { denganPo, jarakPoligon, jarakTitikPoligon, jejakBus, ruasBerpotongan, stateOtomatis, T0 } from './helpers';
 
 /** Rata-rata orang yang berdiri diam di antrean selama `detik` berikutnya. */
 function rataBerdiri(dunia: DuniaVisual, detik: number, laju: LajuVisual): number {
@@ -120,24 +93,30 @@ describe('laju visual dari state sim', () => {
   });
 
   it('bottleneck berjalan paling lambat, tahap lain lebih cepat', () => {
-    const laju = hitungLajuVisual(stateOtomatis()); // loket 0,8 bottleneck
-    expect(laju.layanLoket).toBeCloseTo(Math.min(lajuDasar(0.8), batasArusJurusan(EKONOMI.jurusanAwal)), 10);
+    const s = stateOtomatis();
+    const laju = hitungLajuVisual(s); // loket 0,8 bottleneck
+    expect(laju.layanLoket).toBeCloseTo(Math.min(lajuDasar(0.8), batasArusJurusan(maskJurusanState(s))), 10);
     expect(laju.turun).toBeGreaterThan(laju.layanLoket);
     expect(laju.naik).toBeGreaterThan(laju.layanLoket);
   });
 
-  it('arus visual dibatasi jendela loket yang buka: makin banyak jurusan, makin ramai', () => {
-    const s = stateOtomatis({ peron: 120, loket: 120, keberangkatan: 120 });
-    const denganJurusan = (n: number) => hitungLajuVisual({ ...s, terminal: { ...s.terminal, jurusanBuka: n } });
-    const awal = denganJurusan(EKONOMI.jurusanAwal);
-    const semua = denganJurusan(EKONOMI.jurusan.length);
-    expect(awal.layanLoket).toBeLessThanOrEqual(batasArusJurusan(EKONOMI.jurusanAwal) * 2 + 1e-9);
-    expect(semua.turun).toBeGreaterThan(awal.turun * 2);
-    expect(semua.busDatang).toBeGreaterThan(awal.busDatang);
-    // Tiap jurusan Jawa–Bali membuka satu jendela loket; rute antarpulau dijual di jendela yang sama.
+  it('arus visual dibatasi jendela loket yang buka: makin banyak jurusan dilayani, makin ramai', () => {
+    const awal = stateOtomatis({ peron: 120, loket: 120, keberangkatan: 120 });
+    // Empat PO lokal & regional di Lv 12 melayani kedelapan jurusan Jawa-Bali.
+    let semua = awal;
+    for (const id of ['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa'] as const) semua = denganPo(semua, id, { level: 12 });
+    expect(maskJurusanState(awal)).toBe(maskAwal(1));
+    expect(maskJurusanState(semua)).toBe(maskAwal(8));
+    const a = hitungLajuVisual(awal);
+    const b = hitungLajuVisual(semua);
+    expect(a.maskJurusan).toBe(maskAwal(1));
+    expect(a.layanLoket).toBeLessThanOrEqual(batasArusJurusan(maskAwal(1)) * 2 + 1e-9);
+    expect(b.turun).toBeGreaterThan(a.turun * 2);
+    expect(b.busDatang).toBeGreaterThan(a.busDatang);
+    // Tiap jurusan Jawa-Bali membuka satu jendela loket; rute antarpulau dijual di jendela yang sama.
     const darat = EKONOMI.jurusan.filter((j) => j.feri === undefined).length;
-    for (let n = 2; n <= darat; n++) expect(batasArusJurusan(n)).toBeGreaterThan(batasArusJurusan(n - 1));
-    for (let n = darat + 1; n <= EKONOMI.jurusan.length; n++) expect(batasArusJurusan(n)).toBe(batasArusJurusan(darat));
+    for (let n = 2; n <= darat; n++) expect(batasArusJurusan(maskAwal(n))).toBeGreaterThan(batasArusJurusan(maskAwal(n - 1)));
+    for (let n = darat + 1; n <= EKONOMI.jurusan.length; n++) expect(batasArusJurusan(maskAwal(n))).toBe(batasArusJurusan(maskAwal(darat)));
   });
 });
 
@@ -314,8 +293,8 @@ describe('model keramaian dekoratif', () => {
     expect(rataBerdiri(lambat, 30, lajuLambat)).toBeGreaterThan(JUMLAH_SLOT_LABIRIN * 0.7);
   }, 30_000);
 
-  it('awal permainan (2 jurusan): hanya 2 jendela loket melayani, dan itu tetap bukan hambatan palsu', () => {
-    const buka = loketBuka(12, 2);
+  it('sedikit jurusan (2): hanya 2 jendela loket melayani, dan itu tetap bukan hambatan palsu', () => {
+    const buka = loketBuka(12, maskAwal(2));
     const galat: string[] = [];
     const dunia = new DuniaVisual({ acak: acakBerbenih(16) });
     const lajuSeimbang: LajuVisual = { ...SEIMBANG, layanLoket: 2.6, loketBuka: buka };
@@ -529,7 +508,8 @@ describe('model keramaian dekoratif', () => {
   }, 40_000);
 
   it('laju tinggi dari state nyata: loket lambat tetap memicu antrean', () => {
-    const laju = hitungLajuVisual(stateOtomatis({ peron: 120, loket: 60, keberangkatan: 120 }));
+    // Dua jurusan dilayani (PO kedua sudah bergabung), Loket jauh lebih lambat dari tahap lain.
+    const laju = hitungLajuVisual(denganPo(stateOtomatis({ peron: 120, loket: 60, keberangkatan: 120 }), 'peuyeumKilat'));
     const dunia = new DuniaVisual({ acak: acakBerbenih(8) });
     jalankan(dunia, 150, laju);
     expect(dunia.jumlahAntrean).toBeGreaterThan(JUMLAH_SLOT_LABIRIN * 0.7);
@@ -745,27 +725,41 @@ describe('halte keberangkatan tanpa maju', () => {
   }, 30_000);
 });
 
-describe('jurusan terbuka', () => {
-  it('bus hanya melayani jurusan yang sudah dibuka; kelompok parkir jurusan yang belum dibuka dipagari', async () => {
-    const { KELOMPOK_PARKIR, kelompokPetak } = await import('../src/game/tata-letak');
-    const dunia = new DuniaVisual({ acak: acakBerbenih(101) });
+describe('jurusan yang dilayani', () => {
+  /** Jalankan 300 detik: jurusan tujuan bus & berapa kali bus parkir di kelompok yang jurusannya dilayani / tidak. */
+  async function amati(mask: number, benih: number): Promise<{ tujuan: Set<number>; parkirTerbuka: number; parkirLain: number }> {
+    const { KELOMPOK_PARKIR, kelompokPetak, jurusanDiMask } = await import('../src/game/tata-letak');
+    const dunia = new DuniaVisual({ acak: acakBerbenih(benih) });
     const tujuan = new Set<number>();
     let parkirTerbuka = 0;
-    let parkirCadangan = 0;
+    let parkirLain = 0;
     for (let t = 0; t < 300; t += 1 / 30) {
-      dunia.perbarui(1 / 30, { ...SEIMBANG, jurusanBuka: 3 });
+      dunia.perbarui(1 / 30, { ...SEIMBANG, maskJurusan: mask });
       for (const b of dunia.bus) {
         if (b.tujuan >= 0) tujuan.add(b.tujuan);
         if (b.fase === 'parkir') {
-          const buka = KELOMPOK_PARKIR[kelompokPetak(b.petak)]!.tujuan.some((j) => j < 3);
-          if (buka) parkirTerbuka++;
-          else parkirCadangan++;
+          if (KELOMPOK_PARKIR[kelompokPetak(b.petak)]!.tujuan.some((j) => jurusanDiMask(mask, j))) parkirTerbuka++;
+          else parkirLain++;
         }
       }
     }
-    expect([...tujuan].every((j) => j < 3)).toBe(true);
-    expect(tujuan.size).toBe(3);
-    expect(parkirTerbuka).toBeGreaterThan(0);
-    expect(parkirCadangan).toBe(0);
+    return { tujuan, parkirTerbuka, parkirLain };
+  }
+
+  it('bus hanya melayani jurusan yang dilayani PO; kelompok parkir tanpa jurusan dilayani dipagari', async () => {
+    const h = await amati(maskAwal(3), 101);
+    expect([...h.tujuan].every((j) => j < 3)).toBe(true);
+    expect(h.tujuan.size).toBe(3);
+    expect(h.parkirTerbuka).toBeGreaterThan(0);
+    expect(h.parkirLain).toBe(0);
+  }, 30_000);
+
+  it('jurusan yang dilayani tidak harus urut (tiap PO punya jurusannya sendiri)', async () => {
+    // Jakarta & Surabaya saja: kelompok Jakarta-Bandung dan Surabaya-Denpasar.
+    const mask = 2 ** 0 + 2 ** 5;
+    const h = await amati(mask, 102);
+    expect([...h.tujuan].sort((a, b) => a - b)).toEqual([0, 5]);
+    expect(h.parkirTerbuka).toBeGreaterThan(0);
+    expect(h.parkirLain).toBe(0);
   }, 30_000);
 });

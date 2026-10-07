@@ -42,10 +42,11 @@ describe('view model UI', () => {
     expect(m.hud.hariIni).toEqual({ pendapatan: 0, tiket: 0 });
     expect(m.tahap.peron.bottleneck).toBe(true);
     expect(m.tahap.peron.milestone).toEqual({ dari: 25, ke: 50, rasio: 18 / 25 });
-    // 10 detik main: 440 penumpang membeli tiket Rp 5.
+    // 10 detik main: 440 penumpang membeli tiket Rp 5 (PO naik ke Lv 2 di tengah jalan: tiket x1,06).
     const nanti = buatModel(jalankan(s, 10));
     expect(nanti.hud.hariIni.tiket).toBe(440);
-    expect(nanti.hud.hariIni.pendapatan).toBeCloseTo(440 * 5, 6);
+    expect(nanti.hud.hariIni.pendapatan).toBeGreaterThanOrEqual(440 * 5 - 1e-6);
+    expect(nanti.hud.hariIni.pendapatan).toBeLessThan(440 * 5 * 1.06);
   });
 });
 
@@ -89,26 +90,37 @@ describe('aksi & pengendali', () => {
 });
 
 describe('view model pengelolaan terminal', () => {
-  it('fasilitas, jurusan, modernisasi, target, dan penghargaan tampil sesuai state', async () => {
-    const { bangunFasilitas, beliTeknologi, bukaJurusan, tick } = await import('../src/sim/state');
+  it('fasilitas, mitra PO, terminal, modernisasi, target, dan penghargaan tampil sesuai state', async () => {
+    const { bangunFasilitas, beliTeknologi, daftarPo, tick } = await import('../src/sim/state');
     const { EKONOMI } = await import('../src/config/economy.config');
     let s: GameState = { ...stateOtomatis({ peron: 10, loket: 10, keberangkatan: 10 }), uang: new Decimal(1e7) };
     let m = buatModel(s);
     expect(m.fasilitas.every((f) => f.level === 0 && f.bisa)).toBe(true);
-    expect(m.jurusan.daftar.filter((j) => j.buka)).toHaveLength(EKONOMI.jurusanAwal);
-    expect(m.jurusan.berikutnya?.nama).toBe(EKONOMI.jurusan[EKONOMI.jurusanAwal]!.nama);
+    expect(m.mitra.terdaftar.map((p) => p.id)).toEqual(['ondelOndel']);
+    expect(m.mitra).toMatchObject({ slot: 2, slotBerikut: { level: 3, slot: 3 }, loketKosong: 0 });
+    expect(m.mitra.tersedia.find((p) => p.id === 'peuyeumKilat')).toMatchObject({ bisa: true, kurang: null, levelRiwayat: null });
+    expect(m.mitra.tersedia.find((p) => p.id === 'apelBatu')?.kurang).toEqual({ jenis: 'kelas', kelas: 1 });
+    expect(m.mitra.tersedia.some((p) => p.id === 'ondelOndel')).toBe(false);
+    expect(m.terminal).toMatchObject({ level: 1, kelas: 0, slot: 2, levelKelasBerikut: 10 });
+    expect(m.terminal.perluasan.berikut).toMatchObject({ tahap: 1, level: EKONOMI.mitra.perluasan[0]!.level, levelKurang: true, bisa: false });
+    expect(m.terminal.renovasi).toMatchObject({ jumlah: 0, poin: 0, bisa: false, poinMin: EKONOMI.mitra.poinMinRenovasi });
+    // 10 loket sudah melebihi jatah PO Lv 1: tidak ada PO yang bisa menerima loket baru.
+    expect(m.tahap.loket.loket).toEqual({ tujuan: null, kosong: 0 });
     expect(m.teknologi.find((t) => t.id === 'eTiket')?.syaratKurang).toBe('mesinTiket');
     expect(m.target).toMatchObject({ jenis: 'upgrade', progres: 0, selesai: false });
 
-    s = tick(bukaJurusan(beliTeknologi(bangunFasilitas(s, 'kios'), 'mesinTiket')), 0.1);
+    s = tick(daftarPo(beliTeknologi(bangunFasilitas(s, 'kios'), 'mesinTiket'), 'peuyeumKilat'), 0.1);
     m = buatModel(s);
     expect(m.fasilitas.find((f) => f.id === 'kios')?.level).toBe(1);
-    expect(m.jurusan.multTiket).toBeGreaterThan(1);
+    expect(m.mitra.terdaftar.map((p) => p.id)).toEqual(['ondelOndel', 'peuyeumKilat']);
+    expect(m.tahap.loket.loket).toEqual({ tujuan: 'peuyeumKilat', kosong: 0 });
     expect(m.teknologi.find((t) => t.id === 'mesinTiket')?.dimiliki).toBe(true);
     expect(m.teknologi.find((t) => t.id === 'eTiket')?.syaratKurang).toBeNull();
-    // Kapasitas loket & kapasitas setelah upgrade ikut modernisasi.
-    expect(m.tahap.loket.kapasitas).toBeCloseTo((0.8 + 0.45 * 9) * EKONOMI.teknologi.mesinTiket.multKapasitas, 10);
-    expect(m.tahap.loket.kapasitasSetelahUpgrade).toBeCloseTo((0.8 + 0.45 * 10) * EKONOMI.teknologi.mesinTiket.multKapasitas, 10);
+    // Kapasitas loket (loket disewa kedua PO) & kapasitas setelah upgrade ikut modernisasi.
+    const loket = 10 + EKONOMI.mitra.tingkat.lokal.loketBawaan;
+    expect(m.tahap.loket.level).toBe(loket);
+    expect(m.tahap.loket.kapasitas).toBeCloseTo((0.8 + 0.45 * (loket - 1)) * EKONOMI.teknologi.mesinTiket.multKapasitas, 10);
+    expect(m.tahap.loket.kapasitasSetelahUpgrade).toBeCloseTo((0.8 + 0.45 * loket) * EKONOMI.teknologi.mesinTiket.multKapasitas, 10);
     // Kepala + fasilitas pertama tercapai → hadiah siap diklaim (lencana tab).
     expect(m.pencapaian.filter((p) => p.tercapai).map((p) => p.id)).toEqual(expect.arrayContaining(['kepalaPertama', 'semuaOtomatis', 'fasilitasPertama']));
     expect(m.jumlahKlaim).toBe(m.pencapaian.filter((p) => p.tercapai && !p.diklaim).length);

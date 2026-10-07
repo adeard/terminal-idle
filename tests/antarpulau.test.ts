@@ -1,36 +1,29 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { EKONOMI } from '../src/config/economy.config';
 import { PELABUHAN_FERI, pelabuhanTerbuka } from '../src/game/antarpulau';
-import { KELOMPOK_PARKIR, TUJUAN_BUS } from '../src/game/tata-letak';
-import { deserialisasi, serialisasi } from '../src/sim/save';
-import {
-  bisaBukaJurusan,
-  bukaJurusan,
-  jumlahJurusanDarat,
-  jurusanAntarpulau,
-  kelasKurangJurusan,
-  multJurusan,
-  tick,
-  type GameState,
-} from '../src/sim/state';
+import { KELOMPOK_PARKIR, kunciPapanPulau, MASK_SEMUA_JURUSAN, maskAwal, maskJurusan, TUJUAN_BUS } from '../src/game/tata-letak';
+import type { PoId } from '../src/sim/fitur';
+import { levelMinimalKelas } from '../src/sim/level-terminal';
+import { indeksJurusan, nilaiJurusan } from '../src/sim/mitra';
+import { jumlahJurusanDarat, jurusanAntarpulau, jurusanDilayani, tick, type GameState } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
-import { stateOtomatis, T0 } from './helpers';
+import { denganLevelTerminal, denganPo, stateOtomatis } from './helpers';
 
-const kaya = (s: GameState, uang = 1e15): GameState => ({ ...s, uang: new Decimal(uang) });
-const kelas = (s: GameState, jumlahReset: number): GameState => ({ ...s, prestige: { ...s.prestige, jumlahReset } });
-/** Semua jurusan Jawa–Bali sudah dibuka (Denpasar). */
-const sampaiDenpasar = (s: GameState): GameState => ({ ...s, terminal: { ...s.terminal, jurusanBuka: jumlahJurusanDarat() } });
-const indeks = (nama: string): number => EKONOMI.jurusan.findIndex((j) => j.nama === nama);
+const LEVEL_SEMUA_JURUSAN = EKONOMI.mitra.levelJurusan[2]!;
+/** Nama jurusan yang dilayani. */
+const dilayani = (s: GameState): string[] => EKONOMI.jurusan.filter((_, i) => jurusanDilayani(s)[i]).map((j) => j.nama);
+/** Banyak PO sekaligus di level yang membuka ketiga jurusannya. */
+const denganBanyakPo = (s: GameState, ids: readonly PoId[]): GameState => ids.reduce((x, id) => denganPo(x, id, { level: LEVEL_SEMUA_JURUSAN }), s);
+const bit = (nama: string): number => 2 ** indeksJurusan(nama);
 
 describe('rute antarpulau (sim)', () => {
-  it('konfigurasi: jurusan Jawa–Bali lebih dulu, lalu rute feri yang makin mahal & butuh kelas terminal', () => {
+  it('konfigurasi: jurusan Jawa–Bali lebih dulu, lalu rute feri yang makin bernilai & butuh kelas terminal', () => {
     const darat = jumlahJurusanDarat();
     expect(EKONOMI.jurusan[darat - 1]!.nama).toBe('DENPASAR');
     for (let i = 0; i < EKONOMI.jurusan.length; i++) expect(jurusanAntarpulau(i)).toBe(i >= darat);
     for (let i = darat; i < EKONOMI.jurusan.length; i++) {
       const j = EKONOMI.jurusan[i]!;
-      expect(j.biaya).toBeGreaterThan(EKONOMI.jurusan[i - 1]!.biaya);
+      expect(nilaiJurusan(i)).toBeGreaterThan(nilaiJurusan(i - 1));
       expect(j.kelasTerminal ?? 0).toBeGreaterThanOrEqual(1);
       expect(j.kelasTerminal ?? 0).toBeGreaterThanOrEqual(EKONOMI.jurusan[i - 1]!.kelasTerminal ?? 0);
       expect(PELABUHAN_FERI[j.feri!]).toBeDefined();
@@ -38,55 +31,40 @@ describe('rute antarpulau (sim)', () => {
     expect(EKONOMI.jurusan[EKONOMI.jurusan.length - 1]!.nama).toBe('BANDA ACEH');
   });
 
-  it('setelah Denpasar: rute antarpulau terkunci sampai terminal cukup tinggi kelasnya', () => {
-    let s = sampaiDenpasar(kaya(stateOtomatis()));
-    // Tipe C: Lampung butuh Tipe B walau uangnya cukup.
-    expect(kelasKurangJurusan(s)).toBe(EKONOMI.jurusan[indeks('LAMPUNG')]!.kelasTerminal);
-    expect(bisaBukaJurusan(s)).toBe(false);
-    expect(bukaJurusan(s)).toBe(s);
-    s = kelas(s, 1);
-    expect(kelasKurangJurusan(s)).toBeNull();
-    const multSebelum = multJurusan(s);
-    s = bukaJurusan(s);
-    expect(s.terminal.jurusanBuka).toBe(indeks('LAMPUNG') + 1);
-    expect(multJurusan(s)).toBeCloseTo(multSebelum + EKONOMI.jurusan[indeks('LAMPUNG')]!.bonusTiket, 9);
-    // PO kotanya langsung bergabung.
-    expect(s.armada.po).toContain('sigerSakti');
-    s = bukaJurusan(s);
-    expect(s.terminal.jurusanBuka).toBe(indeks('PALEMBANG') + 1);
-    // Mataram butuh Tipe A.
-    expect(kelasKurangJurusan(s)).toBe(2);
-    expect(bukaJurusan(s)).toBe(s);
-    s = kelas(s, 3);
-    for (let i = 0; i < 20; i++) s = bukaJurusan(s);
-    expect(s.terminal.jurusanBuka).toBe(EKONOMI.jurusan.length);
-    expect(s.armada.po).toEqual(expect.arrayContaining(['rinjaniIndah', 'rumahGadang', 'danauToba', 'kopiGayo']));
-    expect(bisaBukaJurusan(s)).toBe(false);
+  it('rute antarpulau dilayani PO-nya hanya setelah terminal cukup tinggi kelasnya', () => {
+    // Siger Sakti: daftar butuh Tipe B; Lampung dilayani sejak Lv 1, Palembang di Lv 6.
+    let s = denganPo(denganLevelTerminal(stateOtomatis(), levelMinimalKelas(1)), 'sigerSakti');
+    expect(dilayani(s)).toEqual(['JAKARTA', 'LAMPUNG']);
+    s = denganPo(s, 'sigerSakti', { level: EKONOMI.mitra.levelJurusan[1]! });
+    expect(dilayani(s)).toEqual(['JAKARTA', 'LAMPUNG', 'PALEMBANG']);
+    // Kecak Laju di Lv 12: Mataram (rute ketiganya) menunggu Tipe A.
+    s = denganPo(s, 'kecakLaju', { level: LEVEL_SEMUA_JURUSAN });
+    expect(dilayani(s)).not.toContain('MATARAM');
+    expect(dilayani(denganLevelTerminal(s, levelMinimalKelas(2)))).toContain('MATARAM');
   });
 
   it('pencapaian: Jawa–Bali lengkap, antarpulau pertama, lintas Nusantara', () => {
-    let s = tick(sampaiDenpasar(kaya(stateOtomatis())), 0.1);
+    const jawaBali: PoId[] = ['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa'];
+    let s = tick(denganBanyakPo(stateOtomatis(), jawaBali), 0.1);
+    expect(dilayani(s)).toHaveLength(jumlahJurusanDarat());
     expect(s.pencapaian.tercapai).toContain('jurusanSemua');
     expect(s.pencapaian.tercapai).not.toContain('antarpulau');
-    s = tick(bukaJurusan(kelas(s, 3)), 0.1);
+    s = tick(denganPo(denganLevelTerminal(s, levelMinimalKelas(1)), 'sigerSakti'), 0.1);
     expect(s.pencapaian.tercapai).toContain('antarpulau');
     expect(s.pencapaian.tercapai).not.toContain('lintasNusantara');
-    for (let i = 0; i < 20; i++) s = bukaJurusan(s);
+    s = denganBanyakPo(denganLevelTerminal(s, levelMinimalKelas(3)), ['sigerSakti', 'rinjaniIndah', 'rumahGadang', 'danauToba']);
+    expect(dilayani(s)).toHaveLength(EKONOMI.jurusan.length);
     expect(tick(s, 0.1).pencapaian.tercapai).toContain('lintasNusantara');
   });
 
-  it('tersimpan: jurusan antarpulau yang terbuka ikut dimuat', () => {
-    let s = kelas(sampaiDenpasar(kaya(stateOtomatis())), 3);
-    for (let i = 0; i < 3; i++) s = bukaJurusan(s);
-    expect(deserialisasi(serialisasi(s), T0).terminal.jurusanBuka).toBe(jumlahJurusanDarat() + 3);
-  });
-
-  it('model tab Jurusan: tanda feri, penyeberangan & syarat kelas jurusan berikutnya', () => {
-    const s = sampaiDenpasar(kaya(stateOtomatis()));
-    const j = buatModel(s).jurusan;
-    expect(j.daftar.filter((d) => d.feri !== null)).toHaveLength(EKONOMI.jurusan.length - jumlahJurusanDarat());
-    expect(j.berikutnya).toMatchObject({ nama: 'LAMPUNG', feri: 'Merak–Bakauheni', kurangKelas: 1, bisa: false, po: 'sigerSakti' });
-    expect(buatModel(kelas(s, 1)).jurusan.berikutnya).toMatchObject({ kurangKelas: null, bisa: true });
+  it('model kartu PO: jurusan antarpulau bertanda feri, dengan syarat level PO atau kelas terminal', () => {
+    const s = denganPo(denganLevelTerminal(stateOtomatis(), levelMinimalKelas(1)), 'kecakLaju', { level: LEVEL_SEMUA_JURUSAN });
+    const kecak = buatModel(s).mitra.terdaftar.find((p) => p.id === 'kecakLaju')!;
+    const mataram = kecak.jurusan.find((j) => j.nama === 'MATARAM')!;
+    expect(mataram).toMatchObject({ feri: 'Padangbai–Lembar', aktif: false, kurangKelas: 2, levelBuka: LEVEL_SEMUA_JURUSAN });
+    expect(kecak.jurusan.find((j) => j.nama === 'DENPASAR')).toMatchObject({ feri: null, aktif: true });
+    const siger = buatModel(denganPo(s, 'sigerSakti')).mitra.terdaftar.find((p) => p.id === 'sigerSakti')!;
+    expect(siger.jurusan.find((j) => j.nama === 'PALEMBANG')).toMatchObject({ feri: 'Merak–Bakauheni', aktif: false, kurangKelas: null, levelBuka: 6 });
   });
 });
 
@@ -96,19 +74,34 @@ describe('rute antarpulau di adegan', () => {
     expect([...semua].sort((a, b) => a - b)).toEqual(TUJUAN_BUS.map((_, i) => i));
     const laut = KELOMPOK_PARKIR.flatMap((k) => k.antarpulau);
     expect([...laut].sort((a, b) => a - b)).toEqual(TUJUAN_BUS.map((_, i) => i).filter((i) => jurusanAntarpulau(i)));
-    for (const k of KELOMPOK_PARKIR) {
-      // Urut dibuka, dan kota darat kelompok selalu terbuka lebih dulu (papan bertingkat).
-      expect([...k.antarpulau]).toEqual([...k.antarpulau].sort((a, b) => a - b));
-      const darat = k.tujuan.filter((t) => !k.antarpulau.includes(t));
-      expect(Math.max(...darat)).toBeLessThan(Math.min(...k.antarpulau));
-    }
+    for (const k of KELOMPOK_PARKIR) expect([...k.antarpulau]).toEqual([...k.antarpulau].sort((a, b) => a - b));
   });
 
-  it('rambu pelabuhan: Merak muncul bersama Lampung, Padangbai bersama Mataram', () => {
-    const darat = jumlahJurusanDarat();
+  it('mask jurusan: dari daftar dilayani, n jurusan pertama, dan semua', () => {
+    expect(maskJurusan([true, false, true])).toBe(0b101);
+    expect(maskAwal(3)).toBe(0b111);
+    expect(maskAwal(TUJUAN_BUS.length)).toBe(MASK_SEMUA_JURUSAN);
+    expect(maskJurusan(TUJUAN_BUS.map(() => true))).toBe(MASK_SEMUA_JURUSAN);
+  });
+
+  it('rambu pelabuhan mengikuti rute feri yang dilayani: Merak untuk Sumatra, Padangbai untuk Nusa Tenggara', () => {
+    const darat = maskAwal(jumlahJurusanDarat());
     expect(pelabuhanTerbuka(darat)).toEqual({ barat: null, timur: null });
-    expect(pelabuhanTerbuka(indeks('LAMPUNG') + 1)).toEqual({ barat: 'MERAK', timur: null });
-    expect(pelabuhanTerbuka(indeks('MATARAM') + 1)).toEqual({ barat: 'MERAK', timur: 'PADANGBAI' });
-    expect(pelabuhanTerbuka(EKONOMI.jurusan.length)).toEqual({ barat: 'MERAK', timur: 'PADANGBAI' });
+    expect(pelabuhanTerbuka(darat + bit('LAMPUNG'))).toEqual({ barat: 'MERAK', timur: null });
+    // Tidak harus urut: Mataram saja tanpa Lampung.
+    expect(pelabuhanTerbuka(bit('JAKARTA') + bit('MATARAM'))).toEqual({ barat: null, timur: 'PADANGBAI' });
+    expect(pelabuhanTerbuka(MASK_SEMUA_JURUSAN)).toEqual({ barat: 'MERAK', timur: 'PADANGBAI' });
+  });
+
+  it('papan pulau kelompok: tutup, terbuka, lalu baris kedua berisi rute antarpulau yang dilayani', () => {
+    const g = KELOMPOK_PARKIR[0]!; // JAKARTA · BANDUNG, antarpulau LAMPUNG & PALEMBANG
+    expect(g.antarpulau.map((t) => TUJUAN_BUS[t])).toEqual(['LAMPUNG', 'PALEMBANG']);
+    expect(kunciPapanPulau(g.tujuan, g.antarpulau, bit('SEMARANG'))).toBe(0);
+    expect(kunciPapanPulau(g.tujuan, g.antarpulau, bit('JAKARTA'))).toBe(1);
+    expect(kunciPapanPulau(g.tujuan, g.antarpulau, bit('JAKARTA') + bit('LAMPUNG'))).toBe(2);
+    expect(kunciPapanPulau(g.tujuan, g.antarpulau, bit('JAKARTA') + bit('PALEMBANG'))).toBe(3);
+    expect(kunciPapanPulau(g.tujuan, g.antarpulau, bit('JAKARTA') + bit('LAMPUNG') + bit('PALEMBANG'))).toBe(4);
+    // Hanya rute antarpulaunya yang dilayani: papan tetap terbuka.
+    expect(kunciPapanPulau(g.tujuan, g.antarpulau, bit('LAMPUNG'))).toBe(2);
   });
 });

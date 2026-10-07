@@ -26,7 +26,7 @@ Beberapa fitur terbaru di repo mungkin belum dirilis ke situs:
 | 09 | [Data Model / ERD](09-data-model-erd.md) | Struktur save, dokumen cloud, tabel database, relasinya |
 | 10 | [API Specification](10-api-specification.md) | Endpoint dan kontrak komunikasi game ↔ server |
 | 11 | [MVP Definition](11-mvp-definition.md) | Batasan versi pertama dan kriteria rilisnya |
-| 12 | [Rancangan Ekonomi v2: Mitra PO](12-rancangan-ekonomi-po.md) | **Usulan, belum diimplementasi.** Loket milik PO, level PO & terminal, kontrak, reputasi, perluasan terminal, Renovasi, hasil simulasi |
+| 12 | [Rancangan Ekonomi v2: Mitra PO](12-rancangan-ekonomi-po.md) | **Diimplementasi sebagian** (cabang `ekonomi-v2`). Loket milik PO, level PO & terminal, kontrak, reputasi, perluasan terminal, Renovasi, hasil simulasi |
 
 ## Istilah yang sering dipakai
 

@@ -39,9 +39,9 @@ export const PENCAPAIAN_IDS = [
 export type PencapaianId = (typeof PENCAPAIAN_IDS)[number];
 
 /**
- * Mitra PO (perusahaan otobus, nama fiktif) yang beroperasi di terminal. Tiap
- * PO yang bergabung menaikkan harga tiket dan menambah bus berlivery-nya ke
- * armada di adegan. Permanen: tidak ikut direset saat naik kelas terminal.
+ * Mitra PO (perusahaan otobus, nama fiktif). PO didaftarkan ke slot terminal,
+ * menyewa loket, dan membawa jurusan, kelas bus, serta bus berlivery-nya
+ * sendiri (lihat sim/mitra.ts & EKONOMI.mitra). Data tiap PO di EKONOMI.mitra.po.
  */
 export const PO_IDS = [
   'lumpiaKilat',
@@ -68,9 +68,9 @@ export const PO_IDS = [
 export type PoId = (typeof PO_IDS)[number];
 
 /**
- * Kelas bus armada terminal, urut dari yang paling sederhana. Ekonomi sudah ada
- * sejak awal; kelas lain didatangkan berurutan (dibeli) dan menaikkan harga
- * tiket. Diulang dari awal saat naik kelas terminal, seperti jurusan.
+ * Kelas bus, urut dari yang paling sederhana. Tiap PO mengoperasikan kelas
+ * yang terbuka seiring levelnya, dibatasi tingkat PO dan kelas terminal
+ * (lihat kelasAktif di sim/mitra.ts).
  */
 export const KELAS_BUS_IDS = ['ekonomi', 'patas', 'eksekutif', 'sleeper', 'tingkat'] as const;
 export type KelasBusId = (typeof KELAS_BUS_IDS)[number];

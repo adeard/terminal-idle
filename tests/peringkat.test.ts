@@ -23,7 +23,7 @@ import { mingguWib } from '../src/sim/tantangan';
 import { terapkanAksi } from '../src/sim/aksi';
 import { tengahMalamWib } from '../src/sim/event';
 import { deserialisasi, serialisasi } from '../src/sim/save';
-import { aturIkutPeringkat, aturNamaTerminal, naikKelas, perbaruiTantangan, type GameState } from '../src/sim/state';
+import { aturIkutPeringkat, aturNamaTerminal, perbaruiTantangan, renovasi, type GameState } from '../src/sim/state';
 import Decimal from 'break_infinity.js';
 import { jalankan, stateOtomatis } from './helpers';
 
@@ -86,11 +86,12 @@ describe('papan peringkat: aturan bersama', () => {
 describe('papan peringkat di game', () => {
   const siap = (): GameState => perbaruiTantangan({ ...stateOtomatis({ peron: 20, loket: 20, keberangkatan: 20 }), uang: new Decimal(1e6) }, RABU);
 
-  it('penumpang minggu ini dihitung dari main aktif, tetap walau naik kelas, mulai dari nol di minggu baru', () => {
+  it('penumpang minggu ini dihitung dari main aktif, tetap walau Renovasi, mulai dari nol di minggu baru', () => {
     let s = jalankan(siap(), 30);
     expect(s.tantangan.penumpang).toBeGreaterThan(0);
     expect(s.tantangan.penumpang).toBeCloseTo(s.statistik.totalPenumpang, 6);
-    const naik = naikKelas({ ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e8) } });
+    const naik = renovasi({ ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e9) } });
+    expect(naik.renovasi.jumlah).toBe(1);
     expect(naik.tantangan.penumpang).toBe(s.tantangan.penumpang);
     s = perbaruiTantangan(s, RABU + 7 * 86_400_000);
     expect(s.tantangan.penumpang).toBe(0);

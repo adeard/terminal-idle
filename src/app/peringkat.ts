@@ -14,7 +14,7 @@
  */
 import { PILIHAN_KECEPATAN } from '../config/waktu.config';
 import { MAKS_NAMA_TERMINAL, rapikanNamaTerminal } from '../sim/profil';
-import type { GameState } from '../sim/state';
+import { kelasTerminal, type GameState } from '../sim/state';
 import { mingguWib } from '../sim/tantangan';
 
 /** Banyaknya baris teratas yang ditampilkan papan. */
@@ -268,7 +268,7 @@ export function peringkatBaris(daftar: readonly EntriPeringkat[]): number[] {
 export function kirimanDari(state: GameState): KirimanSkor | null {
   const t = state.tantangan;
   if (!state.profil.ikutPeringkat || t.minggu === null) return null;
-  return { minggu: t.minggu, skor: Math.floor(t.penumpang), kelas: state.prestige.jumlahReset, nama: state.profil.namaTerminal };
+  return { minggu: t.minggu, skor: Math.floor(t.penumpang), kelas: kelasTerminal(state), nama: state.profil.namaTerminal };
 }
 
 /** Galat yang menghentikan pengiriman sampai sesi dimuat ulang. */

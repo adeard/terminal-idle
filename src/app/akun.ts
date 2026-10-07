@@ -16,7 +16,7 @@
 import type Decimal from 'break_infinity.js';
 import { SIMULASI, type KonfigSimulasi } from '../config/economy.config';
 import { deserialisasi } from '../sim/save';
-import type { GameState } from '../sim/state';
+import { kelasTerminal, levelTerminal, type GameState } from '../sim/state';
 import { TAHAP_IDS } from '../sim/tahap';
 import { KUNCI_SAVE, type AlasanSimpan, type Logger, type Penyimpanan, type SlotSave } from './sesi';
 
@@ -61,8 +61,10 @@ export interface PenyimpananAwan {
 export interface RingkasanSave {
   readonly uang: Decimal;
   readonly totalPendapatan: Decimal;
-  readonly poinPrestige: Decimal;
-  readonly jumlahReset: number;
+  readonly poinRenovasi: Decimal;
+  /** Level terminal & kelas yang mengikutinya. */
+  readonly levelTerminal: number;
+  readonly kelasTerminal: number;
   readonly totalLevel: number;
   readonly waktuMainDetik: number;
   readonly waktuTerakhirMs: number;
@@ -115,8 +117,9 @@ export function ringkasSave(isi: string | null): RingkasanSave | null {
   return {
     uang: s.uang,
     totalPendapatan: s.statistik.totalPendapatanSepanjangMasa,
-    poinPrestige: s.prestige.poin,
-    jumlahReset: s.prestige.jumlahReset,
+    poinRenovasi: s.renovasi.poin,
+    levelTerminal: levelTerminal(s),
+    kelasTerminal: kelasTerminal(s),
     totalLevel: TAHAP_IDS.reduce((n, id) => n + s.terminal.tahap[id].level, 0),
     waktuMainDetik: s.statistik.waktuMainDetik,
     waktuTerakhirMs: s.waktuTerakhirMs,
@@ -125,7 +128,7 @@ export function ringkasSave(isi: string | null): RingkasanSave | null {
 
 /** Save tanpa pendapatan sama sekali (baru, kosong, atau korup) boleh ditimpa tanpa bertanya. */
 export function adaProgres(r: RingkasanSave | null): r is RingkasanSave {
-  return r !== null && (r.totalPendapatan.gt(0) || r.jumlahReset > 0);
+  return r !== null && (r.totalPendapatan.gt(0) || r.levelTerminal > 1);
 }
 
 /** Dua save berbeda: pilih otomatis kalau salah satunya tanpa progres, selain itu tanya. */

@@ -13,7 +13,7 @@
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import type { Aksi } from '../sim/aksi';
-import { kepuasanTerminal, type GameState } from '../sim/state';
+import { jurusanDilayani, kelasTerminal, kepuasanTerminal, levelTerminal, type GameState } from '../sim/state';
 import { TAHAP_IDS } from '../sim/tahap';
 
 export type NilaiAnalitik = string | number | boolean;
@@ -78,9 +78,11 @@ export function ringkasanSesi(awal: GameState, akhir: GameState, upgrade: number
     penumpang: Math.max(0, Math.round(akhir.statistik.totalPenumpang - awal.statistik.totalPenumpang)),
     pendapatan_log10: pendapatan.gt(1) ? Math.round(pendapatan.log10() * 10) / 10 : 0,
     upgrade,
-    kelas: akhir.prestige.jumlahReset,
+    kelas: kelasTerminal(akhir),
+    level_terminal: levelTerminal(akhir),
     jalur: akhir.terminal.jalur,
-    jurusan: akhir.terminal.jurusanBuka,
+    jurusan: jurusanDilayani(akhir).filter(Boolean).length,
+    po: akhir.mitra.terdaftar.length,
     level_rata: Math.round(level),
     kepuasan: Math.round(kepuasanTerminal(akhir).nilai * 100),
   };
@@ -102,26 +104,30 @@ export function peristiwaAksi(aksi: Aksi, lama: GameState, baru: GameState, cfg:
       const level = baru.terminal.fasilitas[aksi.fasilitas];
       return level === 1 || TONGGAK_LEVEL.has(level) ? [{ nama: 'bangun_fasilitas', data: { fasilitas: aksi.fasilitas, level } }] : [];
     }
-    case 'bukaJurusan': {
-      const jumlah = baru.terminal.jurusanBuka;
-      return [{ nama: 'buka_jurusan', data: { jurusan: cfg.jurusan[jumlah - 1]?.nama ?? String(jumlah), jumlah } }];
-    }
     case 'bukaJalur':
       return [{ nama: 'buka_jalur', data: { jalur: baru.terminal.jalur } }];
     case 'beliTeknologi':
       return [{ nama: 'beli_teknologi', data: { teknologi: aksi.teknologi } }];
-    case 'beliKelasBus':
-      return [{ nama: 'beli_kelas_bus', data: { kelas: aksi.kelas } }];
-    case 'aturHargaJurusan':
-      return [{ nama: 'atur_harga', data: { jurusan: cfg.jurusan[aksi.indeks]?.nama ?? String(aksi.indeks) } }];
-    case 'aturTambahanKelas':
-      return [{ nama: 'atur_harga', data: { kelas: aksi.kelas } }];
-    case 'kontrakPo':
-      return [{ nama: 'kontrak_po', data: { po: aksi.po } }];
+    case 'bangunLoket': {
+      const level = baru.terminal.tahap.loket.level;
+      return TONGGAK_LEVEL.has(level) ? [{ nama: 'upgrade_tahap', data: { tahap: 'loket', level } }] : [];
+    }
+    case 'isiLoketKosong':
+      return [];
+    case 'daftarPo':
+      return [{ nama: 'daftar_po', data: { po: aksi.po, jumlah: baru.mitra.terdaftar.length } }];
+    case 'putusPo':
+      return [{ nama: 'putus_po', data: { po: aksi.po } }];
+    case 'perpanjangPo':
+      return [{ nama: 'perpanjang_po', data: { po: aksi.po } }];
+    case 'aturHargaPo':
+      return [{ nama: 'atur_harga', data: { po: aksi.po, jurusan: cfg.jurusan[aksi.jurusan]?.nama ?? String(aksi.jurusan) } }];
+    case 'mulaiPerluasan':
+      return [{ nama: 'mulai_perluasan', data: { tahap: baru.perkembangan.perluasan + 1 } }];
+    case 'renovasi':
+      return [{ nama: 'renovasi', data: { jumlah: baru.renovasi.jumlah, poin: baru.renovasi.poin.sub(lama.renovasi.poin).toNumber() } }];
     case 'klaimEvent':
       return [{ nama: 'klaim_event', data: { edisi: lama.event.edisi ?? '', tahap: baru.event.diklaim } }];
-    case 'naikKelas':
-      return [{ nama: 'naik_kelas', data: { kelas: baru.prestige.jumlahReset, poin: baru.prestige.poin.sub(lama.prestige.poin).toNumber() } }];
     case 'klaimTantangan':
       return [{ nama: 'klaim_tantangan', data: { jenis: lama.tantangan.daftar[aksi.indeks]?.jenis ?? '', minggu: lama.tantangan.minggu ?? '' } }];
     case 'klaimTarget':
@@ -167,7 +173,7 @@ export class PencatatAnalitik implements Analitik {
   }
 
   catatAksi(aksi: Aksi, lama: GameState, baru: GameState): void {
-    if (aksi.jenis === 'upgrade' && baru !== lama) this.jumlahUpgrade++;
+    if ((aksi.jenis === 'upgrade' || aksi.jenis === 'bangunLoket') && baru !== lama) this.jumlahUpgrade++;
     for (const p of peristiwaAksi(aksi, lama, baru, this.cfg)) this.catat(p.nama, p.data);
   }
 

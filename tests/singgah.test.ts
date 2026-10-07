@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { EKONOMI } from '../src/config/economy.config';
 import { acakBerbenih, DuniaVisual, type OrangVisual } from '../src/game/dunia-visual';
 import { loketBuka } from '../src/game/kehidupan-malam';
-import { hitungLajuVisual, type LajuVisual } from '../src/game/laju';
+import { hitungLajuVisual, maskJurusanState, type LajuVisual } from '../src/game/laju';
 import {
   BILIK,
   BLOK_KURSI,
@@ -26,7 +25,7 @@ import {
   type Titik,
   type TitikSinggah,
 } from '../src/game/tata-letak';
-import { ruasBerpotongan, stateOtomatis } from './helpers';
+import { denganLevelTerminal, denganPo, ruasBerpotongan, stateOtomatis } from './helpers';
 
 const JK: readonly JenisKelamin[] = ['pria', 'wanita'];
 type Ruas = readonly [number, number, number, number];
@@ -244,11 +243,14 @@ describe('penumpang mampir', () => {
 
   it('beli tiket tidak instan: beberapa detik per pembeli, dan jendela yang buka tetap bukan hambatan palsu', () => {
     // Beberapa benih: antrean dua baris yang bergerombol per baris dulu hanya menumpuk pada sebagian benih.
-    for (const [jurusan, benih] of [EKONOMI.jurusanAwal, EKONOMI.jurusan.length].flatMap((j) => [0, 2, 5].map((b) => [j, b] as const))) {
-      const s = stateOtomatis({ peron: 120, loket: 200, keberangkatan: 120 });
-      // Seperti di game: hanya jendela jurusan yang dibuka yang melayani.
-      const laju: LajuVisual = { ...hitungLajuVisual({ ...s, terminal: { ...s.terminal, jurusanBuka: jurusan } }), loketBuka: loketBuka(12, jurusan) };
-      const dunia = new DuniaVisual({ acak: acakBerbenih(43 + jurusan + benih * 100), wanita });
+    const awal = stateOtomatis({ peron: 120, loket: 200, keberangkatan: 120 });
+    // Semua jurusan dilayani: empat PO di Lv 12 di terminal Terpadu.
+    let semua = denganLevelTerminal(awal, 30);
+    for (const id of ['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa', 'sigerSakti', 'rinjaniIndah', 'rumahGadang', 'danauToba'] as const) semua = denganPo(semua, id, { level: 12 });
+    for (const [k, s, benih] of [awal, semua].flatMap((st, k) => [0, 2, 5].map((b) => [k, st, b] as const))) {
+      // Seperti di game: hanya jendela jurusan yang dilayani yang melayani.
+      const laju: LajuVisual = { ...hitungLajuVisual(s), loketBuka: loketBuka(12, maskJurusanState(s)) };
+      const dunia = new DuniaVisual({ acak: acakBerbenih(43 + k * 14 + benih * 100), wanita });
       const lama: number[] = [];
       const dicatat = new Set<number>();
       let berdiri = 0;

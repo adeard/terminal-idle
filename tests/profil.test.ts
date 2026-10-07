@@ -4,7 +4,7 @@ import { peristiwaAksi } from '../src/app/analitik';
 import { terapkanAksi } from '../src/sim/aksi';
 import { MAKS_NAMA_TERMINAL, rapikanNamaTerminal } from '../src/sim/profil';
 import { deserialisasi, serialisasi } from '../src/sim/save';
-import { aturNamaTerminal, naikKelas } from '../src/sim/state';
+import { aturNamaTerminal, renovasi } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
 import { TEKS } from '../src/ui/teks';
 import { stateOtomatis, T0 } from './helpers';
@@ -22,14 +22,14 @@ describe('nama terminal', () => {
     expect(rapikanNamaTerminal('Terminal Bersama Kita Semua Jaya')).toBe('Bersama Kita Semua');
   });
 
-  it('aksi mengganti nama; nama yang sama tidak mengubah state; tetap walau naik kelas', () => {
+  it('aksi mengganti nama; nama yang sama tidak mengubah state; tetap walau Renovasi', () => {
     const s = { ...stateOtomatis(), uang: new Decimal(1e6) };
     expect(s.profil.namaTerminal).toBe('');
     const n = terapkanAksi(s, { jenis: 'aturNamaTerminal', nama: ' Terminal Sukamaju ' });
     expect(n.profil.namaTerminal).toBe('Sukamaju');
     expect(aturNamaTerminal(n, 'Sukamaju')).toBe(n);
-    const naik = naikKelas({ ...n, statistik: { ...n.statistik, totalPendapatanRun: new Decimal(1e8) } });
-    expect(naik.prestige.jumlahReset).toBe(1);
+    const naik = renovasi({ ...n, statistik: { ...n.statistik, totalPendapatanRun: new Decimal(1e9) } });
+    expect(naik.renovasi.jumlah).toBe(1);
     expect(naik.profil.namaTerminal).toBe('Sukamaju');
   });
 
@@ -52,9 +52,9 @@ describe('nama terminal', () => {
     expect(() => deserialisasi(JSON.stringify(mentah), T0)).toThrow();
   });
 
-  it('judul kartu kelas & keterangan foto memakai nama', () => {
+  it('judul kartu terminal & keterangan foto memakai nama', () => {
     const n = aturNamaTerminal(stateOtomatis(), 'Sukamaju');
-    expect(buatModel(n).kelas.nama).toBe('Sukamaju');
+    expect(buatModel(n).terminal.nama).toBe('Sukamaju');
     expect(TEKS.kelasJudul('Tipe C', 'Sukamaju')).toBe('Terminal Sukamaju · Tipe C');
     expect(TEKS.kelasJudul('Tipe C')).toBe('Terminal Tipe C');
     expect(TEKS.fotoKeterangan('Tipe A', 5, '120', 3, 'Sukamaju')).toBe('Terminal Sukamaju · Tipe A · 5 jurusan · 120 pnp/dtk · 3 PO');

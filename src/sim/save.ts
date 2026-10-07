@@ -9,35 +9,86 @@
  * - Field tak dikenal diabaikan.
  * - Perubahan bentuk yang tidak additive: naikkan VERSI_SKEMA dan tambah
  *   fungsi di MIGRASI.
+ *
+ * Versi 2 = ekonomi mitra PO (documents/12-rancangan-ekonomi-po.md, bagian 13
+ * untuk migrasi dari versi 1).
  */
 import Decimal from 'break_infinity.js';
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
-import { FASILITAS_IDS, isEventId, isPencapaianId, isPoId, KELAS_BUS_IDS, TEKNOLOGI_IDS, type FasilitasId, type KelasBusId, type PencapaianId, type PoId, type TeknologiId } from './fitur';
-import { buatHargaAwal, buatRekorAwal, buatStateBaru, buatTahapAwal, buatTantanganAwal, ID_TERMINAL_AWAL, rapikanHarga, rapikanTambahan, type RekorState, type TantanganAktif, type TantanganState, type ArmadaState, type EventState, type GameState, type HadiahState, type HargaState, type HarianState, type SewaKiosState, type PencapaianState, type ProfilState, type TahapState, type TransaksiState } from './state';
+import { FASILITAS_IDS, isEventId, isPencapaianId, isPoId, KELAS_BUS_IDS, PO_IDS, TEKNOLOGI_IDS, type FasilitasId, type PencapaianId, type PoId, type TeknologiId } from './fitur';
+import { kelasDariLevel, levelMinimalKelas, levelTerminalDariXp, slotPo, xpKumulatifTerminal } from './level-terminal';
+import { tingkatPo, xpKumulatifPo } from './mitra';
+import { bonusJatahPerluasan } from './perluasan';
+import {
+  aturLevelLoket,
+  buatMitraAwal,
+  buatRekorAwal,
+  buatStateBaru,
+  buatTahapAwal,
+  buatTantanganAwal,
+  DETIK_SEHARI,
+  ID_TERMINAL_AWAL,
+  rapikanHarga,
+  type EventState,
+  type GameState,
+  type HadiahState,
+  type HargaPo,
+  type HarianState,
+  type MitraState,
+  type PencapaianState,
+  type PerkembanganState,
+  type PoTerdaftar,
+  type ProfilState,
+  type RekorState,
+  type RenovasiState,
+  type RiwayatPo,
+  type SewaKiosState,
+  type TahapState,
+  type TantanganAktif,
+  type TantanganState,
+  type TransaksiState,
+} from './state';
 import { rapikanNamaTerminal } from './profil';
 import { isJenisTantangan } from './tantangan';
 import { TAHAP_IDS, type TahapId } from './tahap';
 import { waktuTerminal } from './waktu';
 
-export const VERSI_SKEMA = 1;
+export const VERSI_SKEMA = 2;
 
-/** Bentuk JSON save versi 1. Semua Decimal disimpan sebagai string "<mantissa>e<exponent>". */
-export interface SaveV1 {
-  readonly schemaVersion: 1;
+/** PO terdaftar di save. */
+export interface SimpanPo {
+  readonly id: string;
+  readonly xp: number;
+  readonly loket: number;
+  readonly rekorLoket: number;
+  readonly reputasi: number;
+  /** Indeks jurusan → persen harga normal. */
+  readonly harga: Readonly<Record<string, number>>;
+  readonly kontrakDetik: number;
+}
+
+/** Bentuk JSON save versi 2. Semua Decimal disimpan sebagai string "<mantissa>e<exponent>". */
+export interface SaveV2 {
+  readonly schemaVersion: 2;
   readonly waktuTerakhirMs: number;
   readonly uang: string;
   readonly terminal: {
     readonly id: string;
+    /** Level Loket dihitung ulang dari loket PO + loket kosong saat dimuat. */
     readonly tahap: Record<TahapId, { readonly level: number; readonly kepala: { readonly direkrut: boolean } }>;
     readonly fasilitas: Record<FasilitasId, number>;
-    readonly jurusanBuka: number;
     readonly teknologi: Record<TeknologiId, boolean>;
-    /** Kelas bus yang beroperasi. Save lama tanpa blok ini: ekonomi saja. */
-    readonly kelasBus?: Record<KelasBusId, boolean>;
-    /** Jalur bus yang beroperasi. Save lama tanpa field ini: sesuai tonggak level yang sudah dicapai. */
-    readonly jalur?: number;
+    readonly jalur: number;
+    readonly loketKosong: number;
   };
-  readonly prestige: { readonly poin: string; readonly jumlahReset: number };
+  readonly mitra: {
+    readonly terdaftar: readonly SimpanPo[];
+    readonly riwayat: Readonly<Record<string, Omit<SimpanPo, 'id' | 'loket' | 'kontrakDetik'>>>;
+    readonly jedaSampai: Readonly<Record<string, number>>;
+    readonly hadiahEvent: readonly string[];
+  };
+  readonly perkembangan: PerkembanganState;
+  readonly renovasi: { readonly poin: string; readonly jumlah: number };
   readonly statistik: {
     readonly totalPendapatanRun: string;
     readonly totalPendapatanSepanjangMasa: string;
@@ -52,10 +103,6 @@ export interface SaveV1 {
   readonly sewaKios?: { readonly terkumpul: string; readonly terakhir: string; readonly hariTerakhir: number };
   /** Boost & Bus Emas yang sedang berjalan. Save lama tanpa blok ini mulai tanpa boost. */
   readonly hadiah?: { readonly boostDetik: number; readonly busEmas: { readonly tungguDetik: number; readonly aktifDetik: number; readonly jumlah: number } };
-  /** Mitra PO yang sudah bergabung. Save lama tanpa blok ini mulai tanpa PO (yang syaratnya terpenuhi bergabung di tick pertama). */
-  readonly armada?: { readonly po: readonly string[] };
-  /** Harga tiket (persen harga normal): harga tiap jurusan & tambahan tiap kelas bus. Save lama tanpa blok ini: semua normal. */
-  readonly harga?: { readonly jurusan: readonly number[]; readonly tambahanKelas: Record<KelasBusId, number> };
   /** Sisa penumpang/bus yang belum jadi transaksi utuh. Save lama tanpa blok ini: nol. */
   readonly transaksi?: { readonly sisaPenumpang: number; readonly sisaBus: number };
   /** Rekor pribadi & hitungan hari ini. Save lama tanpa blok ini mulai dari nol. */
@@ -78,7 +125,9 @@ type DataMentah = Record<string, unknown>;
 export type FungsiMigrasi = (data: DataMentah) => DataMentah;
 
 /** MIGRASI[n] mengubah data mentah versi n menjadi versi n + 1. */
-export const MIGRASI: Readonly<Record<number, FungsiMigrasi>> = {};
+export const MIGRASI: Readonly<Record<number, FungsiMigrasi>> = {
+  1: (d) => migrasiV1keV2(d),
+};
 
 export class SaveTidakValidError extends Error {
   constructor(pesan: string) {
@@ -119,12 +168,24 @@ export function stringKeDecimal(nilai: unknown, jalur: string): Decimal {
 // ---------------------------------------------------------------------------
 // Serialisasi
 
-export function keSaveV1(state: GameState): SaveV1 {
+const simpanHarga = (h: HargaPo): Record<string, number> => {
+  const hasil: Record<string, number> = {};
+  for (const [j, persen] of Object.entries(h)) if (persen !== undefined) hasil[j] = persen;
+  return hasil;
+};
+
+export function keSaveV2(state: GameState): SaveV2 {
   const tahap = {} as Record<TahapId, { level: number; kepala: { direkrut: boolean } }>;
   for (const id of TAHAP_IDS) {
     const t = state.terminal.tahap[id];
     tahap[id] = { level: t.level, kepala: { direkrut: t.kepala.direkrut } };
   }
+  const riwayat: Record<string, Omit<SimpanPo, 'id' | 'loket' | 'kontrakDetik'>> = {};
+  for (const [id, r] of Object.entries(state.mitra.riwayat)) {
+    if (r) riwayat[id] = { xp: r.xp, reputasi: r.reputasi, rekorLoket: r.rekorLoket, harga: simpanHarga(r.harga) };
+  }
+  const jedaSampai: Record<string, number> = {};
+  for (const [id, detik] of Object.entries(state.mitra.jedaSampai)) if (detik !== undefined) jedaSampai[id] = detik;
   return {
     schemaVersion: VERSI_SKEMA,
     waktuTerakhirMs: state.waktuTerakhirMs,
@@ -133,12 +194,18 @@ export function keSaveV1(state: GameState): SaveV1 {
       id: state.terminal.id,
       tahap,
       fasilitas: { ...state.terminal.fasilitas },
-      jurusanBuka: state.terminal.jurusanBuka,
       teknologi: { ...state.terminal.teknologi },
-      kelasBus: { ...state.terminal.kelasBus },
       jalur: state.terminal.jalur,
+      loketKosong: state.terminal.loketKosong,
     },
-    prestige: { poin: decimalKeString(state.prestige.poin), jumlahReset: state.prestige.jumlahReset },
+    mitra: {
+      terdaftar: state.mitra.terdaftar.map((p) => ({ id: p.id, xp: p.xp, loket: p.loket, rekorLoket: p.rekorLoket, reputasi: p.reputasi, harga: simpanHarga(p.harga), kontrakDetik: p.kontrakDetik })),
+      riwayat,
+      jedaSampai,
+      hadiahEvent: [...state.mitra.hadiahEvent],
+    },
+    perkembangan: { ...state.perkembangan },
+    renovasi: { poin: decimalKeString(state.renovasi.poin), jumlah: state.renovasi.jumlah },
     statistik: {
       totalPendapatanRun: decimalKeString(state.statistik.totalPendapatanRun),
       totalPendapatanSepanjangMasa: decimalKeString(state.statistik.totalPendapatanSepanjangMasa),
@@ -150,8 +217,6 @@ export function keSaveV1(state: GameState): SaveV1 {
     benihCuaca: state.benihCuaca,
     hadiah: { boostDetik: state.hadiah.boostDetik, busEmas: { ...state.hadiah.busEmas } },
     sewaKios: { terkumpul: decimalKeString(state.sewaKios.terkumpul), terakhir: decimalKeString(state.sewaKios.terakhir), hariTerakhir: state.sewaKios.hariTerakhir },
-    armada: { po: [...state.armada.po] },
-    harga: { jurusan: [...state.harga.jurusan], tambahanKelas: { ...state.harga.tambahanKelas } },
     transaksi: { ...state.transaksi },
     event: { ...state.event, aktif: state.event.aktif ? { ...state.event.aktif } : null, target: [...state.event.target] },
     profil: { namaTerminal: state.profil.namaTerminal, ikutPeringkat: state.profil.ikutPeringkat },
@@ -162,7 +227,7 @@ export function keSaveV1(state: GameState): SaveV1 {
 
 /** Panggil `tandaiWaktu(state, sekarang)` dulu supaya timestamp offline akurat. */
 export function serialisasi(state: GameState): string {
-  return JSON.stringify(keSaveV1(state));
+  return JSON.stringify(keSaveV2(state));
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +253,7 @@ export function deserialisasi(json: string, sekarangMs: number, cfg: KonfigEkono
   if (versi > VERSI_SKEMA) {
     throw new SaveTidakValidError(`schemaVersion ${versi} lebih baru dari yang didukung (${VERSI_SKEMA})`);
   }
-  return dariSaveV1(migrasikan(akar, versi), sekarangMs, cfg);
+  return dariSaveV2(migrasikan(akar, versi), sekarangMs, cfg);
 }
 
 /**
@@ -223,7 +288,81 @@ export function migrasikan(
   return hasil;
 }
 
-function dariSaveV1(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): GameState {
+// ---------------------------------------------------------------------------
+// Migrasi v1 → v2 (ekonomi mitra PO)
+
+const objekAtauNull = (v: unknown): DataMentah | null => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as DataMentah) : null);
+const angkaAtau = (v: unknown, bawaan: number): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : bawaan);
+
+/**
+ * Save v1 (prestige naik kelas, jurusan & kelas bus dibeli, harga per jurusan)
+ * → v2. Pemain lama tidak boleh dirugikan:
+ * - level terminal = dari total penumpang, tapi minimal setara kelasnya (Tipe B → 10, …);
+ *   tahap perluasan sampai level itu langsung jadi;
+ * - mitra PO yang sudah bergabung: yang nilainya tertinggi menempati slot, sisanya riwayat;
+ *   level awal PO cukup untuk kelas bus yang sudah dibeli DAN untuk menampung loket lama,
+ *   jadi kapasitas Loket tidak turun;
+ * - poin & jumlah prestige → poin & jumlah Renovasi (bonusnya sama);
+ * - harga tiket kembali normal; kontrak baru 14 hari terminal.
+ * Data mentah yang aneh dibiarkan; dariSaveV2 yang memvalidasi hasilnya.
+ */
+export function migrasiV1keV2(d: DataMentah, cfg: KonfigEkonomi = EKONOMI): DataMentah {
+  const terminal = objekAtauNull(d['terminal']) ?? {};
+  const tahap = objekAtauNull(terminal['tahap']) ?? {};
+  const levelLoketV1 = Math.max(1, Math.floor(angkaAtau(objekAtauNull(tahap['loket'])?.['level'], 1)));
+  const prestige = objekAtauNull(d['prestige']);
+  const kelasV1 = Math.floor(angkaAtau(prestige?.['jumlahReset'], 0));
+  const totalPenumpang = angkaAtau(objekAtauNull(d['statistik'])?.['totalPenumpang'], 0);
+
+  const xpTerminal = Math.max(totalPenumpang, xpKumulatifTerminal(levelMinimalKelas(kelasV1, cfg), cfg));
+  const level = levelTerminalDariXp(xpTerminal, cfg);
+  const perluasan = cfg.mitra.perluasan.filter((t) => t.level <= level).length;
+  const kelasTerminal = kelasDariLevel(level, cfg);
+
+  const armada = objekAtauNull(d['armada']);
+  const poV1 = Array.isArray(armada?.['po']) ? [...new Set((armada['po'] as unknown[]).filter(isPoId))] : [];
+  const hadiahEvent = poV1.filter((id) => cfg.mitra.po[id].sumber === 'hadiahEvent');
+  const calon: PoId[] = poV1.length > 0 ? poV1 : PO_IDS.filter((id) => cfg.mitra.po[id].sumber === 'awal');
+  // PO bernilai tertinggi (biaya daftar sebagai patokan tingkatnya) menempati slot lebih dulu.
+  const urut = [...calon].sort((a, b) => cfg.mitra.po[b].biayaDaftar - cfg.mitra.po[a].biayaDaftar);
+  const slot = Math.max(1, slotPo(level, perluasan, cfg));
+  const terdaftarId = urut.slice(0, slot);
+
+  const kelasBusV1 = objekAtauNull(terminal['kelasBus']);
+  const levelKelasBus = (id: PoId): number => {
+    let lv = 1;
+    KELAS_BUS_IDS.forEach((k, i) => {
+      if (i < tingkatPo(id, cfg).kelasMaks && kelasBusV1?.[k] === true && cfg.kelasBus[k].kelasTerminal <= kelasTerminal) lv = Math.max(lv, cfg.mitra.kelas[k].levelPo);
+    });
+    return lv;
+  };
+  const bonus = bonusJatahPerluasan(perluasan, cfg);
+  const m = cfg.mitra;
+  const levelUntukJatah = (n: number): number => (n <= m.jatahAwal + bonus ? 1 : 1 + Math.ceil((n - m.jatahAwal - bonus) / m.jatahPerLevel));
+  const totalLoket = Math.max(levelLoketV1, terdaftarId.length);
+  const terdaftar: SimpanPo[] = terdaftarId.map((id, i) => {
+    const loket = Math.floor(totalLoket / terdaftarId.length) + (i < totalLoket % terdaftarId.length ? 1 : 0);
+    const lv = Math.max(levelKelasBus(id), levelUntukJatah(loket));
+    return { id, xp: xpKumulatifPo(lv, cfg), loket, rekorLoket: loket, reputasi: tingkatPo(id, cfg).reputasiAwal, harga: {}, kontrakDetik: m.kontrak.hariHadiah * DETIK_SEHARI };
+  });
+  const riwayat: Record<string, Omit<SimpanPo, 'id' | 'loket' | 'kontrakDetik'>> = {};
+  for (const id of urut.slice(slot)) riwayat[id] = { xp: xpKumulatifPo(levelKelasBus(id), cfg), reputasi: tingkatPo(id, cfg).reputasiAwal, rekorLoket: 0, harga: {} };
+
+  const { jurusanBuka: _jurusan, kelasBus: _kelasBus, ...terminalBaru } = terminal;
+  const { armada: _armada, harga: _harga, prestige: _prestige, ...sisa } = d;
+  return {
+    ...sisa,
+    terminal: { ...terminalBaru, loketKosong: 0 },
+    mitra: { terdaftar, riwayat, jedaSampai: {}, hadiahEvent },
+    perkembangan: { xpTerminal, perluasan, proyekDetik: 0 },
+    renovasi: { poin: typeof prestige?.['poin'] === 'string' ? prestige['poin'] : '0e0', jumlah: kelasV1 },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Baca save v2
+
+function dariSaveV2(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): GameState {
   const awal = buatStateBaru(sekarangMs, cfg);
 
   const terminalMentah = wajibObjek(akar['terminal'], 'terminal');
@@ -234,19 +373,13 @@ function dariSaveV1(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
     tahap[id] = tahapMentah[id] === undefined ? buatTahapAwal() : bacaTahap(tahapMentah[id], `terminal.tahap.${id}`);
   }
 
-  const prestigeMentah = opsionalObjek(akar['prestige'], 'prestige');
   const statistikMentah = opsionalObjek(akar['statistik'], 'statistik');
-  // Fitur pengelolaan (fasilitas, jurusan, modernisasi, target, pencapaian): save lama tanpa blok ini mulai dari awal.
   const fasilitasMentah = opsionalObjek(terminalMentah['fasilitas'], 'terminal.fasilitas');
   const teknologiMentah = opsionalObjek(terminalMentah['teknologi'], 'terminal.teknologi');
-  const kelasBusMentah = opsionalObjek(terminalMentah['kelasBus'], 'terminal.kelasBus');
   const fasilitas = { ...awal.terminal.fasilitas };
   for (const id of FASILITAS_IDS) fasilitas[id] = opsional(fasilitasMentah?.[id], 0, wajibIntegerNonNegatif, `terminal.fasilitas.${id}`);
   const teknologi = { ...awal.terminal.teknologi };
   for (const id of TEKNOLOGI_IDS) teknologi[id] = opsional(teknologiMentah?.[id], false, wajibBoolean, `terminal.teknologi.${id}`);
-  const kelasBus = { ...awal.terminal.kelasBus };
-  // Ekonomi selalu beroperasi.
-  for (const id of KELAS_BUS_IDS) kelasBus[id] = id === 'ekonomi' || opsional(kelasBusMentah?.[id], false, wajibBoolean, `terminal.kelasBus.${id}`);
   // Save dari sebelum ada jalur: terminalnya tidak menyusut, jalur mengikuti tonggak level yang sudah dicapai.
   const jalurMaks = 1 + cfg.jalur.biaya.length;
   const jalurSimpan = terminalMentah['jalur'];
@@ -254,48 +387,31 @@ function dariSaveV1(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
     jalurSimpan === undefined
       ? Math.min(jalurMaks, 1 + cfg.milestone.filter((m) => Math.min(tahap.peron.level, tahap.keberangkatan.level) >= m).length)
       : Math.min(jalurMaks, Math.max(1, wajibIntegerNonNegatif(jalurSimpan, 'terminal.jalur')));
-  const jurusanBuka = Math.min(
-    cfg.jurusan.length,
-    Math.max(cfg.jurusanAwal, opsional(terminalMentah['jurusanBuka'], cfg.jurusanAwal, wajibIntegerNonNegatif, 'terminal.jurusanBuka')),
-  );
+  const mitra = bacaMitra(akar['mitra'], cfg);
+  const perkembangan = bacaPerkembangan(akar['perkembangan'], cfg);
 
+  const waktuMainDetik = statistikMentah ? opsional(statistikMentah['waktuMainDetik'], 0, wajibAngkaNonNegatif, 'statistik.waktuMainDetik') : 0;
   return {
     uang: stringKeDecimal(akar['uang'], 'uang'),
-    terminal: {
-      id: opsional(terminalMentah['id'], ID_TERMINAL_AWAL, wajibString, 'terminal.id'),
-      tahap,
-      fasilitas,
-      jurusanBuka,
-      teknologi,
-      kelasBus,
-      jalur,
-    },
-    prestige: prestigeMentah
-      ? {
-          poin: opsional(prestigeMentah['poin'], awal.prestige.poin, stringKeDecimal, 'prestige.poin'),
-          jumlahReset: opsional(prestigeMentah['jumlahReset'], 0, wajibIntegerNonNegatif, 'prestige.jumlahReset'),
-        }
-      : awal.prestige,
+    terminal: aturLevelLoket(
+      {
+        id: opsional(terminalMentah['id'], ID_TERMINAL_AWAL, wajibString, 'terminal.id'),
+        tahap,
+        fasilitas,
+        teknologi,
+        jalur,
+        loketKosong: opsional(terminalMentah['loketKosong'], 0, wajibIntegerNonNegatif, 'terminal.loketKosong'),
+      },
+      mitra,
+    ),
+    mitra,
+    perkembangan,
+    renovasi: bacaRenovasi(akar['renovasi'], awal.renovasi),
     statistik: statistikMentah
       ? {
-          totalPendapatanRun: opsional(
-            statistikMentah['totalPendapatanRun'],
-            awal.statistik.totalPendapatanRun,
-            stringKeDecimal,
-            'statistik.totalPendapatanRun',
-          ),
-          totalPendapatanSepanjangMasa: opsional(
-            statistikMentah['totalPendapatanSepanjangMasa'],
-            awal.statistik.totalPendapatanSepanjangMasa,
-            stringKeDecimal,
-            'statistik.totalPendapatanSepanjangMasa',
-          ),
-          waktuMainDetik: opsional(
-            statistikMentah['waktuMainDetik'],
-            0,
-            wajibAngkaNonNegatif,
-            'statistik.waktuMainDetik',
-          ),
+          totalPendapatanRun: opsional(statistikMentah['totalPendapatanRun'], awal.statistik.totalPendapatanRun, stringKeDecimal, 'statistik.totalPendapatanRun'),
+          totalPendapatanSepanjangMasa: opsional(statistikMentah['totalPendapatanSepanjangMasa'], awal.statistik.totalPendapatanSepanjangMasa, stringKeDecimal, 'statistik.totalPendapatanSepanjangMasa'),
+          waktuMainDetik,
           totalPenumpang: opsional(statistikMentah['totalPenumpang'], 0, wajibAngkaNonNegatif, 'statistik.totalPenumpang'),
         }
       : awal.statistik,
@@ -304,14 +420,99 @@ function dariSaveV1(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
     benihCuaca: opsional(akar['benihCuaca'], awal.benihCuaca, wajibIntegerNonNegatif, 'benihCuaca'),
     hadiah: bacaHadiah(akar['hadiah'], awal.hadiah),
     sewaKios: bacaSewaKios(akar['sewaKios'], awal.sewaKios),
-    armada: bacaArmada(akar['armada']),
-    harga: bacaHarga(akar['harga'], cfg),
     transaksi: bacaTransaksi(akar['transaksi'], cfg),
     event: bacaEvent(akar['event'], awal.event),
     profil: bacaProfil(akar['profil']),
-    rekor: bacaRekor(akar['rekor'], statistikMentah ? opsional(statistikMentah['waktuMainDetik'], 0, wajibAngkaNonNegatif, 'statistik.waktuMainDetik') : 0),
+    rekor: bacaRekor(akar['rekor'], waktuMainDetik),
     tantangan: bacaTantangan(akar['tantangan']),
     waktuTerakhirMs: opsional(akar['waktuTerakhirMs'], sekarangMs, wajibAngkaNonNegatif, 'waktuTerakhirMs'),
+  };
+}
+
+/** Harga PO: kunci = indeks jurusan; di luar daftar jurusan dibuang, nilainya dirapikan (config bisa berubah), 100 tidak disimpan. */
+function bacaHargaPo(nilai: unknown, jalur: string, cfg: KonfigEkonomi): HargaPo {
+  const o = opsionalObjek(nilai, jalur);
+  if (!o) return {};
+  const hasil: Record<number, number> = {};
+  for (const [kunci, v] of Object.entries(o)) {
+    const j = Number(kunci);
+    if (!Number.isInteger(j) || j < 0 || j >= cfg.jurusan.length) continue;
+    const h = rapikanHarga(wajibAngkaNonNegatif(v, `${jalur}.${kunci}`), cfg);
+    if (h !== 100) hasil[j] = h;
+  }
+  return hasil;
+}
+
+const reputasiAman = (v: number): number => Math.min(100, Math.max(0, v));
+
+function bacaPoTerdaftar(nilai: unknown, jalur: string, cfg: KonfigEkonomi): PoTerdaftar | null {
+  const o = wajibObjek(nilai, jalur);
+  const id = o['id'];
+  // PO yang tidak dikenal (mis. dari versi lain) diabaikan.
+  if (!isPoId(id)) return null;
+  const loket = wajibIntegerNonNegatif(o['loket'], `${jalur}.loket`);
+  return {
+    id,
+    xp: wajibAngkaNonNegatif(o['xp'], `${jalur}.xp`),
+    loket,
+    rekorLoket: Math.max(loket, opsional(o['rekorLoket'], loket, wajibIntegerNonNegatif, `${jalur}.rekorLoket`)),
+    reputasi: reputasiAman(opsional(o['reputasi'], tingkatPo(id, cfg).reputasiAwal, wajibAngkaNonNegatif, `${jalur}.reputasi`)),
+    harga: bacaHargaPo(o['harga'], `${jalur}.harga`, cfg),
+    kontrakDetik: opsional(o['kontrakDetik'], cfg.mitra.kontrak.hari * DETIK_SEHARI, wajibAngkaNonNegatif, `${jalur}.kontrakDetik`),
+  };
+}
+
+/** Mitra PO. Tanpa satu pun PO terdaftar (blok hilang/semua id tak dikenal) → PO awal, supaya terminal tidak pernah tanpa PO. */
+function bacaMitra(nilai: unknown, cfg: KonfigEkonomi): MitraState {
+  const o = opsionalObjek(nilai, 'mitra');
+  if (!o) return buatMitraAwal(cfg);
+  const daftar = o['terdaftar'] === undefined ? [] : o['terdaftar'];
+  if (!Array.isArray(daftar)) throw new SaveTidakValidError('mitra.terdaftar: harus array');
+  const terdaftar: PoTerdaftar[] = [];
+  daftar.forEach((x, i) => {
+    const p = bacaPoTerdaftar(x, `mitra.terdaftar.${i}`, cfg);
+    if (p && !terdaftar.some((q) => q.id === p.id)) terdaftar.push(p);
+  });
+
+  const riwayatMentah = opsionalObjek(o['riwayat'], 'mitra.riwayat');
+  const riwayat: Partial<Record<PoId, RiwayatPo>> = {};
+  for (const [id, v] of Object.entries(riwayatMentah ?? {})) {
+    if (!isPoId(id) || terdaftar.some((p) => p.id === id)) continue;
+    const r = wajibObjek(v, `mitra.riwayat.${id}`);
+    riwayat[id] = {
+      xp: wajibAngkaNonNegatif(r['xp'], `mitra.riwayat.${id}.xp`),
+      reputasi: reputasiAman(opsional(r['reputasi'], tingkatPo(id, cfg).reputasiAwal, wajibAngkaNonNegatif, `mitra.riwayat.${id}.reputasi`)),
+      rekorLoket: opsional(r['rekorLoket'], 0, wajibIntegerNonNegatif, `mitra.riwayat.${id}.rekorLoket`),
+      harga: bacaHargaPo(r['harga'], `mitra.riwayat.${id}.harga`, cfg),
+    };
+  }
+  const jedaMentah = opsionalObjek(o['jedaSampai'], 'mitra.jedaSampai');
+  const jedaSampai: Partial<Record<PoId, number>> = {};
+  for (const [id, v] of Object.entries(jedaMentah ?? {})) if (isPoId(id)) jedaSampai[id] = wajibAngkaNonNegatif(v, `mitra.jedaSampai.${id}`);
+  const hadiahMentah = o['hadiahEvent'] === undefined ? [] : o['hadiahEvent'];
+  if (!Array.isArray(hadiahMentah)) throw new SaveTidakValidError('mitra.hadiahEvent: harus array');
+  const hadiahEvent = [...new Set(hadiahMentah.filter(isPoId))];
+
+  const awal = terdaftar.length > 0 ? terdaftar : buatMitraAwal(cfg).terdaftar.filter((p) => !(p.id in riwayat));
+  return { terdaftar: awal.length > 0 ? awal : buatMitraAwal(cfg).terdaftar, riwayat, jedaSampai, hadiahEvent };
+}
+
+function bacaPerkembangan(nilai: unknown, cfg: KonfigEkonomi): PerkembanganState {
+  const o = opsionalObjek(nilai, 'perkembangan');
+  if (!o) return { xpTerminal: 0, perluasan: 0, proyekDetik: 0 };
+  return {
+    xpTerminal: opsional(o['xpTerminal'], 0, wajibAngkaNonNegatif, 'perkembangan.xpTerminal'),
+    perluasan: Math.min(cfg.mitra.perluasan.length, opsional(o['perluasan'], 0, wajibIntegerNonNegatif, 'perkembangan.perluasan')),
+    proyekDetik: Math.min(cfg.mitra.detikProyek, opsional(o['proyekDetik'], 0, wajibAngkaNonNegatif, 'perkembangan.proyekDetik')),
+  };
+}
+
+function bacaRenovasi(nilai: unknown, bawaan: RenovasiState): RenovasiState {
+  const o = opsionalObjek(nilai, 'renovasi');
+  if (!o) return bawaan;
+  return {
+    poin: opsional(o['poin'], bawaan.poin, stringKeDecimal, 'renovasi.poin'),
+    jumlah: opsional(o['jumlah'], 0, wajibIntegerNonNegatif, 'renovasi.jumlah'),
   };
 }
 
@@ -354,34 +555,6 @@ function bacaHadiah(nilai: unknown, bawaan: HadiahState): HadiahState {
         }
       : bawaan.busEmas,
     bonusOffline: bawaan.bonusOffline,
-  };
-}
-
-/** Mitra PO; id yang tidak dikenal (mis. dari versi lain) diabaikan, urutan bergabung dipertahankan. */
-function bacaArmada(nilai: unknown): ArmadaState {
-  const o = opsionalObjek(nilai, 'armada');
-  const po = o?.['po'];
-  if (po === undefined) return { po: [] };
-  if (!Array.isArray(po)) throw new SaveTidakValidError('armada.po: harus array');
-  return { po: [...new Set(po.filter(isPoId))] as PoId[] };
-}
-
-/**
- * Harga tiket; yang tidak ada (save lama, jurusan baru di config) = normal. Nilai di luar
- * batas atau bukan kelipatan langkah (config berubah) dirapikan, bukan ditolak.
- */
-function bacaHarga(nilai: unknown, cfg: KonfigEkonomi): HargaState {
-  const o = opsionalObjek(nilai, 'harga');
-  const awal = buatHargaAwal(cfg);
-  if (!o) return awal;
-  const jurusan = o['jurusan'] === undefined ? [] : o['jurusan'];
-  if (!Array.isArray(jurusan)) throw new SaveTidakValidError('harga.jurusan: harus array');
-  const tambahanMentah = opsionalObjek(o['tambahanKelas'], 'harga.tambahanKelas');
-  const tambahanKelas = { ...awal.tambahanKelas };
-  for (const id of KELAS_BUS_IDS) tambahanKelas[id] = rapikanTambahan(opsional(tambahanMentah?.[id], 0, wajibAngkaNonNegatif, `harga.tambahanKelas.${id}`), cfg);
-  return {
-    jurusan: awal.jurusan.map((bawaan, i) => (jurusan[i] === undefined ? bawaan : rapikanHarga(wajibAngkaNonNegatif(jurusan[i], `harga.jurusan.${i}`), cfg))),
-    tambahanKelas,
   };
 }
 
@@ -478,9 +651,7 @@ function bacaTahap(nilai: unknown, jalur: string): TahapState {
   const level = wajibIntegerNonNegatif(o['level'], `${jalur}.level`);
   if (level < 1) throw new SaveTidakValidError(`${jalur}.level harus ≥ 1`);
   const kepalaMentah = opsionalObjek(o['kepala'], `${jalur}.kepala`);
-  const direkrut = kepalaMentah
-    ? opsional(kepalaMentah['direkrut'], false, wajibBoolean, `${jalur}.kepala.direkrut`)
-    : false;
+  const direkrut = kepalaMentah ? opsional(kepalaMentah['direkrut'], false, wajibBoolean, `${jalur}.kepala.direkrut`) : false;
   return { level, kepala: { direkrut } };
 }
 

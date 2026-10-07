@@ -10,7 +10,7 @@
  * lembut di aspal.
  */
 import * as THREE from 'three';
-import { KELAS_BUS_IDS, type KelasBusId, type PoId } from '../sim/fitur';
+import type { KelasBusId, PoId } from '../sim/fitur';
 import { BUS_TERMINAL, KENDARAAN_LEWAT, type TipeKendaraan } from './aset';
 import { busDiHalte, petugasDiPintu, tingkatKotor, type BusVisual } from './dunia-visual';
 import { LENGKUNG, pilihKelasBus, RODA_BUS, TAMPIL_KELAS_BUS } from './kelas-bus';
@@ -259,7 +259,6 @@ export class ArmadaKendaraan {
   private po: readonly PoId[] = [];
   /** Kelas bus yang beroperasi (bus terminal yang baru muncul memakai salah satunya). */
   private kelasBus: readonly KelasBusId[] = ['ekonomi'];
-  private rekamanKelasBus: Readonly<Record<KelasBusId, boolean>> | null = null;
   /** Bagian penumpang tiap kelas (harga tiket); null = sama rata. */
   private bagianKelas: Readonly<Record<KelasBusId, number>> | null = null;
   private readonly status = new Map<number, StatusBus>();
@@ -354,21 +353,20 @@ export class ArmadaKendaraan {
     }
   }
 
-  /** Mitra PO yang sudah bergabung (dari state); berlaku untuk bus terminal yang muncul berikutnya. */
+  /** Mitra PO yang terdaftar (dari state); berlaku untuk bus terminal yang muncul berikutnya. */
   aturPo(po: readonly PoId[]): void {
     this.po = po;
   }
 
   /**
-   * Kelas bus yang beroperasi (dari state) & bagian penumpangnya menurut harga tiket;
-   * berlaku untuk bus terminal yang muncul berikutnya.
+   * Kelas bus yang dioperasikan mitra PO (dari state, urut KELAS_BUS_IDS) & bagian
+   * penumpangnya; berlaku untuk bus terminal yang muncul berikutnya.
    */
-  aturKelasBus(kelasBus: Readonly<Record<KelasBusId, boolean>>, bagian?: Readonly<Record<KelasBusId, number>>): void {
+  aturKelasBus(beroperasi: readonly KelasBusId[], bagian?: Readonly<Record<KelasBusId, number>>): void {
     this.bagianKelas = bagian ?? null;
-    if (kelasBus === this.rekamanKelasBus) return;
-    this.rekamanKelasBus = kelasBus;
-    const beroperasi = KELAS_BUS_IDS.filter((id) => kelasBus[id]);
-    this.kelasBus = beroperasi.length > 0 ? beroperasi : ['ekonomi'];
+    const baru = beroperasi.length > 0 ? beroperasi : (['ekonomi'] as const);
+    if (baru.length === this.kelasBus.length && baru.every((k, i) => k === this.kelasBus[i])) return;
+    this.kelasBus = [...baru];
   }
 
   private tampilUntuk(b: BusVisual): TipeTampil {

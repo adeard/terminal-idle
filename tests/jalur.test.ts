@@ -14,12 +14,12 @@ import {
   jumlahJalurMaks,
   kapasitasTahap,
   multJalur,
-  naikKelas,
+  renovasi,
   tick,
   type GameState,
 } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
-import { stateOtomatis, T0 } from './helpers';
+import { denganPo, stateOtomatis, T0 } from './helpers';
 
 const kaya = (s: GameState, uang = 1e12): GameState => ({ ...s, uang: new Decimal(uang) });
 
@@ -58,10 +58,12 @@ describe('jalur bus (sim)', () => {
     for (let i = 1; i < EKONOMI.jalur.biaya.length; i++) expect(EKONOMI.jalur.biaya[i]!).toBeGreaterThan(EKONOMI.jalur.biaya[i - 1]!);
   });
 
-  it('naik kelas terminal membangun ulang dari satu jalur', () => {
+  it('jalur bus permanen: tidak dibongkar saat Renovasi', () => {
     let s = bukaJalur(bukaJalur(kaya(stateOtomatis())));
-    s = { ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e8) } };
-    expect(naikKelas(s).terminal.jalur).toBe(1);
+    s = { ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e9) } };
+    const r = renovasi(s);
+    expect(r.renovasi.jumlah).toBe(1);
+    expect(r.terminal.jalur).toBe(3);
   });
 
   it('tersimpan; save lama tanpa jalur mendapat jalur sesuai tonggak level (terminal tidak menyusut)', () => {
@@ -106,8 +108,10 @@ describe('jalur bus di adegan', () => {
 
   it('bus hanya memakai halte & jalur keberangkatan yang sudah dibangun; bus lain menunggu', () => {
     for (const jalur of [1, 2, 3]) {
-      const dasar = stateOtomatis({ peron: 40, loket: 40, keberangkatan: 40 });
-      const s = { ...dasar, terminal: { ...dasar.terminal, jalur, jurusanBuka: 8 } };
+      // Semua jurusan Jawa-Bali dilayani (empat PO di Lv 12), jadi semua kelompok parkir terbuka.
+      let dasar = stateOtomatis({ peron: 40, loket: 40, keberangkatan: 40 });
+      for (const id of ['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa'] as const) dasar = denganPo(dasar, id, { level: 12 });
+      const s = { ...dasar, terminal: { ...dasar.terminal, jalur } };
       const laju = hitungLajuVisual(s);
       expect(laju.jalur).toBe(jalur);
       const dunia = new DuniaVisual({ acak: acakBerbenih(7 + jalur) });

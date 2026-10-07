@@ -2,7 +2,6 @@ import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { PencatatAnalitik, peristiwaAksi, type Analitik, type DataAnalitik } from '../src/app/analitik';
 import { PengendaliGame } from '../src/app/pengendali';
-import { EKONOMI } from '../src/config/economy.config';
 import { terapkanAksi, type Aksi } from '../src/sim/aksi';
 import { buatStateBaru, type GameState } from '../src/sim/state';
 import { T0 } from './helpers';
@@ -35,7 +34,7 @@ describe('analitik: aksi pemain → peristiwa', () => {
     expect(tercatat).toEqual([2, 5, 10]);
   });
 
-  it('Kepala, fasilitas pertama, dan jurusan tercatat dengan datanya', () => {
+  it('Kepala, fasilitas pertama, dan mitra PO tercatat dengan datanya', () => {
     let s = kaya();
     const k = terapkan(s, { jenis: 'rekrutKepala', tahap: 'loket' });
     expect(peristiwaAksi({ jenis: 'rekrutKepala', tahap: 'loket' }, k.lama, k.baru)).toEqual([{ nama: 'rekrut_kepala', data: { tahap: 'loket', jumlah_kepala: 1 } }]);
@@ -46,9 +45,8 @@ describe('analitik: aksi pemain → peristiwa', () => {
     expect(peristiwaAksi({ jenis: 'bangunFasilitas', fasilitas: 'kios' }, f2.lama, f2.baru)).toEqual([{ nama: 'bangun_fasilitas', data: { fasilitas: 'kios', level: 2 } }]);
     const f3 = terapkan(f2.baru, { jenis: 'bangunFasilitas', fasilitas: 'kios' });
     expect(peristiwaAksi({ jenis: 'bangunFasilitas', fasilitas: 'kios' }, f3.lama, f3.baru)).toEqual([]);
-    const j = terapkan(s, { jenis: 'bukaJurusan' });
-    const nama = EKONOMI.jurusan[EKONOMI.jurusanAwal]!.nama;
-    expect(peristiwaAksi({ jenis: 'bukaJurusan' }, j.lama, j.baru)).toEqual([{ nama: 'buka_jurusan', data: { jurusan: nama, jumlah: EKONOMI.jurusanAwal + 1 } }]);
+    const j = terapkan(s, { jenis: 'daftarPo', po: 'peuyeumKilat' });
+    expect(peristiwaAksi({ jenis: 'daftarPo', po: 'peuyeumKilat' }, j.lama, j.baru)).toEqual([{ nama: 'daftar_po', data: { po: 'peuyeumKilat', jumlah: 2 } }]);
   });
 
   it('pencatat: telolet sekali per sesi, peristiwa lain tidak disaring', () => {

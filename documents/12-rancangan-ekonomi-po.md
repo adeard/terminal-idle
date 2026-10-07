@@ -1,6 +1,6 @@
 # 12 · Rancangan Ekonomi v2: Mitra PO
 
-> **Status: usulan, belum diimplementasi.** Dokumen 01–11 menggambarkan game yang berjalan sekarang (v1). Dokumen ini merancang perubahan gameplay dan ekonomi berikutnya. Isinya disusun dari diskusi desain 7 Oktober 2026.
+> **Status: diimplementasi sebagian di cabang `ekonomi-v2`** (langkah 0–3 di bagian 18 dan sebagian langkah 4: simulasi, save & migrasi v1 → v2, tab PO & Terminal, adegan mengikuti jurusan yang dilayani PO). Belum: jendela loket per PO & tahap perluasan di 3D, tutorial baru, rilis bertahap, dan bangunan bertingkat. Dokumen 01–11 masih menggambarkan v1. Isinya disusun dari diskusi desain 7 Oktober 2026.
 >
 > Angka bertanda **PLACEHOLDER** adalah titik awal hasil simulasi (bagian 15), bukan angka final. Setelah diimplementasi, angka tuning tetap tinggal di `src/config/economy.config.ts`.
 
@@ -444,7 +444,8 @@ Biaya upgrade naik eksponensial, sedangkan kapasitas naik hampir linear. Tanpa r
 Sama dengan v1: pendapatan/detik saat keluar × min(pergi, 4 jam) × 50%. Tambahannya:
 
 - XP PO (bus) dan XP terminal (penumpang) juga ikut ×50%.
-- Kontrak, hari terminal, dan proyek perluasan tidak berjalan saat offline.
+- Kontrak dan hari terminal tidak berjalan saat offline.
+- Proyek perluasan **tetap berjalan** saat offline (dikerjakan kontraktor, tidak butuh Kepala), sebatas 4 jam seperti penghasilan offline. Ini berubah saat implementasi: proyek sehari terminal (24 menit main) tidak perlu ditunggui.
 
 ## 12. Hadiah, target, event, penghargaan
 
@@ -601,13 +602,13 @@ Simpanan naik ke `schemaVersion` 2 dengan satu fungsi di `MIGRASI` (`src/sim/sav
 
 ## 18. Rencana implementasi bertahap
 
-0. **Amankan kode**. Folder proyek belum memakai git: ada `.gitignore`, tapi belum ada repositori. Sebelum perubahan sebesar ini, aktifkan git (atau buat cadangan), supaya tiap langkah bisa dibandingkan dan dibatalkan.
-1. **Simulasi murni** (`src/sim/`, `economy.config.ts`):
+0. ✓ **Amankan kode**. Folder proyek belum memakai git: ada `.gitignore`, tapi belum ada repositori. Sebelum perubahan sebesar ini, aktifkan git (atau buat cadangan), supaya tiap langkah bisa dibandingkan dan dibatalkan.
+1. ✓ **Simulasi murni** (`src/sim/`, `economy.config.ts`):
    - state PO, loket, level, reputasi, segmen, kontrak, renovasi, perluasan;
    - tes greedy & tes tempo seperti `tests/greedy.test.ts`.
-2. **Migrasi save** v1 → v2, dengan tes dari save nyata.
-3. **UI**: Tab PO, kartu Loket, lembar harga, kartu perluasan, HUD level, popup.
-4. **Adegan 3D tahap 0–2**: jendela loket per PO, bus per PO, kelompok parkir & jendela dibuka per tahap perluasan, modul proyek.
+2. ✓ **Migrasi save** v1 → v2, dengan tes dari save v1 (`tests/save.test.ts`).
+3. ✓ **UI**: tab PO (kartu PO dengan harga per jurusan & kontrak), tab Terminal (level, perluasan, Renovasi, kelas bus), tujuan loket di panel Loket, HUD level, popup Renovasi, notifikasi.
+4. **Adegan 3D tahap 0–2**: jendela loket per PO, bus per PO, kelompok parkir & jendela dibuka per tahap perluasan, modul proyek. Sebagian: adegan sudah mengikuti jurusan yang dilayani PO (bitmask, tidak harus urut) dan livery PO terdaftar.
 5. **Tutorial** baru:
    - daftarkan PO kedua;
    - bangun loket;

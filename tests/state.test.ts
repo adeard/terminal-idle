@@ -1,17 +1,18 @@
 import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { EKONOMI, SIMULASI } from '../src/config/economy.config';
+import { pendapatanUntukPoin } from '../src/sim/economy';
 import { majukanWaktu } from '../src/sim/loop';
 import {
   beliUpgrade,
-  bisaPrestige,
+  bisaRenovasi,
   bisaRekrutKepala,
   buatStateBaru,
   daftarBottleneckState,
   dayaTarikKepuasan,
   kepuasanTerminal,
   keterisianTerminal,
-  lakukanPrestige,
+  renovasi,
   pendapatanPerDetikState,
   permintaanPenumpang,
   rekrutKepala,
@@ -228,8 +229,8 @@ describe('offline', () => {
     expect(laporan.pendapatan.toNumber()).toBeCloseTo(4 * 14400 * 0.5, 6);
   });
 
-  it('memakai pendapatan/detik saat keluar (termasuk bonus prestige)', () => {
-    const s: GameState = { ...stateOtomatis({ peron: 43, loket: 49, keberangkatan: 44 }), prestige: { poin: new Decimal(3), jumlahReset: 1 } };
+  it('memakai pendapatan/detik saat keluar (termasuk bonus Renovasi)', () => {
+    const s: GameState = { ...stateOtomatis({ peron: 43, loket: 49, keberangkatan: 44 }), renovasi: { poin: new Decimal(3), jumlah: 1 } };
     const { laporan } = terapkanOffline(s, T0 + 60_000);
     expect(laporan.pendapatan.toNumber()).toBeCloseTo(44 * 5 * 1.3 * 60 * 0.5, 6);
     expect(laporan.pendapatan.eq(pendapatanPerDetikState(s, 'offline').times(30))).toBe(true);
@@ -257,26 +258,28 @@ describe('offline', () => {
   });
 });
 
-describe('prestige (logika)', () => {
+describe('Renovasi (logika)', () => {
   it('belum bisa di bawah ambang', () => {
     const s = stateOtomatis();
-    expect(bisaPrestige(s)).toBe(false);
-    expect(lakukanPrestige(s)).toBe(s);
+    expect(bisaRenovasi(s)).toBe(false);
+    expect(renovasi(s)).toBe(s);
   });
 
-  it('reset terminal & uang, tambah poin, simpan statistik sepanjang masa', () => {
+  it('reset kapasitas & uang, tambah poin, simpan statistik sepanjang masa; bonus langsung berlaku', () => {
     let s = stateOtomatis({ peron: 30, loket: 30, keberangkatan: 30 });
-    s = { ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(400_000), totalPendapatanSepanjangMasa: new Decimal(400_000) } };
-    const p = lakukanPrestige(s);
-    expect(p.prestige.poin.toNumber()).toBe(2);
-    expect(p.prestige.jumlahReset).toBe(1);
+    const run = pendapatanUntukPoin(3);
+    s = { ...s, statistik: { ...s.statistik, totalPendapatanRun: run, totalPendapatanSepanjangMasa: run } };
+    const p = renovasi(s);
+    expect(p.renovasi.poin.toNumber()).toBe(3);
+    expect(p.renovasi.jumlah).toBe(1);
     expect(p.uang.toNumber()).toBe(EKONOMI.uangAwal);
     expect(p.terminal.tahap.peron.level).toBe(1);
     expect(p.terminal.tahap.peron.kepala.direkrut).toBe(false);
     expect(p.statistik.totalPendapatanRun.toNumber()).toBe(0);
-    expect(p.statistik.totalPendapatanSepanjangMasa.toNumber()).toBe(400_000);
-    // Bonus +20% langsung berlaku
-    expect(pendapatanPerDetikState(p).toNumber()).toBeCloseTo(0.8 * 5 * 1.2, 10);
+    expect(p.statistik.totalPendapatanSepanjangMasa.eq(run)).toBe(true);
+    // Bonus +30% langsung berlaku.
+    const tanpaBonus = { ...p, renovasi: { ...p.renovasi, poin: new Decimal(0) } };
+    expect(pendapatanPerDetikState(p).div(pendapatanPerDetikState(tanpaBonus)).toNumber()).toBeCloseTo(1 + 3 * EKONOMI.bonusPrestige, 10);
   });
 });
 

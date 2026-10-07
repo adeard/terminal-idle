@@ -1,15 +1,16 @@
 /**
- * Isi tab pengelolaan terminal di panel bawah: Fasilitas, Jurusan,
- * Modernisasi, dan Target (target harian + penghargaan). Semua elemen dibuat
- * sekali; tiap pembaruan state hanya mengubah teks/kelas yang berubah.
+ * Isi tab pengelolaan terminal di panel bawah: Fasilitas, PO (mitra PO),
+ * Terminal (level, perluasan, Renovasi), Modernisasi, dan Target (target
+ * harian + penghargaan). Elemen dibuat sekali (kartu PO saat PO bergabung);
+ * tiap pembaruan state hanya mengubah teks/kelas yang berubah.
  */
 import type { Aksi } from '../sim/aksi';
 import { LIVERY_PO, type Livery } from '../config/livery.config';
-import { FASILITAS_IDS, KELAS_BUS_IDS, PENCAPAIAN_IDS, PO_IDS, TEKNOLOGI_IDS, type FasilitasId, type KelasBusId, type PencapaianId, type TeknologiId } from '../sim/fitur';
+import { FASILITAS_IDS, KELAS_BUS_IDS, PENCAPAIAN_IDS, TEKNOLOGI_IDS, type FasilitasId, type KelasBusId, type PencapaianId, type PoId, type TeknologiId } from '../sim/fitur';
 import { keHexCss, WARNA_TAHAP } from '../config/tema';
-import { formatAngka, formatUang } from './format';
-import type { ModelFasilitas, ModelHarga, ModelKelas, ModelMingguan, ModelTampilan, ModelTantangan } from './model';
-import { namaKelas, NAMA_EVENT, NAMA_FASILITAS, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PO, NAMA_TEKNOLOGI, sisaWaktuEvent, TEKS } from './teks';
+import { formatAngka, formatDurasi, formatUang } from './format';
+import type { ModelFasilitas, ModelHargaPo, ModelMingguan, ModelMitra, ModelPoTerdaftar, ModelPoTersedia, ModelRenovasi, ModelTampilan, ModelTantangan } from './model';
+import { namaKelas, NAMA_EVENT, NAMA_FASILITAS, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, NAMA_TEKNOLOGI, NAMA_TINGKAT_PO, sisaWaktuEvent, TEKS } from './teks';
 
 export interface IsiTab {
   readonly elemen: HTMLElement;
@@ -37,6 +38,16 @@ function tombolGanda(): { tombol: HTMLButtonElement; besar: HTMLSpanElement } {
   return { tombol, besar };
 }
 
+/** Tombol beli dua baris: teks kecil (aksi) di atas harga. */
+function tombolBeli(): { tombol: HTMLButtonElement; kecil: HTMLSpanElement; besar: HTMLSpanElement } {
+  const tombol = el('button', 'tombol tombol-beli');
+  tombol.type = 'button';
+  const kecil = el('span', 'tombol-kecil');
+  const besar = el('span', 'tombol-besar');
+  tombol.append(kecil, besar);
+  return { tombol, kecil, besar };
+}
+
 /** Ikon fasilitas (viewBox 24). */
 const IKON_FASILITAS: Readonly<Record<FasilitasId, string>> = {
   kios: '<path d="M3 9l1.5-5h15L21 9a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z" fill="currentColor"/><path d="M5 12v8h14v-8" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10" y="15" width="4" height="5" fill="currentColor"/>',
@@ -47,9 +58,12 @@ const IKON_FASILITAS: Readonly<Record<FasilitasId, string>> = {
 /** Jalur bus: kanopi dengan dua lajur halte (viewBox 24). */
 const IKON_JALUR =
   '<path d="M2 8.5 12 4l10 4.5V10H2z" fill="currentColor"/><path d="M4.5 10v10M12 10v10M19.5 10v10" stroke="currentColor" stroke-width="1.8"/><rect x="6" y="13" width="4.5" height="5.5" rx="1" fill="currentColor"/><rect x="13.5" y="13" width="4.5" height="5.5" rx="1" fill="currentColor" opacity="0.4"/>';
-const IKON_GEMBOK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
-const IKON_KAPAL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h18l-2.6 5H5.4z" fill="currentColor"/><rect x="7" y="8.2" width="8" height="3.4" rx="0.6" fill="currentColor"/><rect x="11.2" y="5.2" width="2" height="3" fill="currentColor"/><path d="M2 20.5c2 0 2-1 4-1s2 1 4 1 2-1 4-1 2 1 4 1 2-1 4-1" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+/** Tiket loket (viewBox 24), sama dengan ikon tahap Loket. */
+const IKON_LOKET =
+  '<path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2.5a2.5 2.5 0 0 0 0 5V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.5a2.5 2.5 0 0 0 0-5z" fill="currentColor"/><path d="M14.5 6.5v11" stroke="#0b1117" stroke-width="1.4" stroke-dasharray="1.6 1.6" opacity="0.5"/>';
 const IKON_PIALA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0z" fill="currentColor"/><path d="M7 5H4a3 3 0 0 0 3 4M17 5h3a3 3 0 0 1-3 4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 13h4v4h3v3H7v-3h3z" fill="currentColor"/></svg>';
+const IKON_PENSIL =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="2"/></svg>';
 
 const persen = (x: number): number => Math.round(x * 100);
 const rupiahKecil = (x: number): string => formatAngka(x, { desimalKecil: 2 });
@@ -128,24 +142,20 @@ export function buatTabFasilitas(kirim: Kirim): IsiTab {
 }
 
 // ---------------------------------------------------------------------------
-// Harga tiket (jurusan & kelas bus)
+// Harga tiket per jurusan PO
 
 interface PengaturHarga {
   readonly elemen: HTMLElement;
-  /** Saran harga (ketuk = pakai) atau peringatan tiket terlalu mahal; diletakkan pemanggil di kolom info. */
+  /** Saran harga (ketuk = pakai); diletakkan pemanggil di kolom info. */
   readonly saran: HTMLElement;
-  perbarui(h: ModelHarga): void;
+  perbarui(h: ModelHargaPo): void;
 }
 
-/** Rupiah harga tiket: "Rp 6,25", atau "+Rp 1,25" untuk tambahan kelas. */
-const rupiahHarga = (x: number, tambahan: boolean): string => `${tambahan ? '+' : ''}Rp ${rupiahKecil(x)}`;
-
 /**
- * Tombol − / + dengan harga (Rupiah) di tengahnya, dan tombol saran. `kirimHarga`
- * menerima nilai baru dalam persen harga normal (dirapikan sim).
- * @param tambahan tambahan harga kelas bus (ditulis "+Rp …"), bukan harga jurusan
+ * Tombol − / + dengan harga tiket Ekonomi (Rupiah) di tengahnya, dan tombol
+ * saran. `kirimHarga` menerima nilai baru dalam persen harga normal (dirapikan sim).
  */
-function pengaturHarga(nama: string, tambahan: boolean, kirimHarga: (persen: number) => void): PengaturHarga {
+function pengaturHarga(nama: string, kirimHarga: (persen: number) => void): PengaturHarga {
   const elemen = el('div', 'pengatur-harga');
   const turun = el('button', 'harga-tombol', '−');
   const nilai = el('span', 'harga-nilai');
@@ -157,7 +167,7 @@ function pengaturHarga(nama: string, tambahan: boolean, kirimHarga: (persen: num
   elemen.append(turun, nilai, naik);
   const saran = el('button', 'harga-saran');
   saran.type = 'button';
-  let sekarang: ModelHarga | null = null;
+  let sekarang: ModelHargaPo | null = null;
   turun.addEventListener('click', () => sekarang && kirimHarga(sekarang.persen - sekarang.langkah));
   naik.addEventListener('click', () => sekarang && kirimHarga(sekarang.persen + sekarang.langkah));
   saran.addEventListener('click', () => sekarang && kirimHarga(sekarang.saranPersen));
@@ -166,113 +176,54 @@ function pengaturHarga(nama: string, tambahan: boolean, kirimHarga: (persen: num
     saran,
     perbarui(h) {
       sekarang = h;
-      setTeks(nilai, rupiahHarga(h.rupiah, tambahan));
-      const normal = tambahan ? 0 : 100;
-      nilai.classList.toggle('murah', h.persen < normal);
-      nilai.classList.toggle('mahal', h.persen > normal && !h.terlaluMahal);
-      nilai.classList.toggle('terlalu-mahal', h.terlaluMahal);
+      setTeks(nilai, `Rp ${rupiahKecil(h.rupiah)}`);
+      nilai.classList.toggle('murah', h.persen < 100);
+      nilai.classList.toggle('mahal', h.persen > 100);
       setDisabled(turun, !h.bisaTurun);
       setDisabled(naik, !h.bisaNaik);
       const pas = h.persen === h.saranPersen;
-      setTeks(saran, h.terlaluMahal ? TEKS.hargaTerlaluMahal(rupiahHarga(h.saranRupiah, tambahan)) : pas ? TEKS.hargaSesuaiSaran : TEKS.hargaSaran(rupiahHarga(h.saranRupiah, tambahan)));
-      saran.classList.toggle('terlalu-mahal', h.terlaluMahal);
+      setTeks(saran, pas ? TEKS.hargaSesuaiSaran : TEKS.hargaSaran(`Rp ${rupiahKecil(h.saranRupiah)}`));
       setDisabled(saran, pas);
     },
   };
 }
 
-/** "Peminat −20% · kursi terisi 78%" atau "… · kursi penuh, 15% tak terangkut" (tanda untuk menaikkan harga). */
-function teksHarga(h: ModelHarga): string {
-  const kursi = h.minat > 1.005 ? TEKS.hargaPenuh(persen(h.minat - 1)) : TEKS.hargaTerisi(persen(h.terisi));
-  return `${TEKS.hargaPeminat(persen(h.peminat))} · ${kursi}`;
+interface BarisHargaPo {
+  readonly elemen: HTMLElement;
+  perbarui(h: ModelHargaPo): void;
 }
 
-// ---------------------------------------------------------------------------
-// Jurusan
-
-export function buatTabJurusan(kirim: Kirim): IsiTab {
-  const elemen = el('div', 'isi-tab daftar-item');
-  const ringkasan = el('div', 'jurusan-ringkasan');
-  const grid = el('div', 'jurusan-grid');
-  const chip: HTMLElement[] = [];
-  const tombolBuka = baris3('<path d="M4 12h12M12 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>', '', 'jurusan');
-  tombolBuka.tombol.addEventListener('click', () => kirim({ jenis: 'bukaJurusan' }));
-  // Harga tiket tiap jurusan yang sudah dibuka (baris dibuat saat pertama kali dibutuhkan).
-  const judulHarga = el('div', 'judul-bagian', TEKS.hargaJudulJurusan);
-  const catatanHarga = el('div', 'harga-catatan', TEKS.hargaCatatan);
-  // Batas tiket yang masih diterima penumpang, atau peringatan bila sudah terlalu mahal.
-  const wajarHarga = el('div', 'harga-wajar');
-  const barisHarga: { elemen: HTMLElement; keterangan: HTMLElement; pengatur: PengaturHarga }[] = [];
-  elemen.append(ringkasan, grid, tombolBuka.elemen, judulHarga, catatanHarga, wajarHarga);
+/** Satu jurusan PO: nama, harga normal (atau syarat bukanya), pengatur harga & saran. */
+function buatBarisHargaPo(po: PoId, awal: ModelHargaPo, kirim: Kirim): BarisHargaPo {
+  const elemen = el('div', 'po-jurusan');
+  elemen.dataset['jurusan'] = String(awal.jurusan);
+  elemen.classList.toggle('antarpulau', awal.feri !== null);
+  const info = el('div', 'item-info');
+  const ket = el('div', 'item-keterangan');
+  const pengatur = pengaturHarga(awal.nama, (p) => kirim({ jenis: 'aturHargaPo', po, jurusan: awal.jurusan, persen: p }));
+  info.append(el('span', 'item-nama', awal.nama), ket, pengatur.saran);
+  elemen.append(info, pengatur.elemen);
   return {
     elemen,
-    perbarui(m) {
-      const j = m.jurusan;
-      setTeks(ringkasan, TEKS.nilaiTiket(formatAngka(j.multTiket, { desimalKecil: 2 }), rupiahKecil(j.nilaiPerPenumpang), rupiahKecil(j.nilaiDibayar)));
-      setTeks(wajarHarga, j.penaltiHarga > 0 ? TEKS.hargaPenaltiAktif(persen(j.penaltiHarga)) : TEKS.hargaBatasWajar(rupiahKecil(j.batasWajar)));
-      wajarHarga.classList.toggle('terlalu-mahal', j.penaltiHarga > 0);
-      j.daftar.forEach((d, i) => {
-        const h = d.harga;
-        let b = barisHarga[i];
-        if (!b && h) {
-          const baris = el('div', 'item item-harga');
-          baris.dataset['hargaJurusan'] = String(i);
-          baris.classList.toggle('antarpulau', d.feri !== null);
-          const info = el('div', 'item-info');
-          const keterangan = el('div', 'item-keterangan');
-          const pengatur = pengaturHarga(d.nama, false, (persen) => kirim({ jenis: 'aturHargaJurusan', indeks: i, persen }));
-          info.append(el('span', 'item-nama', d.nama), keterangan, pengatur.saran);
-          baris.append(info, pengatur.elemen);
-          // Urut jurusan: sisipkan sebelum baris jurusan berikutnya yang sudah ada.
-          const sesudah = barisHarga.slice(i + 1).find((x) => x)?.elemen ?? null;
-          elemen.insertBefore(baris, sesudah);
-          b = { elemen: baris, keterangan, pengatur };
-          barisHarga[i] = b;
-        }
-        if (!b) return;
-        setHidden(b.elemen, h === null);
-        if (h) {
-          setTeks(b.keterangan, teksHarga(h));
-          b.pengatur.perbarui(h);
-        }
-      });
-      j.daftar.forEach((d, i) => {
-        let c = chip[i];
-        if (!c) {
-          // Pemisah sebelum rute antarpulau pertama.
-          if (d.feri !== null && !grid.querySelector('.jurusan-pemisah')) grid.append(el('div', 'jurusan-pemisah', TEKS.jurusanAntarpulau));
-          c = el('div', 'jurusan-chip');
-          grid.append(c);
-          chip[i] = c;
-        }
-        const teks = d.bonusTiket > 0 ? `${d.nama} +${persen(d.bonusTiket)}%` : d.nama;
-        if (c.dataset['teks'] !== teks + d.buka) {
-          c.dataset['teks'] = teks + d.buka;
-          const ikon = !d.buka ? IKON_GEMBOK : d.feri !== null ? IKON_KAPAL : '';
-          c.innerHTML = `${ikon}${escapeHtml(teks)}`;
-        }
-        c.classList.toggle('buka', d.buka);
-        c.classList.toggle('antarpulau', d.feri !== null);
-      });
-      const b = j.berikutnya;
-      setHidden(tombolBuka.tombol, b === null);
-      setTeks(tombolBuka.nama, b ? TEKS.bukaJurusan(b.nama, persen(b.bonusTiket)) : TEKS.semuaJurusanBuka);
-      const ikutPo = b?.po ? ` · ${TEKS.poIkutJurusan(NAMA_PO[b.po].nama)}` : '';
-      const feri = b?.feri ? `${TEKS.lewatFeri(b.feri)} · ` : '';
-      const syarat = b && b.kurangKelas !== null ? TEKS.jurusanButuhTerminal(namaKelas(b.kurangKelas)) : TEKS.tiketSetelahBuka(formatAngka(j.multTiket + (b?.bonusTiket ?? 0), { desimalKecil: 2 }));
-      setTeks(tombolBuka.keterangan, b ? `${feri}${syarat}${ikutPo}` : '');
-      tombolBuka.elemen.classList.toggle('terkunci', b !== null && b.kurangKelas !== null);
-      if (b) {
-        setTeks(tombolBuka.tombolKecil, TEKS.buka);
-        setTeks(tombolBuka.tombolBesar, formatUang(b.biaya));
-        setDisabled(tombolBuka.tombol, !b.bisa);
-      }
+    perbarui(h) {
+      const feri = h.feri ? `${TEKS.lewatFeri(h.feri)} · ` : '';
+      // Terkunci: kelas terminal (jangka panjang) lebih dulu, lalu level PO.
+      const status = h.aktif
+        ? TEKS.poHargaNormal(rupiahKecil(h.normalRupiah))
+        : h.kurangKelas !== null
+          ? TEKS.poSyaratTerminal(namaKelas(h.kurangKelas))
+          : TEKS.poJurusanLevel(h.levelBuka);
+      setTeks(ket, `${feri}${status}`);
+      elemen.classList.toggle('terkunci', !h.aktif);
+      setHidden(pengatur.elemen, !h.aktif);
+      setHidden(pengatur.saran, !h.aktif);
+      if (h.aktif) pengatur.perbarui(h);
     },
   };
 }
 
 // ---------------------------------------------------------------------------
-// Armada: kelas bus & mitra PO
+// Mitra PO
 
 /** Ikon kelas bus (viewBox 24): bentuk badan, jendela, dan atapnya. */
 const IKON_KELAS_BUS: Readonly<Record<KelasBusId, string>> = {
@@ -304,91 +255,380 @@ function ikonLivery(l: Livery): string {
   return `<rect x="2" y="5" width="20" height="14" rx="2.5" fill="${hexWarna(l.warna)}"/>${pola}<rect x="4" y="10.6" width="16" height="3" rx="0.6" fill="#1e293b" opacity="0.9"/><circle cx="7" cy="19" r="2" fill="#0b1117"/><circle cx="17" cy="19" r="2" fill="#0b1117"/>`;
 }
 
-export function buatTabArmada(kirim: Kirim): IsiTab {
+/** Baris kartu PO: judul + keterangan di kiri; tombolnya ditambahkan pemanggil di kanan. */
+function barisPo(): { readonly elemen: HTMLElement; readonly judul: HTMLElement; readonly ket: HTMLElement } {
+  const elemen = el('div', 'po-baris');
+  const info = el('div', 'item-info');
+  const judul = el('div', 'po-judul');
+  const ket = el('div', 'po-ket');
+  info.append(judul, ket);
+  elemen.append(info);
+  return { elemen, judul, ket };
+}
+
+/** Lama tombol Putus menunggu ketukan kedua. */
+const MS_YAKIN_PUTUS = 3000;
+
+interface KartuPo {
+  readonly elemen: HTMLElement;
+  perbarui(p: ModelPoTerdaftar, mi: ModelMitra): void;
+}
+
+/** Kartu mitra PO terdaftar: level & XP, loket, kelas bus, harga tiap jurusan, kontrak. */
+function buatKartuPo(id: PoId, kirim: Kirim): KartuPo {
+  const elemen = el('article', 'kartu-po');
+  elemen.dataset['po'] = id;
+  const kepala = el('div', 'po-kepala');
+  const ikon = el('div', 'item-ikon');
+  ikon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ikonLivery(LIVERY_PO[id])}</svg>`;
+  const info = el('div', 'item-info');
+  const atas = el('div', 'item-atas');
+  const level = el('span', 'item-level');
+  atas.append(el('span', 'item-nama', NAMA_PO[id].nama), level);
+  const ket = el('div', 'item-keterangan');
+  info.append(atas, ket);
+  kepala.append(ikon, info);
+  // XP menuju level berikutnya (satuan bus).
+  const xp = el('div', 'po-xp');
+  const bar = el('div', 'bar');
+  const barIsi = el('div', 'bar-isi');
+  bar.append(barIsi);
+  const xpAngka = el('span', 'po-angka');
+  xp.append(bar, xpAngka);
+  const loket = barisPo();
+  const tombolLoket = tombolBeli();
+  tombolLoket.kecil.textContent = TEKS.tambahLoket;
+  tombolLoket.tombol.addEventListener('click', () => kirim({ jenis: 'bangunLoket', po: id }));
+  loket.elemen.append(tombolLoket.tombol);
+  const kelas = el('div', 'po-teks');
+  // Baris harga tiap jurusan dibuat saat pembaruan pertama (jurusan PO tetap).
+  const daftarHarga = el('div', 'po-harga');
+  const barisHarga: BarisHargaPo[] = [];
+  const kontrak = barisPo();
+  const tombolPerpanjang = tombolBeli();
+  tombolPerpanjang.kecil.textContent = TEKS.perpanjang;
+  tombolPerpanjang.tombol.addEventListener('click', () => kirim({ jenis: 'perpanjangPo', po: id }));
+  // Putus kontrak lewat dua ketukan: ketukan pertama menampilkan akibatnya.
+  const tombolPutus = el('button', 'tombol tombol-putus', TEKS.putus);
+  tombolPutus.type = 'button';
+  let yakinSampai = 0;
+  let timerYakin = 0;
+  const batalYakin = (): void => {
+    yakinSampai = 0;
+    tombolPutus.textContent = TEKS.putus;
+    tombolPutus.classList.remove('yakin');
+  };
+  tombolPutus.addEventListener('click', () => {
+    window.clearTimeout(timerYakin);
+    if (performance.now() < yakinSampai) {
+      batalYakin();
+      kirim({ jenis: 'putusPo', po: id });
+      return;
+    }
+    yakinSampai = performance.now() + MS_YAKIN_PUTUS;
+    tombolPutus.textContent = TEKS.putusYakin;
+    tombolPutus.classList.add('yakin');
+    timerYakin = window.setTimeout(batalYakin, MS_YAKIN_PUTUS);
+  });
+  kontrak.elemen.append(tombolPerpanjang.tombol, tombolPutus);
+  elemen.append(kepala, xp, loket.elemen, kelas, el('div', 'po-subjudul', TEKS.poHargaJudul), daftarHarga, kontrak.elemen);
+  return {
+    elemen,
+    perbarui(p, mi) {
+      setTeks(level, TEKS.level(p.level));
+      setTeks(ket, `${TEKS.poTingkatAsal(NAMA_TINGKAT_PO[p.tingkat], NAMA_PO[id].asal)} · ${TEKS.poReputasi(Math.round(p.reputasi))}`);
+      setStyle(barIsi, 'width', `${(p.rasioXp * 100).toFixed(1)}%`);
+      setTeks(xpAngka, TEKS.poXp(formatAngka(Math.floor(Math.max(0, p.xpDalamLevel))), formatAngka(Math.ceil(p.xpLevel)), p.level + 1));
+      const penuh = p.loket >= p.jatah;
+      setTeks(loket.judul, TEKS.poLoket(p.loket, p.jatah));
+      setTeks(loket.ket, penuh ? TEKS.poJatahPenuh : TEKS.poBagian(persen(p.bagian), persen(p.terisi)));
+      setHidden(tombolLoket.tombol, penuh);
+      setTeks(tombolLoket.besar, formatUang(p.biayaLoket));
+      setDisabled(tombolLoket.tombol, !p.bisaTambahLoket);
+      const b = p.kelasBerikut;
+      const berikut = !b
+        ? ''
+        : p.level < b.level
+          ? ` · ${TEKS.poKelasBerikut(NAMA_KELAS_BUS[b.kelas].nama, b.level)}`
+          : b.kurangKelas !== null
+            ? ` · ${TEKS.poKelasButuhTerminal(NAMA_KELAS_BUS[b.kelas].nama, namaKelas(b.kurangKelas))}`
+            : '';
+      setTeks(kelas, `${TEKS.poKelas(p.kelas.map((k) => NAMA_KELAS_BUS[k].nama).join(', '))}${berikut}`);
+      p.jurusan.forEach((h, i) => {
+        let r = barisHarga[i];
+        if (!r) {
+          r = buatBarisHargaPo(id, h, kirim);
+          barisHarga[i] = r;
+          daftarHarga.append(r.elemen);
+        }
+        r.perbarui(h);
+      });
+      setTeks(kontrak.judul, TEKS.poKontrak(formatAngka(Math.max(0, p.kontrakHari), { desimalKecil: 1 })));
+      kontrak.elemen.classList.toggle('hampir', p.kontrakHari <= 1);
+      const ketKontrak =
+        performance.now() < yakinSampai
+          ? TEKS.putusCatatan(mi.kontrak.penaltiPutus, mi.kontrak.jedaHari)
+          : p.menolakPerpanjang && p.kepuasanMin !== null
+            ? TEKS.poMenolak(persen(p.kepuasanMin))
+            : p.kontrakPenuh
+              ? TEKS.poKontrakPenuh(mi.kontrak.hariMaks)
+              : '';
+      setTeks(kontrak.ket, ketKontrak);
+      setHidden(kontrak.ket, ketKontrak === '');
+      setHidden(tombolPerpanjang.tombol, p.kontrakPenuh);
+      setTeks(tombolPerpanjang.besar, formatUang(p.biayaPerpanjang));
+      setDisabled(tombolPerpanjang.tombol, !p.bisaPerpanjang);
+      setHidden(tombolPutus, !p.bisaPutus);
+    },
+  };
+}
+
+/** Status PO yang belum terdaftar: syarat yang kurang, atau catatan riwayat. */
+function statusTersedia(p: ModelPoTersedia): string {
+  const k = p.kurang;
+  if (!k) return p.levelRiwayat !== null ? TEKS.poRiwayat(p.levelRiwayat) : '';
+  switch (k.jenis) {
+    case 'slot':
+      return TEKS.poSlotPenuh;
+    case 'jeda':
+      return TEKS.poJeda(formatAngka(Math.max(0.1, p.jedaHari ?? 0), { desimalKecil: 1 }));
+    case 'kepuasan':
+      return TEKS.poSyaratKepuasan(persen(k.min));
+    case 'kelas':
+      return p.hadiah ? TEKS.poHadiahKelas(namaKelas(k.kelas)) : TEKS.poSyaratTerminal(namaKelas(k.kelas));
+    case 'event':
+      return p.event ? TEKS.poSyaratEvent(NAMA_EVENT[p.event].nama) : '';
+    case 'terdaftar':
+      return '';
+  }
+}
+
+interface BarisTersedia {
+  readonly elemen: HTMLElement;
+  perbarui(p: ModelPoTersedia): void;
+}
+
+function buatBarisTersedia(id: PoId, kirim: Kirim): BarisTersedia {
+  const r = baris3(ikonLivery(LIVERY_PO[id]), NAMA_PO[id].nama, 'po');
+  r.elemen.dataset['po'] = id;
+  const status = el('div', 'item-keterangan po-status');
+  r.keterangan.after(status);
+  r.tombolKecil.textContent = TEKS.daftar;
+  r.tombol.addEventListener('click', () => kirim({ jenis: 'daftarPo', po: id }));
+  return {
+    elemen: r.elemen,
+    perbarui(p) {
+      setTeks(r.level, NAMA_TINGKAT_PO[p.tingkat]);
+      setTeks(r.keterangan, `${NAMA_PO[id].asal} · ${TEKS.poJurusanDaftar(p.jurusan.join(', '))}`);
+      const teks = statusTersedia(p);
+      setTeks(status, teks);
+      setHidden(status, teks === '');
+      // Kelas terminal & event: masih jauh, jadi tanpa tombol.
+      const terkunci = p.kurang?.jenis === 'kelas' || p.kurang?.jenis === 'event';
+      setHidden(r.tombol, terkunci);
+      setTeks(r.tombolBesar, p.biaya.lte(0) ? TEKS.gratis : formatUang(p.biaya));
+      setDisabled(r.tombol, !p.bisa);
+      r.elemen.classList.toggle('belum', !p.bisa);
+      r.elemen.classList.toggle('terkunci', terkunci);
+    },
+  };
+}
+
+/** Susun ulang anak `wadah` hanya bila urutannya berubah (menghindari reflow tiap pembaruan). */
+function susunUrut(wadah: HTMLElement, elemen: readonly HTMLElement[]): void {
+  const sama = elemen.length === wadah.children.length && elemen.every((e, i) => wadah.children[i] === e);
+  if (!sama) wadah.replaceChildren(...elemen);
+}
+
+export function buatTabPo(kirim: Kirim): IsiTab {
   const elemen = el('div', 'isi-tab daftar-item');
-  // Kelas bus: didatangkan berurutan, diulang saat naik kelas terminal.
-  const ringkasanKelas = el('div', 'jurusan-ringkasan');
-  elemen.append(el('div', 'judul-bagian', TEKS.judulKelasBus), ringkasanKelas);
-  const barisKelas = KELAS_BUS_IDS.map((id) => {
-    const r = baris3(IKON_KELAS_BUS[id], NAMA_KELAS_BUS[id].nama, 'kelas-bus');
-    r.elemen.dataset['kelasBus'] = id;
-    r.tombol.addEventListener('click', () => kirim({ jenis: 'beliKelasBus', kelas: id }));
-    // Kelas yang beroperasi: tombol beli diganti pengatur tambahan harga, dan baris peminat, kursi terisi, & saran.
-    const infoHarga = el('div', 'item-keterangan item-harga-info');
-    const pengatur = pengaturHarga(NAMA_KELAS_BUS[id].nama, true, (persen) => kirim({ jenis: 'aturTambahanKelas', kelas: id, persen }));
-    r.keterangan.after(infoHarga, pengatur.saran);
-    r.elemen.append(pengatur.elemen);
-    elemen.append(r.elemen);
-    return { id, ...r, infoHarga, pengatur };
-  });
   const ringkasan = el('div', 'jurusan-ringkasan');
-  elemen.append(el('div', 'judul-bagian', TEKS.judulMitraPo), ringkasan);
-  const baris = PO_IDS.map((id) => {
-    const r = baris3(ikonLivery(LIVERY_PO[id]), NAMA_PO[id].nama, 'po');
-    r.elemen.dataset['po'] = id;
-    r.tombol.addEventListener('click', () => kirim({ jenis: 'kontrakPo', po: id }));
-    elemen.append(r.elemen);
-    return { id, ...r };
-  });
+  const nilai = el('div', 'harga-catatan');
+  // Loket kosong (milik terminal, belum disewa PO): diisi gratis ke PO yang paling menguntungkan.
+  const kosong = baris3(IKON_LOKET, '', 'loket-kosong');
+  kosong.tombolKecil.textContent = TEKS.isiLoket;
+  kosong.tombolBesar.textContent = TEKS.gratis;
+  setTeks(kosong.keterangan, TEKS.poLoketKosongKet);
+  kosong.tombol.addEventListener('click', () => kirim({ jenis: 'isiLoketKosong' }));
+  const daftarTerdaftar = el('div', 'po-daftar');
+  const daftarTersedia = el('div', 'po-daftar');
+  const catatan = el('div', 'harga-catatan', `${TEKS.poCatatan} ${TEKS.hargaCatatanPo}`);
+  elemen.append(ringkasan, nilai, kosong.elemen, daftarTerdaftar, el('div', 'judul-bagian', TEKS.judulPoTersedia), daftarTersedia, catatan);
+  const kartu = new Map<PoId, KartuPo>();
+  const tersedia = new Map<PoId, BarisTersedia>();
   return {
     elemen,
     perbarui(m) {
-      const a = m.armada;
-      setTeks(ringkasanKelas, `${TEKS.kelasBusRingkas(a.jumlahKelasBus, a.kelasBus.length, persen(a.bonusKelasBus))} · ${TEKS.kelasBusDiulang} ${TEKS.hargaKelasCatatan}`);
+      const mi = m.mitra;
+      const slot = mi.slotBerikut ? ` · ${TEKS.poSlotBerikut(mi.slotBerikut.slot, mi.slotBerikut.level)}` : '';
+      setTeks(ringkasan, `${TEKS.poRingkas(mi.terdaftar.length, mi.slot)}${slot}`);
+      setTeks(nilai, TEKS.poNilaiTiket(rupiahKecil(mi.nilaiDibayar), rupiahKecil(mi.nilaiPerPenumpang), persen(mi.terisi)));
+      setHidden(kosong.elemen, mi.loketKosong === 0);
+      setTeks(kosong.nama, TEKS.poLoketKosong(mi.loketKosong));
+      setDisabled(kosong.tombol, !mi.bisaIsiLoket);
+      // Kartu dibuat saat PO bergabung dan dibuang saat PO keluar.
+      for (const p of mi.terdaftar) {
+        let k = kartu.get(p.id);
+        if (!k) {
+          k = buatKartuPo(p.id, kirim);
+          kartu.set(p.id, k);
+        }
+        k.perbarui(p, mi);
+      }
+      for (const id of [...kartu.keys()]) if (!mi.terdaftar.some((p) => p.id === id)) kartu.delete(id);
+      susunUrut(daftarTerdaftar, mi.terdaftar.map((p) => kartu.get(p.id)!.elemen));
+      for (const p of mi.tersedia) {
+        let b = tersedia.get(p.id);
+        if (!b) {
+          b = buatBarisTersedia(p.id, kirim);
+          tersedia.set(p.id, b);
+        }
+        b.perbarui(p);
+      }
+      susunUrut(daftarTersedia, mi.tersedia.map((p) => tersedia.get(p.id)!.elemen));
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Terminal: level & kelas, perluasan, Renovasi, kelas bus
+
+export interface OpsiTabTerminal {
+  /** Membuka konfirmasi Renovasi (mengulang kapasitas terminal, jadi tidak langsung dikirim dari tombol). */
+  readonly konfirmasiRenovasi?: (m: ModelRenovasi) => void;
+  /** Membuka popup nama terminal (lihat popup-nama.ts). */
+  readonly ubahNama?: () => void;
+}
+
+/** Kartu ber-bilah: judul, baris utama, keterangan, bilah & angka di kiri, tombol di kanan. */
+function kartuBilah(kelas: string): {
+  readonly elemen: HTMLElement;
+  readonly kiri: HTMLElement;
+  readonly judul: HTMLElement;
+  readonly tugas: HTMLElement;
+  readonly ket: HTMLElement;
+  readonly bar: HTMLElement;
+  readonly isi: HTMLElement;
+  readonly angka: HTMLElement;
+} {
+  const elemen = el('div', `target-kartu ${kelas}`);
+  const kiri = el('div', 'target-kiri');
+  const judul = el('div', 'target-judul kelas-judul');
+  const tugas = el('div', 'target-tugas');
+  const ket = el('div', 'kelas-berikut');
+  const bar = el('div', 'bar');
+  const isi = el('div', 'bar-isi');
+  bar.append(isi);
+  const angka = el('div', 'target-angka');
+  kiri.append(judul, tugas, ket, bar, angka);
+  elemen.append(kiri);
+  return { elemen, kiri, judul, tugas, ket, bar, isi, angka };
+}
+
+export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
+  const elemen = el('div', 'isi-tab daftar-item');
+  // Level & kelas terminal; nama terminal diubah lewat tombol ✎ di samping judul.
+  const level = kartuBilah('kelas-kartu terminal-kartu');
+  const tombolNama = el('button', 'tombol-nama');
+  tombolNama.type = 'button';
+  tombolNama.title = TEKS.namaTombol;
+  tombolNama.setAttribute('aria-label', TEKS.namaTombol);
+  tombolNama.innerHTML = IKON_PENSIL;
+  tombolNama.addEventListener('click', () => o.ubahNama?.());
+  setHidden(tombolNama, !o.ubahNama);
+  const barisJudul = el('div', 'kelas-judul-baris');
+  level.judul.replaceWith(barisJudul);
+  barisJudul.append(level.judul, tombolNama);
+  // Perluasan: tahap berikutnya & tombol bangun, atau proyek yang sedang berjalan.
+  const perluasan = kartuBilah('perluasan-kartu');
+  perluasan.judul.textContent = TEKS.perluasanJudul;
+  const bonusPerluasan = el('div', 'kelas-berikut');
+  perluasan.kiri.append(bonusPerluasan);
+  const tombolPerluasan = tombolBeli();
+  tombolPerluasan.kecil.textContent = TEKS.bangun;
+  tombolPerluasan.tombol.addEventListener('click', () => kirim({ jenis: 'mulaiPerluasan' }));
+  const kananPerluasan = el('div', 'target-tombol');
+  kananPerluasan.append(tombolPerluasan.tombol);
+  perluasan.elemen.append(kananPerluasan);
+  // Renovasi (pengganti prestige): selalu lewat popup konfirmasi.
+  const renov = kartuBilah('renovasi-kartu');
+  renov.judul.textContent = TEKS.renovasiJudul;
+  const tombolRenov = tombolBeli();
+  tombolRenov.tombol.classList.add('tombol-kelas');
+  tombolRenov.kecil.textContent = TEKS.renovasi;
+  let modelRenov: ModelRenovasi | null = null;
+  tombolRenov.tombol.addEventListener('click', () => {
+    if (modelRenov?.bisa) o.konfirmasiRenovasi?.(modelRenov);
+  });
+  const kananRenov = el('div', 'target-tombol');
+  kananRenov.append(tombolRenov.tombol);
+  renov.elemen.append(kananRenov);
+  // Kelas bus yang dioperasikan PO terdaftar.
+  const barisKelas = KELAS_BUS_IDS.map((id) => {
+    const r = baris3(IKON_KELAS_BUS[id], NAMA_KELAS_BUS[id].nama, 'kelas-bus');
+    r.elemen.dataset['kelasBus'] = id;
+    r.tombol.hidden = true;
+    return { id, ...r };
+  });
+  elemen.append(
+    level.elemen,
+    perluasan.elemen,
+    renov.elemen,
+    el('div', 'judul-bagian', TEKS.judulKelasBus),
+    ...barisKelas.map((b) => b.elemen),
+    el('div', 'harga-catatan', `${TEKS.terminalCatatan} ${TEKS.kelasBusCatatan}`),
+  );
+  return {
+    elemen,
+    perbarui(m) {
+      const t = m.terminal;
+      setTeks(level.judul, TEKS.kelasJudul(namaKelas(t.kelas), t.nama));
+      setTeks(level.tugas, TEKS.level(t.level));
+      setTeks(level.ket, `${TEKS.terminalKelasBerikut(namaKelas(t.kelas + 1), t.levelKelasBerikut)} · ${TEKS.terminalBonus(persen(t.bonusLevel), t.slot)}`);
+      setStyle(level.isi, 'width', `${(t.rasio * 100).toFixed(1)}%`);
+      setTeks(level.angka, TEKS.terminalXp(formatAngka(Math.floor(t.xp)), formatAngka(Math.ceil(t.xpBerikut))));
+
+      const p = t.perluasan;
+      const tahap = p.proyek?.tahap ?? p.berikut?.tahap ?? null;
+      const nama = tahap !== null ? NAMA_PERLUASAN[tahap - 1] : undefined;
+      setTeks(perluasan.tugas, tahap !== null && nama ? TEKS.perluasanTahap(tahap, p.jumlah, nama.nama) : TEKS.perluasanSelesai);
+      const efek = p.proyek
+        ? TEKS.perluasanProyek(formatDurasi(p.proyek.sisaDetik))
+        : p.berikut
+          ? `${nama ? `${nama.deskripsi} · ` : ''}${TEKS.perluasanEfek(p.berikut.jatah)}${p.berikut.levelKurang ? ` · ${TEKS.perluasanSyarat(p.berikut.level)}` : ''}`
+          : '';
+      setTeks(perluasan.ket, efek);
+      setHidden(perluasan.ket, efek === '');
+      setHidden(perluasan.bar, p.proyek === null);
+      setStyle(perluasan.isi, 'width', `${((p.proyek?.rasio ?? 0) * 100).toFixed(1)}%`);
+      setHidden(perluasan.angka, true);
+      setTeks(bonusPerluasan, p.bonusJatah > 0 ? TEKS.perluasanBonus(p.bonusJatah) : TEKS.perluasanCatatan);
+      setHidden(kananPerluasan, p.berikut === null);
+      if (p.berikut) {
+        setTeks(tombolPerluasan.besar, formatUang(p.berikut.biaya));
+        setDisabled(tombolPerluasan.tombol, !p.berikut.bisa);
+      }
+      perluasan.elemen.classList.toggle('siap', p.berikut?.bisa === true);
+
+      const r = t.renovasi;
+      modelRenov = r;
+      setTeks(renov.tugas, TEKS.renovasiBonus(persen(r.bonus), r.jumlah));
+      setTeks(renov.ket, r.bisa ? TEKS.renovasiBerikut(r.poinTersedia, persen(r.bonusSetelah)) : TEKS.renovasiSyarat(r.poinMin));
+      setStyle(renov.isi, 'width', `${(r.rasio * 100).toFixed(1)}%`);
+      setTeks(renov.angka, TEKS.kelasKemajuan(formatUang(r.pendapatanRun), formatUang(r.pendapatanPerlu)));
+      setTeks(tombolRenov.besar, r.bisa ? TEKS.poin(r.poinTersedia) : TEKS.poinDari(r.poinTersedia, r.poinMin));
+      setDisabled(tombolRenov.tombol, !r.bisa);
+      renov.elemen.classList.toggle('siap', r.bisa);
+
       for (const b of barisKelas) {
-        const k = a.kelasBus.find((x) => x.id === b.id)!;
-        const nama = NAMA_KELAS_BUS[b.id];
-        const status = k.beroperasi
-          ? k.bonusTiket > 0
-            ? TEKS.kelasBusBeroperasi(persen(k.bonusTiket))
-            : TEKS.kelasBusAwal
-          : k.kurang?.jenis === 'sebelumnya'
-            ? TEKS.kelasBusSyaratSebelumnya(NAMA_KELAS_BUS[k.kurang.kelas].nama)
-            : k.kurang?.jenis === 'terminal'
-              ? TEKS.kelasBusSyaratTerminal(namaKelas(k.kurang.kelas))
-              : TEKS.kelasBusTiket(persen(k.bonusTiket));
-        setTeks(b.keterangan, `${nama.deskripsi} · ${status}`);
+        const k = t.kelasBus.find((x) => x.id === b.id)!;
+        const syarat = k.beroperasi
+          ? TEKS.kelasBusBeroperasi
+          : `${TEKS.kelasBusSyarat(k.tingkatMin === 'lokal' ? null : NAMA_TINGKAT_PO[k.tingkatMin], k.levelPo)}${k.kelasTerminal > t.kelas ? ` · ${TEKS.poSyaratTerminal(namaKelas(k.kelasTerminal))}` : ''}`;
+        setTeks(b.keterangan, `${NAMA_KELAS_BUS[b.id].deskripsi} · ${syarat}`);
         setTeks(b.level, '✓');
         setHidden(b.level, !k.beroperasi);
-        setHidden(b.tombol, k.beroperasi);
-        setHidden(b.infoHarga, k.harga === null);
-        setHidden(b.pengatur.elemen, k.harga === null);
-        setHidden(b.pengatur.saran, k.harga === null);
-        if (k.harga) {
-          setTeks(b.infoHarga, teksHarga(k.harga));
-          b.pengatur.perbarui(k.harga);
-        }
-        setTeks(b.tombolKecil, TEKS.beli);
-        setTeks(b.tombolBesar, formatUang(k.biaya));
-        setDisabled(b.tombol, !k.bisa);
         b.elemen.classList.toggle('belum', !k.beroperasi);
-        b.elemen.classList.toggle('terkunci', !k.beroperasi && k.kurang !== null);
-      }
-      setTeks(ringkasan, TEKS.armadaRingkas(a.jumlah, a.daftar.length, persen(a.bonusTiket)));
-      for (const b of baris) {
-        const po = a.daftar.find((x) => x.id === b.id)!;
-        const sy = po.syarat;
-        const status = po.bergabung
-          ? TEKS.poBergabung(persen(a.bonusPerPo))
-          : sy.jenis === 'jurusan'
-            ? TEKS.poSyaratJurusan(sy.kota)
-            : sy.jenis === 'kelas'
-              ? TEKS.poSyaratKelas(namaKelas(sy.kelas))
-              : sy.jenis === 'event'
-                ? TEKS.poSyaratEvent(NAMA_EVENT[sy.event].nama)
-                : sy.kepuasanKurang && sy.kepuasanMin !== null
-                  ? TEKS.poSyaratKepuasan(persen(sy.kepuasanMin))
-                  : TEKS.poSyaratKontrak(persen(a.bonusPerPo));
-        setTeks(b.keterangan, `${NAMA_PO[b.id].asal} · ${status}`);
-        setTeks(b.level, '✓');
-        setHidden(b.level, !po.bergabung);
-        setHidden(b.tombol, po.bergabung || sy.jenis !== 'kontrak');
-        if (sy.jenis === 'kontrak') {
-          setTeks(b.tombolKecil, TEKS.kontrak);
-          setTeks(b.tombolBesar, formatUang(sy.biaya));
-          setDisabled(b.tombol, !sy.bisa);
-        }
-        b.elemen.classList.toggle('belum', !po.bergabung);
       }
     },
   };
@@ -536,16 +776,12 @@ function buatKartuRekor(): { readonly elemen: HTMLElement; perbarui(m: ModelTamp
 export interface OpsiTabTarget {
   /** Iklan berhadiah untuk klaim 2× (tanpa ini tombolnya tidak ada). */
   readonly iklan?: IklanMenu;
-  /** Membuka konfirmasi naik kelas (naik kelas mengulang terminal dari awal, jadi tidak langsung dikirim dari tombol). */
-  readonly konfirmasiNaikKelas?: (m: ModelKelas) => void;
-  /** Membuka popup nama terminal (lihat popup-nama.ts) dengan nama & kelas sekarang. */
-  readonly ubahNama?: (m: ModelKelas) => void;
   /** Kartu papan peringkat (ui/peringkat.ts), di bawah tantangan mingguan. */
   readonly kartuPeringkat?: { readonly elemen: HTMLElement; perbarui(m: ModelTampilan): void };
 }
 
 export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
-  const { iklan, konfirmasiNaikKelas, ubahNama, kartuPeringkat } = o;
+  const { iklan, kartuPeringkat } = o;
   let menonton = false;
   /** Tonton iklan lalu kirim aksi klaim ganda; satu iklan pada satu waktu. */
   const klaimGanda = (tempat: 'target2x' | 'penghargaan2x', aksi: Aksi): void => {
@@ -578,40 +814,6 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
   eventKanan.append(tombolEvent);
   kartuEvent.append(eventKiri, eventKanan);
   kartuEvent.hidden = true;
-  // Kelas terminal: bonus sekarang, kemajuan menuju naik kelas, tombol naik kelas.
-  const kartuKelas = el('div', 'target-kartu kelas-kartu');
-  const kelasJudul = el('div', 'target-judul kelas-judul');
-  // Nama terminal: tombol ✎ di samping judul kartu kelas.
-  const tombolNama = el('button', 'tombol-nama');
-  tombolNama.type = 'button';
-  tombolNama.title = TEKS.namaTombol;
-  tombolNama.setAttribute('aria-label', TEKS.namaTombol);
-  tombolNama.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="2"/></svg>';
-  const barisJudulKelas = el('div', 'kelas-judul-baris');
-  barisJudulKelas.append(kelasJudul, tombolNama);
-  const kelasBonus = el('div', 'target-tugas');
-  const kelasBar = el('div', 'bar');
-  const kelasBarIsi = el('div', 'bar-isi');
-  kelasBar.append(kelasBarIsi);
-  const kelasAngka = el('div', 'target-angka');
-  const kelasBerikut = el('div', 'kelas-berikut');
-  const tombolKelas = el('button', 'tombol tombol-beli tombol-kelas');
-  tombolKelas.type = 'button';
-  const kelasKecil = el('span', 'tombol-kecil', TEKS.naikKelas);
-  const kelasBesar = el('span', 'tombol-besar');
-  tombolKelas.append(kelasKecil, kelasBesar);
-  let modelKelas: ModelKelas | null = null;
-  tombolKelas.addEventListener('click', () => {
-    if (modelKelas?.bisa) konfirmasiNaikKelas?.(modelKelas);
-  });
-  tombolNama.addEventListener('click', () => {
-    if (modelKelas) ubahNama?.(modelKelas);
-  });
-  const kelasKiri = el('div', 'target-kiri');
-  kelasKiri.append(barisJudulKelas, kelasBonus, kelasBerikut, kelasBar, kelasAngka);
-  const kelasKanan = el('div', 'target-tombol');
-  kelasKanan.append(tombolKelas);
-  kartuKelas.append(kelasKiri, kelasKanan);
   const kartu = el('div', 'target-kartu');
   const judul = el('div', 'target-judul');
   const tugas = el('div', 'target-tugas');
@@ -635,7 +837,7 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
   const judulPenghargaan = el('div', 'judul-bagian', TEKS.penghargaan);
   const kartuTantangan = buatKartuTantangan(kirim);
   const kartuRekor = buatKartuRekor();
-  elemen.append(kartuEvent, kartuKelas, kartu, kartuTantangan.elemen, ...(kartuPeringkat ? [kartuPeringkat.elemen] : []), kartuRekor.elemen, judulPenghargaan);
+  elemen.append(kartuEvent, kartu, kartuTantangan.elemen, ...(kartuPeringkat ? [kartuPeringkat.elemen] : []), kartuRekor.elemen, judulPenghargaan);
   const baris = PENCAPAIAN_IDS.map((id: PencapaianId) => {
     const r = baris3(IKON_PIALA.replace(/^<svg[^>]*>|<\/svg>$/g, ''), NAMA_PENCAPAIAN[id].nama, 'penghargaan');
     setTeks(r.keterangan, NAMA_PENCAPAIAN[id].deskripsi);
@@ -669,18 +871,6 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
         kartuEvent.classList.toggle('siap', ev.bisaKlaim);
         kartuEvent.dataset['event'] = ev.id;
       }
-      const k = m.kelas;
-      modelKelas = k;
-      const berikut = namaKelas(k.kelas + 1);
-      setTeks(kelasJudul, TEKS.kelasJudul(namaKelas(k.kelas), k.nama));
-      setHidden(tombolNama, !ubahNama);
-      setTeks(kelasBonus, TEKS.kelasBonus(persen(k.bonus)));
-      setTeks(kelasBerikut, k.bisa ? TEKS.kelasBerikut(berikut, k.poinTersedia, persen(k.bonusSetelah)) : TEKS.kelasSyarat(berikut, k.poinMinimal));
-      setStyle(kelasBarIsi, 'width', `${(k.rasio * 100).toFixed(1)}%`);
-      setTeks(kelasAngka, TEKS.kelasKemajuan(formatUang(k.pendapatanRun), formatUang(k.pendapatanPerlu)));
-      setTeks(kelasBesar, k.bisa ? TEKS.poin(k.poinTersedia) : TEKS.poinDari(k.poinTersedia, k.poinMinimal));
-      setDisabled(tombolKelas, !k.bisa);
-      kartuKelas.classList.toggle('siap', k.bisa);
       const t = m.target;
       setTeks(judul, TEKS.targetHari(t.hari));
       setTeks(tugas, t.jenis === 'upgrade' ? TEKS.targetUpgrade(formatAngka(t.target)) : TEKS.targetPenumpang(formatAngka(t.target)));
@@ -767,8 +957,4 @@ function setDisabled(e: HTMLButtonElement, disabled: boolean): void {
 
 function setStyle(e: HTMLElement, prop: 'width', nilai: string): void {
   if (e.style[prop] !== nilai) e.style[prop] = nilai;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }

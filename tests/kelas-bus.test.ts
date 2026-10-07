@@ -1,122 +1,78 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
-import { peristiwaAksi } from '../src/app/analitik';
-import { EKONOMI } from '../src/config/economy.config';
+import { EKONOMI, type TingkatPo } from '../src/config/economy.config';
 import { CacheSel } from '../src/game/cache-sel';
 import { JARI_LENGKUNG_RODA, panjangSisiBadan, pilihKelasBus, pusatRoda, TAMPIL_KELAS_BUS, tinggiSisiTegak, type Kotak } from '../src/game/kelas-bus';
 import { BAGASI, BUS, PINTU_BUS } from '../src/game/tata-letak';
-import { terapkanAksi } from '../src/sim/aksi';
 import { KELAS_BUS_IDS, type KelasBusId } from '../src/sim/fitur';
-import { deserialisasi, serialisasi } from '../src/sim/save';
-import {
-  beliKelasBus,
-  bisaBeliKelasBus,
-  kelasBusBeroperasi,
-  kelasBusBerikutnya,
-  multKelasBus,
-  naikKelas,
-  nilaiPerPenumpangState,
-  syaratKelasBusKurang,
-  tick,
-  type GameState,
-} from '../src/sim/state';
+import { levelMinimalKelas } from '../src/sim/level-terminal';
+import { kelasAktif } from '../src/sim/mitra';
+import { kelasBusBeroperasi, nilaiPerPenumpangState, tick } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
-import { stateOtomatis, T0 } from './helpers';
+import { denganLevelTerminal, denganPo, stateOtomatis } from './helpers';
 
-const kaya = (s: GameState, uang = 1e12): GameState => ({ ...s, uang: new Decimal(uang) });
-const kelas = (s: GameState, jumlahReset: number): GameState => ({ ...s, prestige: { ...s.prestige, jumlahReset } });
+const lv = EKONOMI.mitra.kelas;
 
-describe('kelas bus (sim)', () => {
-  it('game baru: hanya ekonomi yang beroperasi, tanpa bonus tiket', () => {
+describe('kelas bus (sim): dioperasikan mitra PO', () => {
+  it('game baru: hanya ekonomi; kelas berikutnya terbuka seiring level PO dan menaikkan nilai tiket', () => {
     const s = stateOtomatis();
     expect(kelasBusBeroperasi(s)).toEqual(['ekonomi']);
-    expect(kelasBusBerikutnya(s)).toBe('patas');
-    expect(multKelasBus(s)).toBe(1);
+    const patas = denganPo(s, 'ondelOndel', { level: lv.patas.levelPo });
+    expect(kelasBusBeroperasi(patas)).toEqual(['ekonomi', 'patas']);
+    expect(kelasBusBeroperasi(denganPo(s, 'ondelOndel', { level: lv.patas.levelPo - 1 }))).toEqual(['ekonomi']);
+    expect(nilaiPerPenumpangState(patas)).toBeGreaterThan(nilaiPerPenumpangState(s));
   });
 
-  it('didatangkan berurutan; kelas besar butuh kelas terminal; uang dipotong, tiket naik', () => {
-    let s = kaya(stateOtomatis());
-    // Tidak bisa melompati urutan.
-    expect(syaratKelasBusKurang(s, 'eksekutif')).toEqual({ jenis: 'sebelumnya', kelas: 'patas' });
-    expect(beliKelasBus(s, 'eksekutif')).toBe(s);
-    const tiketAwal = nilaiPerPenumpangState(s);
-    const uangAwal = s.uang.toNumber();
-    s = beliKelasBus(s, 'patas');
-    expect(s.terminal.kelasBus.patas).toBe(true);
-    expect(s.uang.toNumber()).toBeCloseTo(uangAwal - EKONOMI.kelasBus.patas.biaya, 0);
-    expect(nilaiPerPenumpangState(s)).toBeCloseTo(tiketAwal * (1 + EKONOMI.kelasBus.patas.bonusTiket), 9);
-    s = beliKelasBus(s, 'eksekutif');
-    expect(s.terminal.kelasBus.eksekutif).toBe(true);
-    // Sleeper butuh Tipe B, Double Decker butuh Tipe A.
-    expect(syaratKelasBusKurang(s, 'sleeper')).toEqual({ jenis: 'terminal', kelas: EKONOMI.kelasBus.sleeper.kelasTerminal });
-    expect(bisaBeliKelasBus(s, 'sleeper')).toBe(false);
-    s = kelas(s, 1);
-    expect(syaratKelasBusKurang(s, 'sleeper')).toBeNull();
-    s = beliKelasBus(s, 'sleeper');
-    expect(syaratKelasBusKurang(s, 'tingkat')).toEqual({ jenis: 'terminal', kelas: 2 });
-    s = beliKelasBus(kelas(s, 2), 'tingkat');
+  it('dibatasi tingkat PO: lokal sampai Eksekutif, regional sampai Sleeper, nasional & premium sampai Double Decker', () => {
+    const batas: Record<TingkatPo, KelasBusId> = { lokal: 'eksekutif', regional: 'sleeper', nasional: 'tingkat', premium: 'tingkat' };
+    for (const [tingkat, maks] of Object.entries(batas) as [TingkatPo, KelasBusId][]) {
+      expect(KELAS_BUS_IDS[EKONOMI.mitra.tingkat[tingkat].kelasMaks - 1]).toBe(maks);
+    }
+    // Ondel-Ondel (lokal) di Lv 30, terminal Terpadu: tetap paling tinggi Eksekutif.
+    expect(kelasAktif('ondelOndel', 30, 3)).toEqual(['ekonomi', 'patas', 'eksekutif']);
+    expect(kelasAktif('bakpiaRasa', 30, 3)).toEqual(['ekonomi', 'patas', 'eksekutif', 'sleeper']);
+    expect(kelasAktif('kecakLaju', 30, 3)).toEqual([...KELAS_BUS_IDS]);
+  });
+
+  it('kelas besar butuh kelas terminal: Sleeper di Tipe B, Double Decker di Tipe A', () => {
+    let s = denganPo(stateOtomatis(), 'kecakLaju', { level: lv.tingkat.levelPo });
+    expect(kelasBusBeroperasi(s)).toEqual(['ekonomi', 'patas', 'eksekutif']);
+    s = denganLevelTerminal(s, levelMinimalKelas(EKONOMI.kelasBus.sleeper.kelasTerminal));
+    expect(kelasBusBeroperasi(s)).toEqual(['ekonomi', 'patas', 'eksekutif', 'sleeper']);
+    s = denganLevelTerminal(s, levelMinimalKelas(EKONOMI.kelasBus.tingkat.kelasTerminal));
     expect(kelasBusBeroperasi(s)).toEqual([...KELAS_BUS_IDS]);
-    expect(kelasBusBerikutnya(s)).toBeNull();
-    const totalBonus = KELAS_BUS_IDS.reduce((a, id) => a + EKONOMI.kelasBus[id].bonusTiket, 0);
-    expect(multKelasBus(s)).toBeCloseTo(1 + totalBonus, 9);
-    // Sudah beroperasi: tidak bisa dibeli lagi.
-    expect(beliKelasBus(s, 'tingkat')).toBe(s);
     expect(tick(s, 0.1).pencapaian.tercapai).toContain('armadaLengkap');
   });
 
-  it('uang kurang: tidak terjadi apa-apa', () => {
-    const s = stateOtomatis({}, EKONOMI.kelasBus.patas.biaya - 1);
-    expect(bisaBeliKelasBus(s, 'patas')).toBe(false);
-    expect(beliKelasBus(s, 'patas')).toBe(s);
+  it('PO tanpa loket tidak mengoperasikan kelasnya', () => {
+    const s = denganPo(denganLevelTerminal(stateOtomatis(), 30), 'kecakLaju', { level: lv.tingkat.levelPo, loket: 0 });
+    expect(kelasBusBeroperasi(s)).toEqual(['ekonomi']);
   });
 
-  it('naik kelas terminal mengulang armada ke ekonomi', () => {
-    let s = kaya(stateOtomatis());
-    s = beliKelasBus(beliKelasBus(s, 'patas'), 'eksekutif');
-    s = { ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e8) } };
-    const baru = naikKelas(s);
-    expect(baru.prestige.jumlahReset).toBe(1);
-    expect(kelasBusBeroperasi(baru)).toEqual(['ekonomi']);
+  it('model: kelas bus di tab Terminal beserta syaratnya, dan kelas berikutnya di kartu PO', () => {
+    const s = stateOtomatis();
+    const m = buatModel(s);
+    expect(m.terminal.kelasBus.find((k) => k.id === 'ekonomi')).toMatchObject({ beroperasi: true, levelPo: 1, tingkatMin: 'lokal', kelasTerminal: 0 });
+    expect(m.terminal.kelasBus.find((k) => k.id === 'sleeper')).toMatchObject({ beroperasi: false, levelPo: lv.sleeper.levelPo, tingkatMin: 'regional', kelasTerminal: 1 });
+    expect(m.terminal.kelasBus.find((k) => k.id === 'tingkat')).toMatchObject({ beroperasi: false, levelPo: lv.tingkat.levelPo, tingkatMin: 'nasional', kelasTerminal: 2 });
+    expect(m.mitra.terdaftar[0]!.kelas).toEqual(['ekonomi']);
+    expect(m.mitra.terdaftar[0]!.kelasBerikut).toEqual({ kelas: 'patas', level: lv.patas.levelPo, kurangKelas: null });
+    // Lokal yang sudah sampai Eksekutif: tidak ada kelas berikutnya lagi.
+    expect(buatModel(denganPo(s, 'ondelOndel', { level: lv.eksekutif.levelPo })).mitra.terdaftar[0]!.kelasBerikut).toBeNull();
+    // Regional di Lv 10 tapi masih Tipe C: Sleeper menunggu kelas terminal.
+    const regional = buatModel(denganPo(s, 'bakpiaRasa', { level: lv.sleeper.levelPo })).mitra.terdaftar.find((p) => p.id === 'bakpiaRasa')!;
+    expect(regional.kelasBerikut).toEqual({ kelas: 'sleeper', level: lv.sleeper.levelPo, kurangKelas: 1 });
   });
 
-  it('tersimpan; save lama tanpa blok kelas bus = ekonomi saja; ekonomi selalu beroperasi', () => {
-    const s = beliKelasBus(kaya(stateOtomatis()), 'patas');
-    const d = deserialisasi(serialisasi(s), T0);
-    expect(d.terminal.kelasBus).toEqual(s.terminal.kelasBus);
-    const mentah = JSON.parse(serialisasi(s)) as { terminal: Record<string, unknown> };
-    delete mentah.terminal['kelasBus'];
-    expect(kelasBusBeroperasi(deserialisasi(JSON.stringify(mentah), T0))).toEqual(['ekonomi']);
-    mentah.terminal['kelasBus'] = { ekonomi: false, patas: true };
-    expect(kelasBusBeroperasi(deserialisasi(JSON.stringify(mentah), T0))).toEqual(['ekonomi', 'patas']);
-    mentah.terminal['kelasBus'] = { patas: 'ya' };
-    expect(() => deserialisasi(JSON.stringify(mentah), T0)).toThrow();
-  });
-
-  it('aksi, analitik, dan model tab Armada', () => {
-    const s = kaya(stateOtomatis());
-    const baru = terapkanAksi(s, { jenis: 'beliKelasBus', kelas: 'patas' });
-    expect(baru.terminal.kelasBus.patas).toBe(true);
-    expect(peristiwaAksi({ jenis: 'beliKelasBus', kelas: 'patas' }, s, baru)).toEqual([{ nama: 'beli_kelas_bus', data: { kelas: 'patas' } }]);
-    const m = buatModel(baru).armada;
-    expect(m.jumlahKelasBus).toBe(2);
-    expect(m.bonusKelasBus).toBeCloseTo(EKONOMI.kelasBus.patas.bonusTiket, 9);
-    expect(m.kelasBus.find((k) => k.id === 'eksekutif')).toMatchObject({ beroperasi: false, bisa: true, kurang: null });
-    expect(m.kelasBus.find((k) => k.id === 'sleeper')?.kurang).toEqual({ jenis: 'terminal', kelas: EKONOMI.kelasBus.sleeper.kelasTerminal });
-    // Terminal sudah cukup tinggi: tinggal urutan kelas bus.
-    expect(buatModel(kelas(baru, 1)).armada.kelasBus.find((k) => k.id === 'sleeper')?.kurang).toEqual({ jenis: 'sebelumnya', kelas: 'eksekutif' });
-    // Popup naik kelas menyebut kelas bus yang terbuka di kelas terminal berikutnya.
-    expect(buatModel(baru).kelas.kelasBusTerbuka).toEqual(KELAS_BUS_IDS.filter((id) => EKONOMI.kelasBus[id].kelasTerminal === 1));
-  });
-
-  it('konfigurasi: urut makin mahal, bonus positif, syarat kelas terminal tidak menurun', () => {
+  it('konfigurasi: nilai tiket & level PO naik tiap kelas, syarat kelas terminal tidak menurun', () => {
     for (let i = 1; i < KELAS_BUS_IDS.length; i++) {
-      const a = EKONOMI.kelasBus[KELAS_BUS_IDS[i - 1]!];
-      const b = EKONOMI.kelasBus[KELAS_BUS_IDS[i]!];
-      expect(b.biaya).toBeGreaterThan(a.biaya);
-      expect(b.bonusTiket).toBeGreaterThan(0);
-      expect(b.kelasTerminal).toBeGreaterThanOrEqual(a.kelasTerminal);
+      const a = KELAS_BUS_IDS[i - 1]!;
+      const b = KELAS_BUS_IDS[i]!;
+      expect(lv[b].nilai).toBeGreaterThan(lv[a].nilai);
+      expect(lv[b].levelPo).toBeGreaterThan(lv[a].levelPo);
+      expect(EKONOMI.kelasBus[b].kelasTerminal).toBeGreaterThanOrEqual(EKONOMI.kelasBus[a].kelasTerminal);
     }
-    expect(EKONOMI.kelasBus.ekonomi).toMatchObject({ biaya: 0, bonusTiket: 0, kelasTerminal: 0 });
+    expect(lv.ekonomi).toEqual({ nilai: 1, levelPo: 1 });
+    expect(EKONOMI.kelasBus.ekonomi.kelasTerminal).toBe(0);
   });
 });
 

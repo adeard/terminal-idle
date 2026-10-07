@@ -1256,9 +1256,10 @@ body {
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* Lebar tab mengikuti labelnya (sisa ruang dibagi rata), supaya label panjang tidak meluber di bilah sempit (landscape). */
 .tab {
   position: relative;
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   padding: 7px 4px;
   border: 0;
@@ -1269,6 +1270,8 @@ body {
   font-size: 14px;
   font-weight: 800;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 
@@ -1343,10 +1346,6 @@ body {
   border-left: 4px solid var(--warna);
   border-radius: 12px;
   background: var(--kartu);
-}
-
-.item-jurusan {
-  --warna: #f59e0b;
 }
 
 .item-penghargaan {
@@ -1457,7 +1456,7 @@ body {
   background: #d97706;
 }
 
-/* Jurusan: ringkasan nilai tiket, kota-kota (terbuka berwarna, terkunci bergembok), tombol buka. */
+/* Tab PO: ringkasan slot & nilai tiket. */
 .jurusan-ringkasan {
   flex: none;
   padding: 2px 4px;
@@ -1466,79 +1465,13 @@ body {
   color: #ffd479;
 }
 
-.jurusan-grid {
-  flex: none;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
-}
-
-.jurusan-chip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  min-width: 0;
-  padding: 6px 4px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #6b7888;
-  font-size: 10.5px;
-  font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.jurusan-chip svg {
-  flex: none;
-  width: 11px;
-  height: 11px;
-}
-
-.jurusan-chip.buka {
-  background: rgba(245, 158, 11, 0.18);
-  color: #fcd34d;
-}
-
-/* Rute antarpulau: pemisah & chip biru laut. */
-.jurusan-pemisah {
-  grid-column: 1 / -1;
-  padding: 4px 2px 0;
-  color: #7dd3fc;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
-
-.jurusan-chip.antarpulau {
-  background: rgba(56, 189, 248, 0.07);
-}
-
-.jurusan-chip.antarpulau.buka {
-  background: rgba(56, 189, 248, 0.2);
-  color: #7dd3fc;
-}
-
-/* Harga tiket per jurusan (tab Jurusan) & per kelas bus (tab Armada): baris dengan tombol − / +. */
+/* Catatan kecil di bawah ringkasan & di akhir tab. */
 .harga-catatan {
   flex: none;
   padding: 0 4px 2px;
   font-size: 12px;
   line-height: 1.35;
   color: var(--redup);
-}
-
-.item-harga {
-  --warna: #f59e0b;
-  min-height: 52px;
-}
-
-.item-harga.antarpulau {
-  --warna: #38bdf8;
-}
-
-.item-harga-info {
-  color: #cfd6de;
 }
 
 .pengatur-harga {
@@ -1594,17 +1527,13 @@ body {
   color: #fcd34d;
 }
 
-.harga-nilai.terlalu-mahal {
-  color: #ff8a8a;
-}
-
 /* Rupiah lebih panjang dari persen: kolom harga sedikit lebih lebar. */
 .pengatur-harga .harga-nilai {
   min-width: 64px;
   font-size: 15px;
 }
 
-/* Saran harga di bawah keterangan: ketuk untuk memakai; merah bila tiket terlalu mahal. */
+/* Saran harga di bawah keterangan: ketuk untuk memakai. */
 .harga-saran {
   align-self: flex-start;
   max-width: 100%;
@@ -1631,29 +1560,168 @@ body {
   cursor: default;
 }
 
-.harga-saran.terlalu-mahal {
-  border-color: rgba(255, 90, 100, 0.6);
-  background: rgba(255, 90, 100, 0.14);
-  color: #ff9b9b;
+/* Tab PO: kartu tiap mitra PO terdaftar (level & XP, loket, kelas bus, harga per jurusan, kontrak). */
+.item-po,
+.kartu-po {
+  --warna: #60a5fa;
 }
 
-.harga-wajar {
+.po-daftar {
   flex: none;
-  padding: 0 4px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kartu-po {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 9px 10px;
+  border: 1px solid var(--garis);
+  border-left: 4px solid var(--warna);
+  border-radius: 12px;
+  background: var(--kartu);
+}
+
+.po-kepala,
+.po-baris,
+.po-jurusan,
+.po-xp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.po-xp .bar-isi {
+  background: var(--warna);
+}
+
+.po-angka {
+  flex: none;
   font-size: 12px;
-  line-height: 1.35;
+  color: var(--redup);
+  font-variant-numeric: tabular-nums;
+}
+
+.po-judul {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.po-ket,
+.po-teks {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--redup);
+}
+
+.po-teks {
+  color: #cfd6de;
+}
+
+.po-baris.hampir .po-judul {
   color: #fcd34d;
 }
 
-.harga-wajar.terlalu-mahal {
-  color: #ff9b9b;
-  font-weight: 700;
+.po-subjudul {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--redup);
 }
 
-.kepuasan-harga {
-  margin: -4px 0 10px;
-  color: #ff9b9b;
+.po-harga {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Satu jurusan PO: garis kiri jingga (darat) atau biru laut (antarpulau); redup bila belum dilayani. */
+.po-jurusan {
+  min-height: 44px;
+  padding: 3px 0 3px 8px;
+  border-left: 3px solid #f59e0b;
+}
+
+.po-jurusan.antarpulau {
+  border-left-color: #38bdf8;
+}
+
+.po-jurusan.terkunci {
+  border-left-color: #3a4552;
+  opacity: 0.6;
+}
+
+.po-jurusan .item-nama {
+  font-size: 14px;
+}
+
+/* Putus kontrak: abu-abu; merah saat menunggu ketukan kedua. */
+.tombol-putus {
+  width: 64px;
+  height: 44px;
+  background: #3a4552;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.tombol-putus.yakin {
+  background: #dc2626;
+}
+
+/* Syarat PO yang belum bisa didaftarkan. */
+.po-status {
+  color: #fcd34d;
+}
+
+.item-loket-kosong {
+  --warna: #f59e0b;
+}
+
+/* Tab Terminal: perluasan (jingga) & Renovasi (hijau). */
+/* Dua kelas: menimpa garis kiri .target-kartu yang ditulis sesudahnya. */
+.target-kartu.perluasan-kartu {
+  border-left-color: #f97316;
+}
+
+.perluasan-kartu .kelas-judul {
+  color: #fdba74;
+}
+
+.perluasan-kartu .bar-isi {
+  background: #f97316;
+}
+
+.target-kartu.renovasi-kartu {
+  border-left-color: #22c55e;
+}
+
+.renovasi-kartu .kelas-judul {
+  color: #86efac;
+}
+
+.renovasi-kartu .bar-isi {
+  background: #22c55e;
+}
+
+/* Panel Loket: PO yang menerima loket berikutnya (kuning bila ada loket kosong / jatah penuh). */
+.panel-tujuan {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
   font-weight: 700;
+  color: var(--redup);
+}
+
+.panel-tujuan.peringatan {
+  color: #fcd34d;
 }
 
 /* Target harian: kartu dengan progres dan tombol klaim. */
@@ -1675,7 +1743,7 @@ body {
   box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.3);
 }
 
-/* Kartu kelas terminal (naik kelas = prestige) di atas target harian. */
+/* Kartu level & kelas terminal (tab Terminal). */
 .kelas-kartu {
   border-left-color: #eab308;
 }
@@ -1859,7 +1927,7 @@ body {
   font-size: 13px;
 }
 
-/* Popup konfirmasi naik kelas. */
+/* Popup konfirmasi Renovasi (ui/popup-renovasi.ts). */
 .kelas-ikon {
   width: 84px;
   height: 84px;
@@ -1901,16 +1969,17 @@ body {
   margin-top: 8px;
 }
 
-.kelas-hadiah {
-  color: #fde68a;
-}
-
 .target-kiri {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Di kolom flex, `flex: 1` milik .bar membuat tingginya 0: tinggi bilah dari height-nya sendiri. */
+.target-kiri .bar {
+  flex: none;
 }
 
 .target-judul {
