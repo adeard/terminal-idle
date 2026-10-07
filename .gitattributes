@@ -1,0 +1,12 @@
+# Semua teks disimpan & di-checkout dengan LF (proyek web lintas OS; gradlew harus LF).
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Biner.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.jar binary

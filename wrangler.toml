@@ -1,0 +1,14 @@
+# Cloudflare Pages: situs bustation.games (project "bustation").
+# Dibaca `npm run deploy:web` (wrangler pages deploy) dan `npx wrangler pages dev dist`.
+# Karena file ini ada, binding & pengaturan Pages dikelola di sini, bukan di dashboard.
+name = "bustation"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-09-28"
+
+# Papan peringkat (functions/api/peringkat, server/): database D1 di region APAC.
+# Skema: migrations/ (npx wrangler d1 migrations apply bustation-peringkat --remote).
+[[d1_databases]]
+binding = "DB"
+database_name = "bustation-peringkat"
+database_id = "edf37c78-3ffe-4916-8f86-76dbccee42fe"
+migrations_dir = "migrations"

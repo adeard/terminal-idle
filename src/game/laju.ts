@@ -1,0 +1,134 @@
+/**
+ * Menerjemahkan state sim menjadi laju animasi keramaian (orang/detik, bus/detik).
+ * Murni visual: tidak memengaruhi uang.
+ *
+ * Tahap yang paling lambat (bottleneck) berjalan pada laju dasar, tahap lain
+ * sedikit lebih cepat (sebanding akar rasio kapasitas). Akibatnya antrean
+ * orang menumpuk tepat di depan bottleneck, jadi pemain bisa "melihat" macetnya.
+ * Banyaknya bus & calon penumpang yang datang mengikuti daya tarik kepuasan
+ * dan harga tiket (sama dengan permintaan di ekonomi), lalu ritme jam
+ * (terapkanRitme). Jurusan & kelas bus yang datang sebanding bagian
+ * penumpangnya menurut harga tiket.
+ */
+import { throughput } from '../sim/economy';
+import type { KelasBusId } from '../sim/fitur';
+import { arusHarga, dayaTarikKepuasan, kepuasanTerminal, permintaanPenumpang, semuaKapasitas, type GameState } from '../sim/state';
+import type { TahapId } from '../sim/tahap';
+import { loketBuka } from './kehidupan-malam';
+import { MUATAN_BUS } from './tata-letak';
+
+export interface LajuVisual {
+  /** Orang turun dari bus di peron kedatangan. */
+  readonly turun: number;
+  /** Orang dilayani loket. */
+  readonly layanLoket: number;
+  /** Orang naik bus di peron keberangkatan. */
+  readonly naik: number;
+  /** Bus yang masuk terminal per detik (makin puas & makin murah, makin banyak). Bus yang sama nanti berangkat lagi. */
+  readonly busDatang: number;
+  /** Penumpang per bus (bus datang membawa sebanyak ini, bus berangkat menampung sebanyak ini). */
+  readonly muatanBus: number;
+  /** Kursi bus untuk penumpang berangkat bila berbeda dari muatan datang (bawaan: muatanBus). */
+  readonly kapasitasBus?: number;
+  /** Banyaknya jurusan yang sudah dibuka pemain (urut TUJUAN_BUS); bawaan: semua. */
+  readonly jurusanBuka?: number;
+  /** Jalur bus yang sudah dibangun (halte kedatangan & keberangkatan terdepan); bawaan: semua. */
+  readonly jalur?: number;
+  /** Bus Emas (hadiah iklan) sedang bisa diketuk: bus berwarna emas lewat di jalan raya. */
+  readonly busEmas?: boolean;
+  /** Indeks jendela loket yang buka (malam hari separuh tutup); bawaan: semua. */
+  readonly loketBuka?: readonly number[];
+  /** Jam terminal (0–24): jam buka toko & kios dan waktu sholat untuk penumpang yang mampir; bawaan: 12. */
+  readonly jam?: number;
+  /** Fasilitas Kios & Minimarket sudah dibangun: kios ruang tunggu, minimarket, & apotek melayani penumpang; bawaan: true. */
+  readonly kiosDibangun?: boolean;
+  /** Bagian penumpang tiap jurusan (indeks TUJUAN_BUS) & kelas bus menurut harga tiket (lihat arusHarga); bawaan: sama rata. */
+  readonly bagianJurusan?: readonly number[];
+  readonly bagianKelas?: Readonly<Record<KelasBusId, number>>;
+  /** Pengali kecepatan & manuver bus (1 = normal). */
+  readonly faktorKecepatanBus: number;
+}
+
+/**
+ * Arus dasar paling tinggi (orang/detik). Orang berjalan dengan laju alami
+ * (KECEPATAN_JALAN), jadi arus dibatasi di bawah daya tampung jalan kaki:
+ * calon penumpang datang ±1,3 × arus dasar, sedangkan antrean dua baris di
+ * labirin hanya bisa maju ±2,8 orang/detik. Lebih tinggi dari ini, antrean
+ * akan menumpuk di tahap yang bukan bottleneck (hambatan palsu).
+ */
+export const LAJU_MAKS = 1.8;
+const RASIO_MAKS = 2;
+/**
+ * Calon penumpang di jam tersibuk dibanding kemampuan terminal, per satuan daya
+ * tarik kepuasan (× peminat harga tiket): ±1,3 untuk terminal baru (kepuasan
+ * ±67 %, harga normal), jadi antrean mulai menumpuk di jam sibuk; terminal yang
+ * penumpangnya puas (atau tiketnya murah) lebih ramai lagi.
+ */
+const PERMINTAAN = 0.93;
+
+/**
+ * Arus dasar paling tinggi per jendela loket yang buka di siang hari (orang/detik).
+ * Dengan transaksi natural (±2,5 detik + melangkah maju) satu jendela sanggup
+ * ±0,24 orang/detik, jadi terminal dengan sedikit jurusan tampak lebih sepi dan
+ * makin ramai tiap jurusan baru dibuka. Semua tahap ikut diskalakan, jadi
+ * bottleneck tetap terlihat di tempatnya.
+ */
+export const ARUS_PER_JENDELA = 0.24;
+
+/** Batas arus dasar (orang/detik) saat sekian jurusan terbuka. */
+export function batasArusJurusan(jurusanBuka: number): number {
+  return ARUS_PER_JENDELA * loketBuka(12, jurusanBuka).length;
+}
+
+/** Orang/detik dasar dari throughput (pnp/dtk), naik logaritmik lalu dibatasi. */
+export function lajuDasar(throughputPnp: number): number {
+  return Math.min(LAJU_MAKS, 0.45 + 0.3 * Math.log2(1 + Math.max(0, throughputPnp)));
+}
+
+export function hitungLajuVisual(state: GameState): LajuVisual {
+  const kap = semuaKapasitas(state);
+  const potensial = throughput(kap);
+  const dasar = Math.min(lajuDasar(potensial), batasArusJurusan(state.terminal.jurusanBuka));
+  const laju = (id: TahapId): number => dasar * Math.min(RASIO_MAKS, Math.sqrt(kap[id] / potensial));
+  const harga = arusHarga(state, permintaanPenumpang(state));
+  const tarik = dayaTarikKepuasan(kepuasanTerminal(state).nilai) * harga.peminat;
+
+  const muatanBus = Math.round(Math.min(MUATAN_BUS.maks, Math.max(MUATAN_BUS.min, 8 + dasar * 6)));
+  return {
+    turun: laju('peron'),
+    layanLoket: laju('loket'),
+    naik: laju('keberangkatan'),
+    busDatang: (dasar * PERMINTAAN * tarik) / muatanBus,
+    muatanBus,
+    faktorKecepatanBus: 1 + Math.min(0.8, Math.max(0, dasar - 1.4) / 7),
+    jurusanBuka: state.terminal.jurusanBuka,
+    jalur: state.terminal.jalur,
+    kiosDibangun: state.terminal.fasilitas.kios > 0,
+    bagianJurusan: harga.bagianJurusan,
+    bagianKelas: harga.bagianKelas,
+  };
+}
+
+/** Muatan bus paling sedikit saat terminal sepi (dini hari). */
+const MUATAN_SEPI = 6;
+
+/**
+ * Ritme harian (lihat sim/waktu.ts keramaianTerminal): sepi di dini hari,
+ * padat di jam sibuk. Hanya permintaan yang ikut ritme: bus datang lebih
+ * jarang dan lebih kosong, jadi calon penumpang juga lebih sedikit. Kapasitas
+ * tiap tahap tetap, sehingga antrean menumpuk di bottleneck saat jam sibuk
+ * (permintaan > kapasitas) lalu surut kembali saat sepi.
+ */
+export function terapkanRitme(laju: LajuVisual, keramaian: number): LajuVisual {
+  const f = Math.min(1, Math.max(0, keramaian));
+  const muatanBus = Math.max(MUATAN_SEPI, Math.round(laju.muatanBus * (0.45 + 0.55 * f)));
+  // Orang/detik yang dibawa bus = busDatang × muatan, ikut turun sebanding keramaian.
+  // Kursinya tetap: bus yang datang kosong tetap bisa berangkat penuh, jadi penumpang
+  // sisa jam sibuk di ruang tunggu tetap terangkut walau bus jarang.
+  return {
+    ...laju,
+    muatanBus,
+    kapasitasBus: laju.kapasitasBus ?? laju.muatanBus,
+    busDatang: (laju.busDatang * laju.muatanBus * f) / muatanBus,
+  };
+}

@@ -1,0 +1,234 @@
+{
+ "frames": {
+  "bus/hijau-1": {
+   "frame": {
+    "x": 185,
+    "y": 263,
+    "w": 166,
+    "h": 66
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 166,
+    "h": 66
+   },
+   "sourceSize": {
+    "w": 166,
+    "h": 66
+   }
+  },
+  "bus/biru-1": {
+   "frame": {
+    "x": 6,
+    "y": 263,
+    "w": 167,
+    "h": 66
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 167,
+    "h": 66
+   },
+   "sourceSize": {
+    "w": 167,
+    "h": 66
+   }
+  },
+  "bus/oranye-1": {
+   "frame": {
+    "x": 166,
+    "y": 6,
+    "w": 171,
+    "h": 66
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 171,
+    "h": 66
+   },
+   "sourceSize": {
+    "w": 171,
+    "h": 66
+   }
+  },
+  "bus/kuning-1": {
+   "frame": {
+    "x": 189,
+    "y": 107,
+    "w": 169,
+    "h": 66
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 169,
+    "h": 66
+   },
+   "sourceSize": {
+    "w": 169,
+    "h": 66
+   }
+  },
+  "bus/hijau-2": {
+   "frame": {
+    "x": 6,
+    "y": 341,
+    "w": 166,
+    "h": 66
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 166,
+    "h": 66
+   },
+   "sourceSize": {
+    "w": 166,
+    "h": 66
+   }
+  },
+  "bus/biru-2": {
+   "frame": {
+    "x": 187,
+    "y": 185,
+    "w": 168,
+    "h": 66
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 168,
+    "h": 66
+   },
+   "sourceSize": {
+    "w": 168,
+    "h": 66
+   }
+  },
+  "bus/oranye-2": {
+   "frame": {
+    "x": 6,
+    "y": 107,
+    "w": 171,
+    "h": 66
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 171,
+    "h": 66
+   },
+   "sourceSize": {
+    "w": 171,
+    "h": 66
+   }
+  },
+  "bus/kuning-2": {
+   "frame": {
+    "x": 6,
+    "y": 185,
+    "w": 169,
+    "h": 66
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 169,
+    "h": 66
+   },
+   "sourceSize": {
+    "w": 169,
+    "h": 66
+   }
+  },
+  "bus/van-putih": {
+   "frame": {
+    "x": 304,
+    "y": 341,
+    "w": 90,
+    "h": 58
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 90,
+    "h": 58
+   },
+   "sourceSize": {
+    "w": 90,
+    "h": 58
+   }
+  },
+  "bus/minibus-kuning": {
+   "frame": {
+    "x": 184,
+    "y": 341,
+    "w": 108,
+    "h": 62
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 108,
+    "h": 62
+   },
+   "sourceSize": {
+    "w": 108,
+    "h": 62
+   }
+  },
+  "bus/tingkat-oranye": {
+   "frame": {
+    "x": 6,
+    "y": 6,
+    "w": 148,
+    "h": 89
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 148,
+    "h": 89
+   },
+   "sourceSize": {
+    "w": 148,
+    "h": 89
+   }
+  }
+ },
+ "meta": {
+  "app": "tools/aset/potong.mjs",
+  "image": "atlas.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 512,
+   "h": 512
+  },
+  "scale": "1"
+ }
+}

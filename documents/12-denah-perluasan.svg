@@ -1,0 +1,220 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="900" viewBox="0 0 1240 900" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<defs><marker id="panah4" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ea580c"/></marker></defs>
+<rect width="1240" height="900" fill="#f8fafc"/>
+<text x="620" y="34" font-size="20" font-weight="700" fill="#0f172a" text-anchor="middle">Denah induk perluasan terminal (usulan)</text>
+<text x="620" y="56" font-size="12.5" fill="#475569" text-anchor="middle">Tampak atas, utara di atas · 1 petak ≈ 5 m · kamera awal melihat dari kanan bawah (tenggara)</text>
+<text x="40.0" y="80.0" font-size="13" fill="#0f172a" text-anchor="start" font-weight="600">A · Tampak atas</text>
+<rect x="42.0" y="92.0" width="1155.4" height="31.8" fill="#e5e7eb" stroke="none" stroke-width="1"/>
+<text x="211.6" y="112.1" font-size="10.5" fill="#475569" text-anchor="middle">Kota (seberang jalan raya)</text>
+<rect x="42.0" y="123.8" width="1155.4" height="27.6" fill="#94a3b8" stroke="none" stroke-width="1"/>
+<text x="349.4" y="141.3" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="600">Jalan raya  →</text>
+<rect x="42.0" y="151.4" width="1155.4" height="8.5" fill="#86efac" stroke="none" stroke-width="1"/>
+<rect x="38.8" y="151.4" width="46.6" height="8.5" fill="#94a3b8" stroke="none" stroke-width="1"/>
+<rect x="894.2" y="151.4" width="46.6" height="8.5" fill="#94a3b8" stroke="none" stroke-width="1"/>
+<rect x="64.3" y="159.8" width="838.5" height="23.3" fill="#cbd5e1" stroke="none" stroke-width="1"/>
+<text x="78.0" y="175.2" font-size="9" fill="#475569" text-anchor="middle">masuk</text>
+<text x="917.6" y="175.2" font-size="9" fill="#475569" text-anchor="middle">keluar</text>
+<text x="381.2" y="175.7" font-size="9.5" fill="#475569" text-anchor="middle">Jalan dalam</text>
+<rect x="42.0" y="319.4" width="1155.4" height="15.9" fill="#e5e7eb" stroke="#cbd5e1" stroke-width="1"/>
+<text x="148.0" y="331.0" font-size="9" fill="#475569" text-anchor="middle">Deretan ruko</text>
+<rect x="42.0" y="340.0" width="1155.4" height="14.8" fill="#94a3b8" stroke="none" stroke-width="1"/>
+<text x="296.4" y="351.2" font-size="9" fill="#ffffff" text-anchor="middle">Jalan belakang</text>
+<line x1="63.2" y1="313.53999999999996" x2="953.6" y2="313.53999999999996" stroke="#64748b" stroke-width="1.4" stroke-dasharray="2 2"/>
+<text x="248.7" y="310.4" font-size="8.5" fill="#475569" text-anchor="middle">pagar kompleks</text>
+<rect x="64.3" y="200.1" width="365.7" height="113.4" fill="#dcfce7" stroke="none" stroke-width="1"/>
+<text x="158.6" y="295.5" font-size="9.5" fill="#15803d" text-anchor="middle">Taman</text>
+<rect x="98.2" y="183.2" width="178.1" height="17.0" fill="#e2e8f0" stroke="#64748b" stroke-width="1"/>
+<text x="187.2" y="195.3" font-size="9.5" fill="#0f172a" text-anchor="middle">Peron kedatangan (5 halte)</text>
+<rect x="284.2" y="183.2" width="162.7" height="50.9" fill="#e2e8f0" stroke="#64748b" stroke-width="1"/>
+<rect x="446.9" y="183.2" width="192.9" height="50.9" fill="#bfdbfe" stroke="#2563eb" stroke-width="1"/>
+<line x1="302.23" y1="193.76" x2="313.89" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="315.48" y1="193.76" x2="327.14" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="328.73" y1="193.76" x2="340.39" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="341.98" y1="193.76" x2="353.64" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="355.23" y1="193.76" x2="366.89" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="381.72999999999996" y1="193.76" x2="393.39" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="394.97999999999996" y1="193.76" x2="406.64" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="408.22999999999996" y1="193.76" x2="419.89" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="421.47999999999996" y1="193.76" x2="433.14" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="434.72999999999996" y1="193.76" x2="446.39" y2="206.48000000000002" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="461.22999999999996" y1="193.76" x2="472.89" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="474.47999999999996" y1="193.76" x2="486.14" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="487.72999999999996" y1="193.76" x2="499.39" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="500.97999999999996" y1="193.76" x2="512.64" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="514.23" y1="193.76" x2="525.89" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="540.73" y1="193.76" x2="552.3900000000001" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="553.98" y1="193.76" x2="565.64" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="567.2299999999999" y1="193.76" x2="578.89" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="580.4799999999999" y1="193.76" x2="592.14" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<line x1="593.7299999999999" y1="193.76" x2="605.39" y2="206.48000000000002" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+<text x="387.6" y="223.4" font-size="9" fill="#0f172a" text-anchor="middle">kel. 1–2: 10 petak</text>
+<text x="556.1" y="223.4" font-size="9" fill="#2563eb" text-anchor="middle">kel. 3–4 (tahap 2)</text>
+<rect x="279.4" y="179.4" width="365.2" height="58.3" fill="none" stroke="#ea580c" stroke-width="2.2" stroke-dasharray="7 4"/>
+<circle cx="303.82" cy="208.6" r="21.2" fill="#fed7aa" fill-opacity="0.75" stroke="#ea580c" stroke-width="1.6"/>
+<path d="M 291.82 208.6 a 12 12 0 1 1 12 12" fill="none" stroke="#ea580c" stroke-width="1.4" marker-end="url(#panah4)"/>
+<text x="303.8" y="176.3" font-size="8.5" fill="#ea580c" text-anchor="middle" font-weight="600">ramp naik</text>
+<circle cx="618.64" cy="208.6" r="21.2" fill="#fed7aa" fill-opacity="0.75" stroke="#ea580c" stroke-width="1.6"/>
+<path d="M 606.64 208.6 a 12 12 0 1 1 12 12" fill="none" stroke="#ea580c" stroke-width="1.4" marker-end="url(#panah4)"/>
+<text x="618.6" y="176.3" font-size="8.5" fill="#ea580c" text-anchor="middle" font-weight="600">ramp turun</text>
+<line x1="248.7" y1="246.76" x2="279.43999999999994" y2="234.04" stroke="#ea580c" stroke-width="1.2"/>
+<text x="227.5" y="254.2" font-size="9.5" fill="#ea580c" text-anchor="middle" font-weight="600">Gedung parkir bus di atas pangkalan:</text>
+<text x="227.5" y="266.9" font-size="9.5" fill="#ea580c" text-anchor="middle" font-weight="600">+2 dek (tahap 4), +1 dek (tahap 5)</text>
+<rect x="430.0" y="242.5" width="53.0" height="40.3" fill="#e2e8f0" stroke="#64748b" stroke-width="1"/>
+<rect x="483.0" y="242.5" width="185.9" height="40.3" fill="#e2e8f0" stroke="#64748b" stroke-width="1"/>
+<text x="456.5" y="293.4" font-size="8" fill="#475569" text-anchor="middle">sayap barat</text>
+<text x="616.5" y="277.0" font-size="9.5" fill="#0f172a" text-anchor="middle">Gedung utama · aula loket</text>
+<rect x="567.442" y="245.17" width="6.996" height="5.83" fill="#2563eb" rx="1"/>
+<rect x="575.922" y="245.17" width="6.996" height="5.83" fill="#2563eb" rx="1"/>
+<rect x="584.402" y="245.17" width="6.996" height="5.83" fill="#64748b" rx="1"/>
+<rect x="592.882" y="245.17" width="6.996" height="5.83" fill="#64748b" rx="1"/>
+<rect x="601.362" y="245.17" width="6.996" height="5.83" fill="#64748b" rx="1"/>
+<rect x="609.842" y="245.17" width="6.996" height="5.83" fill="#64748b" rx="1"/>
+<rect x="618.322" y="245.17" width="6.996" height="5.83" fill="#2563eb" rx="1"/>
+<rect x="626.802" y="245.17" width="6.996" height="5.83" fill="#2563eb" rx="1"/>
+<text x="600.6" y="258.9" font-size="8" fill="#2563eb" text-anchor="middle">jendela 1–4 · 5–8 (tahap 1–2)</text>
+<rect x="432.6" y="245.2" width="124.6" height="35.0" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-dasharray="6 3"/>
+<text x="469.2" y="261.6" font-size="8.5" fill="#16a34a" text-anchor="middle" font-weight="600">Lantai 2</text>
+<text x="469.2" y="273.3" font-size="8.5" fill="#16a34a" text-anchor="middle" font-weight="600">(tahap 3)</text>
+<rect x="668.9" y="190.6" width="222.6" height="71.0" fill="#e2e8f0" stroke="#64748b" stroke-width="1"/>
+<rect x="668.9" y="183.2" width="222.6" height="7.4" fill="#cbd5e1" stroke="#64748b" stroke-width="1"/>
+<text x="875.6" y="189.0" font-size="8" fill="#0f172a" text-anchor="middle" font-weight="600">J1</text>
+<text x="833.2" y="189.0" font-size="8" fill="#0f172a" text-anchor="middle" font-weight="600">J2</text>
+<text x="790.8" y="189.0" font-size="8" fill="#0f172a" text-anchor="middle" font-weight="600">J3</text>
+<text x="748.4" y="189.0" font-size="8" fill="#0f172a" text-anchor="middle" font-weight="600">J4</text>
+<text x="706.0" y="189.0" font-size="8" fill="#0f172a" text-anchor="middle" font-weight="600">J5</text>
+<text x="779.8" y="221.3" font-size="9.5" fill="#0f172a" text-anchor="middle">Ruang tunggu keberangkatan</text>
+<rect x="671.6" y="193.2" width="217.3" height="65.7" fill="none" stroke="#7c3aed" stroke-width="2.2" stroke-dasharray="6 3"/>
+<text x="779.8" y="249.9" font-size="9" fill="#7c3aed" text-anchor="middle" font-weight="600">Lounge lantai 2 (tahap 5)</text>
+<rect x="760.7" y="92.0" width="14.8" height="91.2" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1.6" fill-opacity="0.85"/>
+<text x="911.2" y="112.1" font-size="9" fill="#7c3aed" text-anchor="middle" font-weight="600">Jembatan penyeberangan ke kota (tahap 5)</text>
+<rect x="686.5" y="276.4" width="203.5" height="30.7" fill="#e2e8f0" stroke="#64748b" stroke-width="1"/>
+<text x="788.2" y="289.7" font-size="9" fill="#0f172a" text-anchor="middle">Parkir mobil &amp; motor</text>
+<rect x="683.8" y="273.8" width="208.8" height="36.0" fill="none" stroke="#7c3aed" stroke-width="2.2" stroke-dasharray="6 3"/>
+<text x="788.2" y="302.4" font-size="8.5" fill="#7c3aed" text-anchor="middle" font-weight="600">→ gedung parkir 3 lantai (tahap 5)</text>
+<rect x="972.7" y="190.6" width="63.6" height="60.4" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1" stroke-dasharray="3 2"/>
+<rect x="1054.3" y="166.2" width="132.5" height="146.3" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1" stroke-dasharray="3 2"/>
+<rect x="902.7" y="159.8" width="284.1" height="23.3" fill="#fed7aa" stroke="#ea580c" stroke-width="1.2" stroke-dasharray="5 3" fill-opacity="0.8"/>
+<text x="1044.8" y="175.2" font-size="8.5" fill="#ea580c" text-anchor="middle">jalan dalam &amp; bukaan keluar digeser ke timur</text>
+<rect x="921.8" y="183.2" width="265.0" height="126.1" fill="#fed7aa" stroke="#ea580c" stroke-width="2" fill-opacity="0.78"/>
+<rect x="921.8" y="183.2" width="265.0" height="17.0" fill="#fdba74" stroke="#ea580c" stroke-width="1"/>
+<text x="1054.3" y="195.3" font-size="9" fill="#0f172a" text-anchor="middle" font-weight="600">Halte antarpulau J6–J7</text>
+<text x="1054.3" y="228.7" font-size="9.5" fill="#0f172a" text-anchor="middle" font-weight="600">Pangkalan bus besar 2 lantai</text>
+<text x="1054.3" y="240.4" font-size="8.5" fill="#475569" text-anchor="middle">(Double Decker, rute feri)</text>
+<text x="1054.3" y="276.4" font-size="9" fill="#0f172a" text-anchor="middle" font-weight="600">Gedung Antarpulau: aula loket kedua (8 jendela)</text>
+<text x="1054.3" y="288.1" font-size="8.5" fill="#475569" text-anchor="middle">+ ruang tunggu antarpulau di lantai 2</text>
+<text x="1054.3" y="302.9" font-size="8.5" fill="#ea580c" text-anchor="middle">di lahan SPBU &amp; kampung timur (tahap 4)</text>
+<line x1="508.4" y1="96.24" x2="508.4" y2="316.72" stroke="#0f172a" stroke-width="1.2" stroke-dasharray="10 4 2 4"/>
+<circle cx="508.4" cy="96.24" r="8" fill="#0f172a"/>
+<text x="508.4" y="99.7" font-size="9.5" fill="#ffffff" text-anchor="middle" font-weight="600">A</text>
+<circle cx="508.4" cy="316.72" r="8" fill="#0f172a"/>
+<text x="508.4" y="320.2" font-size="9.5" fill="#ffffff" text-anchor="middle" font-weight="600">A</text>
+<text x="40.0" y="408.0" font-size="13" fill="#0f172a" text-anchor="start" font-weight="600">B · Potongan A–A di x ≈ 14 (utara ← → selatan), tinggi dibesarkan ±2×</text>
+<rect x="70" y="650" width="940" height="14" fill="#d6d3d1"/>
+<rect x="117.0" y="646.9" width="122.2" height="3.1" fill="#94a3b8" stroke="none" stroke-width="1"/>
+<rect x="276.8" y="646.9" width="103.4" height="3.1" fill="#cbd5e1" stroke="none" stroke-width="1"/>
+<text x="178.1" y="680.0" font-size="10" fill="#475569" text-anchor="middle">Jalan raya</text>
+<text x="328.5" y="680.0" font-size="10" fill="#475569" text-anchor="middle">Jalan dalam</text>
+<rect x="381.6" y="494.0" width="11.3" height="156.0" fill="#ea580c" stroke="none" stroke-width="1"/>
+<rect x="593.1" y="494.0" width="11.3" height="156.0" fill="#ea580c" stroke="none" stroke-width="1"/>
+<rect x="380.2" y="594.9" width="225.6" height="5.2" fill="#ea580c" stroke="#ea580c" stroke-width="1"/>
+<rect x="380.2" y="542.9" width="225.6" height="5.2" fill="#ea580c" stroke="#ea580c" stroke-width="1"/>
+<rect x="380.2" y="490.9" width="225.6" height="5.2" fill="#7c3aed" stroke="#7c3aed" stroke-width="1"/>
+<rect x="381.6" y="462.8" width="11.3" height="31.2" fill="#7c3aed" stroke="none" stroke-width="1"/>
+<rect x="593.1" y="462.8" width="11.3" height="31.2" fill="#7c3aed" stroke="none" stroke-width="1"/>
+<path d="M 370.8 455 L 615.1999999999999 455" stroke="#ca8a04" stroke-width="5" stroke-dasharray="14 4"/>
+<rect x="406.1" y="609.4" width="79.9" height="36.4" rx="5" fill="#94a3b8" stroke="#334155" stroke-width="1"/>
+<rect x="413.1" y="615.7" width="65.8" height="9.4" fill="#e0f2fe" stroke="none"/>
+<circle cx="422.5" cy="644.8" r="5" fill="#1f2937"/>
+<circle cx="469.5" cy="644.8" r="5" fill="#1f2937"/>
+<rect x="500.1" y="609.4" width="79.9" height="36.4" rx="5" fill="#94a3b8" stroke="#334155" stroke-width="1"/>
+<rect x="507.1" y="615.7" width="65.8" height="9.4" fill="#e0f2fe" stroke="none"/>
+<circle cx="516.5" cy="644.8" r="5" fill="#1f2937"/>
+<circle cx="563.5" cy="644.8" r="5" fill="#1f2937"/>
+<rect x="406.1" y="554.3" width="79.9" height="36.4" rx="5" fill="#f97316" stroke="#334155" stroke-width="1"/>
+<rect x="413.1" y="560.6" width="65.8" height="9.4" fill="#e0f2fe" stroke="none"/>
+<circle cx="422.5" cy="589.7" r="5" fill="#1f2937"/>
+<circle cx="469.5" cy="589.7" r="5" fill="#1f2937"/>
+<rect x="500.1" y="554.3" width="79.9" height="36.4" rx="5" fill="#f97316" stroke="#334155" stroke-width="1"/>
+<rect x="507.1" y="560.6" width="65.8" height="9.4" fill="#e0f2fe" stroke="none"/>
+<circle cx="516.5" cy="589.7" r="5" fill="#1f2937"/>
+<circle cx="563.5" cy="589.7" r="5" fill="#1f2937"/>
+<rect x="406.1" y="502.3" width="79.9" height="36.4" rx="5" fill="#f97316" stroke="#334155" stroke-width="1"/>
+<rect x="413.1" y="508.6" width="65.8" height="9.4" fill="#e0f2fe" stroke="none"/>
+<circle cx="422.5" cy="537.7" r="5" fill="#1f2937"/>
+<circle cx="469.5" cy="537.7" r="5" fill="#1f2937"/>
+<rect x="500.1" y="502.3" width="79.9" height="36.4" rx="5" fill="#f97316" stroke="#334155" stroke-width="1"/>
+<rect x="507.1" y="508.6" width="65.8" height="9.4" fill="#e0f2fe" stroke="none"/>
+<circle cx="516.5" cy="537.7" r="5" fill="#1f2937"/>
+<circle cx="563.5" cy="537.7" r="5" fill="#1f2937"/>
+<rect x="406.1" y="450.3" width="79.9" height="36.4" rx="5" fill="#8b5cf6" stroke="#334155" stroke-width="1"/>
+<rect x="413.1" y="456.6" width="65.8" height="9.4" fill="#e0f2fe" stroke="none"/>
+<circle cx="422.5" cy="485.7" r="5" fill="#1f2937"/>
+<circle cx="469.5" cy="485.7" r="5" fill="#1f2937"/>
+<rect x="500.1" y="450.3" width="79.9" height="36.4" rx="5" fill="#8b5cf6" stroke="#334155" stroke-width="1"/>
+<rect x="507.1" y="456.6" width="65.8" height="9.4" fill="#e0f2fe" stroke="none"/>
+<circle cx="516.5" cy="485.7" r="5" fill="#1f2937"/>
+<circle cx="563.5" cy="485.7" r="5" fill="#1f2937"/>
+<text x="366.1" y="635.8" font-size="9.5" fill="#475569" text-anchor="end" font-weight="600">Lantai dasar: 20 petak + tempat cuci (sekarang)</text>
+<text x="366.1" y="580.7" font-size="9.5" fill="#ea580c" text-anchor="end" font-weight="600">Dek 1: +20 petak (tahap 4)</text>
+<text x="366.1" y="528.7" font-size="9.5" fill="#ea580c" text-anchor="end" font-weight="600">Dek 2: +20 petak (tahap 4)</text>
+<text x="366.1" y="476.7" font-size="9.5" fill="#7c3aed" text-anchor="end" font-weight="600">Dek 3: +20 petak (tahap 5)</text>
+<text x="493.0" y="446.0" font-size="9" fill="#ca8a04" text-anchor="middle" font-weight="600">atap panel surya (★)</text>
+<text x="493.0" y="680.0" font-size="10" fill="#ea580c" text-anchor="middle" font-weight="600">Gedung parkir bus (bekas pangkalan)</text>
+<rect x="643.4" y="643.8" width="178.6" height="6.2" fill="#cbd5e1" stroke="#64748b" stroke-width="1"/>
+<path d="M 619.9 551.2 L 629.3 544.1 L 638.7 537.1 L 648.1 530.3 L 657.5 523.9 L 666.9 518.0 L 676.3 512.6 L 685.7 507.9 L 695.1 503.9 L 704.5 500.8 L 713.9 498.5 L 723.3 497.1 L 732.7 496.6 L 742.1 497.1 L 751.5 498.5 L 760.9 500.8 L 770.3 503.9 L 779.7 507.9 L 789.1 512.6 L 798.5 518.0 L 807.9 523.9 L 817.3 530.3 L 826.7 537.1 L 836.1 544.1 L 845.5 551.2 " fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/>
+<text x="836.1" y="543.4" font-size="9" fill="#475569" text-anchor="start">atap sekarang (garis putus-putus)</text>
+<rect x="643.4" y="462.8" width="9.4" height="187.2" fill="#94a3b8" stroke="none" stroke-width="1"/>
+<rect x="812.6" y="462.8" width="9.4" height="187.2" fill="#94a3b8" stroke="none" stroke-width="1"/>
+<rect x="643.4" y="579.8" width="178.6" height="5.2" fill="#16a34a" stroke="#16a34a" stroke-width="1"/>
+<rect x="643.4" y="517.4" width="178.6" height="5.2" fill="#7c3aed" stroke="#7c3aed" stroke-width="1"/>
+<path d="M 629.3 465.4 L 637.9 462.0 L 646.5 458.7 L 655.2 455.5 L 663.8 452.4 L 672.4 449.6 L 681.0 447.0 L 689.6 444.8 L 698.2 442.9 L 706.9 441.4 L 715.5 440.3 L 724.1 439.6 L 732.7 439.4 L 741.3 439.6 L 749.9 440.3 L 758.6 441.4 L 767.2 442.9 L 775.8 444.8 L 784.4 447.0 L 793.0 449.6 L 801.6 452.4 L 810.3 455.5 L 818.9 458.7 L 827.5 462.0 L 836.1 465.4 " fill="none" stroke="#7c3aed" stroke-width="2"/>
+<circle cx="671.6" cy="626.1" r="3.2" fill="#334155"/>
+<rect x="669.0" y="628.7" width="5.2" height="14.0" rx="2" fill="#334155"/>
+<circle cx="704.5" cy="626.1" r="3.2" fill="#334155"/>
+<rect x="701.9" y="628.7" width="5.2" height="14.0" rx="2" fill="#334155"/>
+<circle cx="742.1" cy="626.1" r="3.2" fill="#334155"/>
+<rect x="739.5" y="628.7" width="5.2" height="14.0" rx="2" fill="#334155"/>
+<circle cx="784.4" cy="626.1" r="3.2" fill="#334155"/>
+<rect x="781.8" y="628.7" width="5.2" height="14.0" rx="2" fill="#334155"/>
+<circle cx="676.3" cy="562.1" r="3.2" fill="#16a34a"/>
+<rect x="673.7" y="564.7" width="5.2" height="14.0" rx="2" fill="#16a34a"/>
+<circle cx="718.6" cy="562.1" r="3.2" fill="#16a34a"/>
+<rect x="716.0" y="564.7" width="5.2" height="14.0" rx="2" fill="#16a34a"/>
+<circle cx="770.3" cy="562.1" r="3.2" fill="#16a34a"/>
+<rect x="767.7" y="564.7" width="5.2" height="14.0" rx="2" fill="#16a34a"/>
+<circle cx="695.1" cy="499.7" r="3.2" fill="#7c3aed"/>
+<rect x="692.5" y="502.3" width="5.2" height="14.0" rx="2" fill="#7c3aed"/>
+<circle cx="756.2" cy="499.7" r="3.2" fill="#7c3aed"/>
+<rect x="753.6" y="502.3" width="5.2" height="14.0" rx="2" fill="#7c3aed"/>
+<path d="M 789.1 643.76 L 737.4 582.4" stroke="#16a34a" stroke-width="3"/>
+<path d="M 789.1 579.8 L 737.4 520" stroke="#7c3aed" stroke-width="3"/>
+<text x="836.1" y="637.0" font-size="9.5" fill="#475569" text-anchor="start" font-weight="600">Lantai dasar: aula, toko (sekarang)</text>
+<text x="836.1" y="576.2" font-size="9.5" fill="#16a34a" text-anchor="start" font-weight="600">Lantai 2: food court &amp; ruang tunggu (tahap 3)</text>
+<text x="836.1" y="513.8" font-size="9.5" fill="#7c3aed" text-anchor="start" font-weight="600">Lantai 3: kantor &amp; lounge (tahap 5)</text>
+<text x="836.1" y="449.8" font-size="9.5" fill="#ca8a04" text-anchor="start" font-weight="600">taman atap &amp; menara jam (★)</text>
+<text x="732.7" y="680.0" font-size="10" fill="#0f172a" text-anchor="middle" font-weight="600">Gedung utama</text>
+<line x1="70" y1="650" x2="88.8" y2="650" stroke="#475569"/>
+<text x="64.0" y="654.0" font-size="9.5" fill="#475569" text-anchor="end">±0 m</text>
+<line x1="70" y1="598" x2="88.8" y2="598" stroke="#475569"/>
+<text x="64.0" y="602.0" font-size="9.5" fill="#475569" text-anchor="end">±5 m</text>
+<line x1="70" y1="546" x2="88.8" y2="546" stroke="#475569"/>
+<text x="64.0" y="550.0" font-size="9.5" fill="#475569" text-anchor="end">±10 m</text>
+<line x1="70" y1="494" x2="88.8" y2="494" stroke="#475569"/>
+<text x="64.0" y="498.0" font-size="9.5" fill="#475569" text-anchor="end">±15 m</text>
+<text x="40.0" y="724.0" font-size="13" fill="#0f172a" text-anchor="start" font-weight="600">Legenda tahap perluasan</text>
+<rect x="40" y="734" width="26" height="16" fill="#e2e8f0" stroke="#64748b" stroke-width="1.6" rx="2"/>
+<text x="76.0" y="747.0" font-size="11.5" fill="#0f172a" text-anchor="start">Sekarang (tahap 0, Lv 1)</text>
+<rect x="630" y="734" width="26" height="16" fill="#bfdbfe" stroke="#2563eb" stroke-width="1.6" rx="2"/>
+<text x="666.0" y="747.0" font-size="11.5" fill="#0f172a" text-anchor="start">Tahap 1–2 · Lv 3 &amp; 6: aula &amp; pangkalan dibuka penuh</text>
+<rect x="40" y="760" width="26" height="16" fill="#bbf7d0" stroke="#16a34a" stroke-width="1.6" rx="2"/>
+<text x="76.0" y="773.0" font-size="11.5" fill="#0f172a" text-anchor="start">Tahap 3 · Lv 10 (Tipe B): lantai 2 gedung utama</text>
+<rect x="630" y="760" width="26" height="16" fill="#fed7aa" stroke="#ea580c" stroke-width="1.6" rx="2"/>
+<text x="666.0" y="773.0" font-size="11.5" fill="#0f172a" text-anchor="start">Tahap 4 · Lv 20 (Tipe A): gedung parkir bus 2 dek + Gedung Antarpulau</text>
+<rect x="40" y="786" width="26" height="16" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1.6" rx="2"/>
+<text x="76.0" y="799.0" font-size="11.5" fill="#0f172a" text-anchor="start">Tahap 5 · Lv 30 (Terpadu): dek 3, lantai 3, lounge, jembatan, gedung parkir mobil</text>
+<rect x="630" y="786" width="26" height="16" fill="#fde68a" stroke="#ca8a04" stroke-width="1.6" rx="2"/>
+<text x="666.0" y="799.0" font-size="11.5" fill="#0f172a" text-anchor="start">★ tiap 10 level: atap surya, taman atap, menara jam (kosmetik)</text>
+<text x="40.0" y="838.0" font-size="11" fill="#475569" text-anchor="start">Garis putus-putus = bangunan yang ditambahkan di atas/di tempat yang sudah ada. Lingkaran = ramp spiral searah (bus naik di barat, turun di timur).</text>
+<text x="40.0" y="857.0" font-size="11" fill="#475569" text-anchor="start">Tiap dek parkir bus memakai pola petak serong yang sama dengan lantai dasar. Tombol "Lantai" menyembunyikan lantai di atas yang dipilih, supaya isi lantai bawah terlihat.</text>
+<text x="40.0" y="876.0" font-size="11" fill="#475569" text-anchor="start">Ukuran &amp; letak masih usulan. Tabrakan bus di ramp &amp; dek dan jalan orang di eskalator dicek dengan tes saat implementasi.</text>
+</svg>

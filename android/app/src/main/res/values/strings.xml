@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bustation</string>
+    <string name="title_activity_main">Bustation</string>
+    <string name="package_name">id.terminalbus.tycoon</string>
+    <string name="custom_url_scheme">id.terminalbus.tycoon</string>
+</resources>

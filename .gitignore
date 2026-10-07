@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+
+# Cloudflare Wrangler: state lokal (D1 lokal, cache) & rahasia dev.
+.wrangler/
+.dev.vars*
+
+# Rahasia & kunci tanda tangan rilis Android: jangan pernah masuk repo (repo publik).
+.env
+.env.*
+*.jks
+*.keystore
+keystore.properties
+
+# Pengaturan pribadi Claude Code.
+.claude/settings.local.json
+
+# Skill untuk proyek lain (Phaser / game "Tebing"); hanya skill game ini yang ikut repo.
+.claude/skills/*
+!.claude/skills/terminal-threejs/
+
+# Hasil screenshot sementara.
+out/

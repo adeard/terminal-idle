@@ -1,0 +1,11 @@
+{
+  // Cek terpisah untuk sim/, config/, dan app/ TANPA lib DOM dan tanpa tipe Vite:
+  // kalau ada kode simulasi yang menyentuh window/document/localStorage,
+  // `npm run typecheck` gagal.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/sim", "src/config", "src/app"]
+}

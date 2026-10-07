@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Cloud save Bustation: satu dokumen per pemain, saves/{uid}.
+// Pasang lewat Firebase console → Firestore Database → Rules (atau `firebase deploy --only firestore:rules`).
+//
+// - Hanya pemilik (uid login == id dokumen) yang boleh membaca/menulis/menghapus.
+// - Tulis bersyarat: `revisi` wajib naik tepat 1 dari yang tersimpan (dokumen baru: 1).
+//   Perangkat yang ketinggalan revisi ditolak, lalu game menanyakan pemain
+//   progres mana yang dipakai (lihat src/app/akun.ts & src/platform/firebase.ts).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /saves/{uid} {
+      function pemilik() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+
+      function bentukValid() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['isi', 'revisi', 'schemaVersion', 'diperbarui'])
+          && d.isi is string && d.isi.size() > 0 && d.isi.size() <= 100000
+          && d.revisi is int
+          && d.schemaVersion is int && d.schemaVersion >= 1
+          && d.diperbarui == request.time;
+      }
+
+      allow get, delete: if pemilik();
+      allow create: if pemilik() && bentukValid() && request.resource.data.revisi == 1;
+      allow update: if pemilik() && bentukValid() && request.resource.data.revisi == resource.data.revisi + 1;
+    }
+  }
+}

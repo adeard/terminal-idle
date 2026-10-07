@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1a2129" />
+    <title>Kebijakan Privasi · Bustation: Idle Bus</title>
+    <meta name="description" content="Kebijakan privasi game Bustation: Idle Bus: data apa yang diproses, untuk apa, dan cara menghapusnya." />
+    <link rel="canonical" href="https://bustation.games/privasi" />
+    <link rel="icon" href="/ikon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --latar: #11171e;
+        --kartu: #1a222c;
+        --garis: #2a3441;
+        --teks: #dbe1e8;
+        --redup: #9aa6b2;
+        --aksen: #ffd479;
+        --tautan: #8fc3ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--latar);
+        color: var(--teks);
+        font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 24px 16px 64px;
+      }
+      a {
+        color: var(--tautan);
+      }
+      .kembali {
+        display: inline-block;
+        margin-bottom: 20px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 30px;
+        line-height: 1.2;
+        color: #fff;
+      }
+      h2 {
+        margin: 36px 0 8px;
+        font-size: 21px;
+        color: #fff;
+      }
+      h3 {
+        margin: 20px 0 4px;
+        font-size: 17px;
+        color: var(--aksen);
+      }
+      .berlaku {
+        margin: 0 0 20px;
+        color: var(--redup);
+      }
+      .ringkas {
+        padding: 14px 18px;
+        border: 1px solid var(--garis);
+        border-left: 4px solid var(--aksen);
+        border-radius: 12px;
+        background: var(--kartu);
+      }
+      .ringkas ul {
+        margin: 6px 0 0;
+        padding-left: 20px;
+      }
+      li {
+        margin: 4px 0;
+      }
+      hr {
+        margin: 48px 0 8px;
+        border: 0;
+        border-top: 1px solid var(--garis);
+      }
+      .bahasa {
+        float: right;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="kembali" href="/">← Kembali ke game</a>
+      <a class="bahasa" href="#en">English</a>
+      <h1>Kebijakan Privasi</h1>
+      <p class="berlaku">Bustation: Idle Bus · Berlaku sejak 1 Oktober 2026</p>
+
+      <div class="ringkas">
+        <strong>Ringkasnya</strong>
+        <ul>
+          <li>Game bisa dimainkan tanpa akun. Progresmu disimpan di perangkatmu sendiri.</li>
+          <li>Kalau kamu masuk dengan Google, progres disalin ke server Google Firebase supaya bisa dilanjutkan di perangkat lain.</li>
+          <li>Kami memakai Google Analytics untuk statistik pemakaian, tanpa iklan yang dipersonalisasi.</li>
+          <li>Papan peringkat mingguan hanya kamu ikuti kalau kamu masuk dan menyetujuinya; yang tampil hanya nama terminal, tipe terminal, dan jumlah penumpangmu.</li>
+          <li>Kami tidak menjual data. Iklan, bila ada, hanya iklan berhadiah yang kamu pilih sendiri untuk ditonton.</li>
+          <li>Kamu bisa menghapus akun dan seluruh progresmu kapan saja lewat menu Akun di dalam game.</li>
+        </ul>
+      </div>
+
+      <h2>1. Siapa kami</h2>
+      <p>
+        Bustation: Idle Bus ("game") dikembangkan dan dikelola oleh Pengembang Bustation ("kami"). Game dimainkan di
+        <a href="https://bustation.games/">bustation.games</a>. Untuk pertanyaan atau permintaan tentang data pribadi, hubungi
+        <a href="mailto:adeardian1994@gmail.com">adeardian1994@gmail.com</a>.
+      </p>
+
+      <h2>2. Data yang kami proses</h2>
+
+      <h3>a. Data game di perangkatmu</h3>
+      <p>
+        Progres game (uang, level tahap, fasilitas, jurusan, penghargaan, waktu terakhir bermain) dan pilihan tampilan (suara,
+        kecepatan waktu, panel, tutorial) disimpan di penyimpanan lokal browser atau aplikasi di perangkatmu. Data ini tidak
+        dikirim ke kami, kecuali kamu masuk dengan akun (lihat bagian c).
+      </p>
+
+      <h3>b. Akun Google (pilihan)</h3>
+      <p>
+        Masuk dengan Google tidak wajib. Kalau kamu memilihnya, layanan Firebase Authentication milik Google memberi kami
+        pengenal pengguna yang unik, nama, alamat email, dan foto profil dari akun Google-mu, serta waktu akun dibuat dan
+        terakhir masuk. Nama dan email hanya ditampilkan di menu Akun; foto profil tidak kami pakai. Kami tidak pernah menerima
+        kata sandi akun Google-mu.
+      </p>
+
+      <h3>c. Progres yang disimpan di cloud</h3>
+      <p>
+        Setelah kamu masuk, progres game disalin ke Cloud Firestore (Google Firebase), bersama nomor revisi dan waktu terakhir
+        diperbarui. Aturan keamanan database memastikan data ini hanya bisa dibaca dan diubah oleh akunmu sendiri.
+      </p>
+
+      <h3>d. Statistik pemakaian (Google Analytics)</h3>
+      <p>Di versi web kami memakai Google Analytics 4 untuk memahami cara game dimainkan dan memperbaikinya. Yang dikumpulkan:</p>
+      <ul>
+        <li>
+          kejadian di dalam game, misalnya memulai game, langkah tutorial, upgrade di level tertentu, merekrut Kepala, membangun
+          fasilitas, membuka jurusan, menonton iklan berhadiah, membunyikan klakson telolet, dan lama grafis 3D dimuat,
+          serta ringkasan tiap sesi bermain (lama bermain, jumlah penumpang, tingkat terminal);
+        </li>
+        <li>
+          informasi teknis: jenis perangkat, sistem operasi, browser, ukuran layar, bahasa, versi game, dan laporan error singkat
+          dari kode game (pesan error & nama berkas, tanpa data pribadi);
+        </li>
+        <li>perkiraan lokasi (negara atau kota) yang dihitung Google dari alamat IP, tanpa menyimpan alamat IP itu;</li>
+        <li>pengenal acak yang disimpan di cookie, untuk membedakan kunjungan baru dan pemain yang kembali.</li>
+      </ul>
+      <p>
+        Statistik ini tidak memuat nama, email, maupun isi progres game, dan tidak dihubungkan dengan akun login-mu. Google
+        Signals dan personalisasi iklan dimatikan, jadi data ini tidak dipakai untuk menargetkan iklan kepadamu.
+      </p>
+
+      <h3>e. Data teknis hosting</h3>
+      <p>
+        Situs dilayani oleh Cloudflare. Seperti semua server web, Cloudflare memproses alamat IP dan informasi permintaan
+        (misalnya jenis browser dan waktu akses) untuk mengirim halaman dan melindungi situs dari serangan.
+      </p>
+
+      <h3>f. Iklan berhadiah</h3>
+      <p>
+        Versi web dapat menampilkan iklan berhadiah dari Google (Google AdSense untuk game H5). Iklan hanya diputar kalau kamu
+        sendiri mengetuk tombol hadiah, misalnya boost pendapatan 2× atau Bus Emas. Tidak ada iklan paksa, dan semua fitur
+        tetap bisa dipakai tanpa menonton iklan. Saat iklan dimuat, Google dan mitranya dapat memakai cookie atau pengenal
+        perangkat untuk menayangkan dan mengukur iklan, mencegah penipuan, dan, bila kamu mengizinkan, menampilkan iklan yang
+        dipersonalisasi. Iklan yang dipersonalisasi bisa kamu matikan di
+        <a href="https://adssettings.google.com/" rel="noopener">Setelan Iklan Google</a>; penjelasan lengkapnya ada di
+        <a href="https://policies.google.com/technologies/partner-sites" rel="noopener">cara Google memakai data dari situs mitranya</a>.
+        Jika hukum di wilayahmu mewajibkannya (misalnya di Eropa), persetujuanmu diminta lebih dulu.
+      </p>
+
+      <h3>g. Papan peringkat mingguan (pilihan)</h3>
+      <p>
+        Papan peringkat hanya diikuti pemain yang masuk dengan Google lalu menyetujuinya di dalam game. Kalau kamu ikut, kami
+        menyimpan pengenal akunmu, nama terminal, tipe terminal, jumlah penumpang minggu itu, dan waktu kiriman terakhir di
+        database Cloudflare D1 (server di kawasan Asia-Pasifik). Nama terminal, tipe terminal, dan jumlah penumpangmu tampil
+        untuk semua pemain; nama dan email akun Google tidak pernah ditampilkan, dan pengenal akunmu tidak dibagikan ke pemain
+        lain. Kamu bisa keluar dari papan kapan saja, dan skormu langsung dihapus.
+      </p>
+
+      <h2>3. Untuk apa data dipakai</h2>
+      <ul>
+        <li>Menjalankan game dan menyimpan progresmu (layanan yang kamu minta).</li>
+        <li>Menyimpan dan menyinkronkan progres di cloud (dengan persetujuanmu saat masuk dengan Google).</li>
+        <li>Menampilkan papan peringkat mingguan (dengan persetujuanmu saat ikut papan).</li>
+        <li>Menayangkan iklan berhadiah yang kamu pilih sendiri untuk ditonton.</li>
+        <li>Membuat statistik untuk memperbaiki game, misalnya menemukan bagian tutorial yang membingungkan (kepentingan yang sah).</li>
+        <li>Menjaga keamanan dan mencegah penyalahgunaan layanan.</li>
+      </ul>
+      <p>Kami tidak menjual data pribadi dan tidak membagikannya selain kepada penyedia layanan di bagian 5.</p>
+
+      <h2>4. Cookie dan penyimpanan lokal</h2>
+      <ul>
+        <li>
+          <strong>Penyimpanan lokal</strong> (localStorage dan IndexedDB): progres, pilihan tampilan, dan sesi login. Diperlukan
+          supaya game berjalan.
+        </li>
+        <li><strong>Cache aplikasi</strong> (service worker): menyimpan berkas game supaya cepat dimuat dan tetap bisa dibuka saat offline.</li>
+        <li><strong>Cookie Google Analytics</strong> (<code>_ga</code> dan <code>_ga_…</code>): berisi pengenal acak, berlaku hingga 2 tahun.</li>
+        <li><strong>Cookie iklan Google</strong> (bila iklan berhadiah aktif): dipakai Google untuk menayangkan dan mengukur iklan, lihat bagian 2f.</li>
+      </ul>
+      <p>
+        Kamu bisa menghapus atau memblokir cookie lewat pengaturan browser, atau memasang
+        <a href="https://tools.google.com/dlpage/gaoptout" rel="noopener">Google Analytics Opt-out Browser Add-on</a>. Game tetap
+        bisa dimainkan.
+      </p>
+
+      <h2>5. Penyedia layanan</h2>
+      <ul>
+        <li>
+          <strong>Google</strong> (Firebase Authentication, Cloud Firestore, Google Analytics, Google AdSense):
+          <a href="https://policies.google.com/privacy" rel="noopener">Kebijakan Privasi Google</a>.
+        </li>
+        <li>
+          <strong>Cloudflare</strong> (hosting situs dan database papan peringkat):
+          <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Kebijakan Privasi Cloudflare</a>.
+        </li>
+      </ul>
+      <p>Penyedia ini dapat memproses data di server di luar Indonesia, dengan perlindungan sesuai kebijakan masing-masing.</p>
+
+      <h2>6. Berapa lama data disimpan</h2>
+      <ul>
+        <li>Data di perangkatmu: sampai kamu menghapus data situs atau aplikasi, atau memakai Hapus akun.</li>
+        <li>Akun dan progres di cloud: selama akunmu ada. Keduanya dihapus permanen saat kamu memilih Hapus akun.</li>
+        <li>
+          Papan peringkat: skor minggu berjalan dan minggu sebelumnya; yang lebih lama dihapus otomatis. Keluar dari papan atau
+          Hapus akun langsung menghapus semua skormu.
+        </li>
+        <li>Statistik Google Analytics: paling lama 14 bulan, lalu dihapus otomatis oleh Google.</li>
+        <li>Log hosting: sesuai kebijakan Cloudflare.</li>
+      </ul>
+
+      <h2>7. Hak-hakmu</h2>
+      <p>
+        Sesuai Undang-Undang Nomor 27 Tahun 2022 tentang Pelindungan Data Pribadi, kamu berhak mendapat informasi tentang
+        pemrosesan datamu, mengakses dan meminta salinannya, memperbaikinya, menghapusnya, menarik persetujuan, dan mengajukan
+        keberatan.
+      </p>
+      <ul>
+        <li>
+          <strong>Hapus akun sendiri:</strong> di dalam game, buka menu Akun lalu pilih <em>Hapus akun</em>. Skor papan
+          peringkat, progres di cloud, progres di perangkat itu, dan akun login-mu langsung dihapus permanen.
+        </li>
+        <li>
+          <strong>Permintaan lain:</strong> kirim email ke <a href="mailto:adeardian1994@gmail.com">adeardian1994@gmail.com</a>.
+          Kami akan menanggapinya secepatnya, sesuai tenggat yang diatur undang-undang.
+        </li>
+      </ul>
+      <p>
+        Data Google Analytics memakai pengenal acak dan tidak terhubung dengan identitasmu, jadi kami tidak bisa menemukan data
+        milik orang tertentu. Untuk menghapusnya dari perangkatmu, hapus cookie situs ini.
+      </p>
+
+      <h2>8. Anak-anak</h2>
+      <p>
+        Game ini untuk semua umur dan bisa dimainkan tanpa akun. Masuk dengan Google mengikuti batas usia akun Google; anak di
+        bawah umur sebaiknya masuk dengan izin orang tua atau wali. Jika kamu orang tua atau wali dan mengetahui anakmu
+        memberikan data pribadi tanpa izin, hubungi kami agar datanya kami hapus.
+      </p>
+
+      <h2>9. Keamanan</h2>
+      <p>
+        Semua koneksi memakai HTTPS, dan progres di cloud hanya bisa dibaca dan diubah oleh akun pemiliknya. Meski begitu, tidak
+        ada sistem yang sepenuhnya aman, jadi kami tidak bisa menjamin keamanan mutlak.
+      </p>
+
+      <h2>10. Perubahan kebijakan</h2>
+      <p>
+        Jika kebijakan ini berubah, tanggal berlaku di atas akan diperbarui. Perubahan penting juga akan kami beritahukan di
+        dalam game.
+      </p>
+
+      <h2>11. Kontak</h2>
+      <p>Pengembang Bustation · <a href="mailto:adeardian1994@gmail.com">adeardian1994@gmail.com</a></p>
+
+      <hr />
+
+      <h1 id="en" lang="en">Privacy Policy</h1>
+      <div lang="en">
+        <p class="berlaku">Bustation: Idle Bus · Effective 1 October 2026. The Indonesian version above prevails.</p>
+
+        <h2>Who we are</h2>
+        <p>
+          Bustation: Idle Bus is developed and operated by the Bustation Developer ("we"), played at
+          <a href="https://bustation.games/">bustation.games</a>. Contact:
+          <a href="mailto:adeardian1994@gmail.com">adeardian1994@gmail.com</a>.
+        </p>
+
+        <h2>What we process</h2>
+        <ul>
+          <li>
+            <strong>Game data on your device:</strong> progress and display preferences are stored in your browser or app storage
+            and are not sent to us unless you sign in.
+          </li>
+          <li>
+            <strong>Google sign-in (optional):</strong> Firebase Authentication gives us a unique user ID, your name, email
+            address and profile photo, plus account creation and last sign-in times. Name and email are only shown in the
+            Account menu; the photo is not used. We never receive your password.
+          </li>
+          <li>
+            <strong>Cloud save:</strong> after sign-in, your progress is copied to Cloud Firestore with a revision number and
+            update time. Security rules allow only your own account to read or change it.
+          </li>
+          <li>
+            <strong>Usage statistics (Google Analytics 4, web only):</strong> in-game events (e.g. starting the game, tutorial
+            steps, upgrades at certain levels, opening routes, watching rewarded ads, honking the telolet horn, 3D loading time, a
+            per-session summary of play time, passengers and terminal level), short technical error reports from the game code,
+            device and browser details, approximate location derived from the IP address (the IP address itself is not stored),
+            and a random identifier in a cookie. No name, email or save contents; not linked to your account. Google Signals and
+            ad personalization are turned off.
+          </li>
+          <li><strong>Hosting:</strong> Cloudflare processes IP addresses and request details to deliver and protect the site.</li>
+          <li>
+            <strong>Rewarded ads (web):</strong> Google rewarded ads (Google AdSense for H5 games) play only when you tap a reward
+            button yourself; there are no forced ads and every feature works without watching ads. Google and its partners may use
+            cookies or device identifiers to serve and measure ads, prevent fraud and, if you allow it, personalize ads. You can turn
+            off personalized ads in <a href="https://adssettings.google.com/" rel="noopener">Google Ad Settings</a>; see
+            <a href="https://policies.google.com/technologies/partner-sites" rel="noopener">how Google uses data from partner sites</a>.
+            Where the law requires it (e.g. in Europe), your consent is asked first.
+          </li>
+          <li>
+            <strong>Weekly leaderboard (optional):</strong> only for signed-in players who agree in the game. We store your account
+            ID, terminal name, terminal type, passengers that week and last submission time in Cloudflare D1 (Asia-Pacific). Terminal
+            name, type and passengers are shown to all players; your Google name, email and account ID are never shown. Leave the
+            board at any time and your scores are deleted immediately.
+          </li>
+        </ul>
+
+        <h2>Why</h2>
+        <p>
+          To run the game and keep your progress, to sync it to the cloud (with your consent when you sign in), to show the weekly
+          leaderboard (with your consent when you join it), to serve the rewarded ads you choose to watch, to improve the
+          game from usage statistics (legitimate interest), and to keep the service secure. We do not sell personal data.
+        </p>
+
+        <h2>Cookies and local storage</h2>
+        <p>
+          Local storage and IndexedDB (progress, preferences, sign-in session), the app cache (service worker), and Google
+          Analytics cookies <code>_ga</code> and <code>_ga_…</code> (random identifier, up to 2 years), and Google ad cookies when
+          rewarded ads are active. You can block or delete
+          cookies in your browser or install the
+          <a href="https://tools.google.com/dlpage/gaoptout" rel="noopener">Google Analytics Opt-out Browser Add-on</a>; the game
+          still works.
+        </p>
+
+        <h2>Service providers</h2>
+        <p>
+          Google, including Firebase, Analytics and AdSense (<a href="https://policies.google.com/privacy" rel="noopener">privacy
+          policy</a>), and Cloudflare, for hosting and the leaderboard database
+          (<a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">privacy policy</a>). They may process data on servers
+          outside Indonesia.
+        </p>
+
+        <h2>Retention</h2>
+        <p>
+          Device data stays until you clear site or app data or delete your account. Your account and cloud save are kept until you
+          delete your account. Leaderboard scores are kept for the current and previous week, then deleted automatically; leaving
+          the board or deleting your account removes them at once. Google Analytics data is kept for at most 14 months. Hosting logs
+          follow Cloudflare's policy.
+        </p>
+
+        <h2>Your rights</h2>
+        <p>
+          Under Indonesia's Personal Data Protection Law (Law No. 27 of 2022) you may request information, access, a copy,
+          correction or deletion of your data, withdraw consent, and object. To delete everything yourself, open the Account menu
+          in the game and choose <em>Hapus akun</em> (Delete account); this also removes your leaderboard scores. For other requests, email
+          <a href="mailto:adeardian1994@gmail.com">adeardian1994@gmail.com</a>.
+        </p>
+
+        <h2>Children</h2>
+        <p>
+          The game is suitable for all ages and playable without an account. Minors should sign in with a parent's or guardian's
+          permission. Parents or guardians can contact us to have a child's data deleted.
+        </p>
+
+        <h2>Changes</h2>
+        <p>If this policy changes, the effective date above is updated, and important changes are announced in the game.</p>
+      </div>
+    </main>
+  </body>
+</html>
