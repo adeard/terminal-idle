@@ -51,6 +51,7 @@ flowchart LR
 | 5 | **Perluasan terminal** lima tahap, **jalur bus permanen** | Terminal makin luas seiring level dan tidak pernah menyusut (bagian 8) |
 | 6 | **Tempo kelas terminal yang lebih lambat** | Kurva XP terminal 4.500 × (T − 1)^3,2. Pemain optimal: Tipe B ±1,4 jam, Tipe A ±5,9 jam, Terpadu ±17 jam main aktif (bagian 7 & 15) |
 | 7 | Perluasan **bertingkat**, termasuk **parkir bus bertingkat**. Denah boleh dirombak bila perlu | Lantai 2–3 gedung utama, gedung parkir bus 3–4 lantai, Gedung Antarpulau 2 lantai (bagian 8) |
+| 8 | Proyek perluasan **tetap berjalan saat offline** | Proyek sehari terminal tidak perlu ditunggui; dibatasi 4 jam seperti penghasilan offline (bagian 11) |
 
 ## 3. Perubahan dibanding v1
 
@@ -445,7 +446,7 @@ Sama dengan v1: pendapatan/detik saat keluar × min(pergi, 4 jam) × 50%. Tambah
 
 - XP PO (bus) dan XP terminal (penumpang) juga ikut ×50%.
 - Kontrak dan hari terminal tidak berjalan saat offline.
-- Proyek perluasan **tetap berjalan** saat offline (dikerjakan kontraktor, tidak butuh Kepala), sebatas 4 jam seperti penghasilan offline. Ini berubah saat implementasi: proyek sehari terminal (24 menit main) tidak perlu ditunggui.
+- Proyek perluasan **tetap berjalan** saat offline (dikerjakan kontraktor, tidak butuh Kepala), sebatas 4 jam seperti penghasilan offline (keputusan 8, dikonfirmasi 7 Oktober 2026): proyek sehari terminal (24 menit main) tidak perlu ditunggui.
 
 ## 12. Hadiah, target, event, penghargaan
 
