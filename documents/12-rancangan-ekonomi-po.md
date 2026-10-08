@@ -1,6 +1,6 @@
 # 12 · Rancangan Ekonomi v2: Mitra PO
 
-> **Status: diimplementasi sebagian di cabang `ekonomi-v2`** (langkah 0–5 di bagian 18: simulasi, save & migrasi v1 → v2, tab PO & Terminal, adegan 3D tahap 0–2 dengan jendela loket & bus per PO dan modul proyek perluasan, tutorial baru). Belum: rilis bertahap dan bangunan bertingkat (tahap 3–5). Dokumen 01–11 masih menggambarkan v1. Isinya disusun dari diskusi desain 7 Oktober 2026.
+> **Status: dirilis sebagai versi 0.2.0** (langkah 0–6 di bagian 18: simulasi, save & migrasi v1 → v2, tab PO & Terminal, adegan 3D tahap 0–2 dengan jendela loket & bus per PO dan modul proyek perluasan, tutorial baru, rilis). Belum: bangunan bertingkat (tahap 3–5). Dokumen 01–11 masih menggambarkan v1. Isinya disusun dari diskusi desain 7 Oktober 2026.
 >
 > Angka bertanda **PLACEHOLDER** adalah titik awal hasil simulasi (bagian 15), bukan angka final. Setelah diimplementasi, angka tuning tetap tinggal di `src/config/economy.config.ts`.
 
@@ -615,7 +615,7 @@ Simpanan naik ke `schemaVersion` 2 dengan satu fungsi di `MIGRASI` (`src/sim/sav
    - daftarkan PO kedua;
    - rekrut Kepala;
    - Jalur 2.
-6. **Rilis bertahap**: build uji (`?v2=1`), lalu paksa pembaruan klien, lalu migrasi.
+6. ✓ **Rilis**: rencananya bertahap (build uji `?v2=1`, lalu paksa pembaruan klien, lalu migrasi). Karena belum ada pemain, langsung dirilis sebagai 0.2.0 dengan `versiMinimal` 0.2.0 (pembaruan wajib, save lama tetap dimigrasi v1 → v2).
 7. **Infrastruktur bertingkat**, lalu tahap 3:
    - bus dengan ketinggian & kemiringan di ramp;
    - rute orang antarlantai (eskalator);
