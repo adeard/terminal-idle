@@ -102,3 +102,22 @@ export function isTeknologiId(nilai: unknown): nilai is TeknologiId {
 export function isPencapaianId(nilai: unknown): nilai is PencapaianId {
   return typeof nilai === 'string' && (PENCAPAIAN_IDS as readonly string[]).includes(nilai);
 }
+
+// ---------------------------------------------------------------------------
+// Tycoon (documents/13-rancangan-tycoon.md)
+
+/**
+ * Bangunan yang dibangun di slot denah: jalur = halte kedatangan + gerbang
+ * keberangkatan; jendela = jendela loket yang disewa PO; kursi = blok kursi
+ * ruang tunggu; kios & toko (minimarket, apotek) disewakan.
+ */
+export const BANGUNAN_IDS = ['jalur', 'jendela', 'kursi', 'kios', 'toko', 'toilet', 'lahanParkir', 'posRetribusi'] as const;
+export type BangunanId = (typeof BANGUNAN_IDS)[number];
+
+/** Peran petugas bergaji (menggantikan Kepala). */
+export const PETUGAS_IDS = ['peron', 'gerbang', 'kebersihan', 'satpam', 'juruParkir', 'petugasToilet', 'petugasRetribusi', 'manajerOperasional', 'manajerKemitraan'] as const;
+export type PetugasId = (typeof PETUGAS_IDS)[number];
+
+/** Tarif terminal yang diatur pemain (harga tiket diatur PO sendiri). */
+export const TARIF_IDS = ['layanan', 'sewaLoket', 'retribusiBus', 'parkir', 'toilet', 'sewaKios'] as const;
+export type TarifId = (typeof TARIF_IDS)[number];

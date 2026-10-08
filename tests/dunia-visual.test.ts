@@ -217,7 +217,8 @@ describe('model keramaian dekoratif', () => {
     expect(dunia.total.pulang).toBeGreaterThan(120);
     // Sebagian penumpang mampir dulu (toilet, musholla, ATM, toko), jadi naik bus di awal lebih lambat.
     expect(dunia.total.naikBus).toBeGreaterThan(75);
-  }, 30_000);
+    // Simulasi panjang (±30 dtk di mesin biasa): batas longgar supaya tidak gagal hanya karena CPU sedang sibuk.
+  }, 90_000);
 
   it('calon penumpang beli tiket di jendela loket (paling banyak LOKET.maksPembeli per jendela), lalu berjalan ke ruang tunggu tanpa berpindah seketika', () => {
     const dunia = new DuniaVisual({ acak: acakBerbenih(12) });

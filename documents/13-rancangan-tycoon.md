@@ -1,8 +1,8 @@
 # 13 · Rancangan Tycoon: dari idle ke tycoon
 
-> **Status: rancangan (8 Oktober 2026), belum diimplementasi.** Rilis 0.2.0 (ekonomi mitra PO, dokumen 12) masih memakai konsep idle. Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
+> **Status: langkah 1 selesai (8 Oktober 2026)** di cabang `tycoon`: modul murni (`src/sim/bangunan.ts`, `petugas.ts`, `tarif.ts`, `operasi.ts`, `keuangan.ts`) dan kalibrasi lewat tes tempo. Game belum memakainya; rilis 0.2.0 (ekonomi mitra PO, dokumen 12) masih memakai konsep idle. Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
 >
-> Angka bertanda **PLACEHOLDER** adalah titik awal. Angka final ditentukan lewat simulasi di langkah 1 (bagian 15) dan tetap tinggal di `src/config/economy.config.ts`.
+> Angka di dokumen ini adalah hasil kalibrasi pertama (bagian 14), masih bisa digeser. Angka yang berlaku selalu yang di `EKONOMI.tycoon` (`src/config/economy.config.ts`).
 
 ## 1. Ringkasan
 
@@ -72,22 +72,22 @@ Arus penumpang dibatasi area yang paling sempit, sama seperti sekarang. Bedanya,
 
 ```
 arus = min(permintaan, peron, loket, keberangkatan, pangkalan)       (pnp per jam terminal)
-peron          = halte kedatangan × 150 × (1 + 0,25 × petugas peron per halte) × modernisasi peron
-loket          = Σ PO: min(permintaan PO, jendela PO × 40 × modernisasi loket)
-keberangkatan  = gerbang × 200 × (1 + 0,25 × petugas gerbang per gerbang) × modernisasi keberangkatan
-pangkalan      = petak bus × 25 pnp ÷ 1,5 jam                         (bus parkir, dicuci, menunggu jadwal)
+peron          = halte kedatangan × 100 × (1 + 0,25 × petugas peron per halte) × modernisasi peron
+loket          = Σ PO: min(permintaan PO, jendela PO × 50 × modernisasi loket)
+keberangkatan  = gerbang × 150 × (1 + 0,25 × petugas gerbang per gerbang) × modernisasi keberangkatan
+pangkalan      = petak bus × 25 pnp ÷ 0,75 jam                        (bus parkir, dicuci, menunggu jadwal)
 ```
 
-Semua angka PLACEHOLDER. Kursi ruang tunggu tidak membatasi arus; kursi masuk ke kepuasan (bagian 7).
+Bila arus jam sibuk melebihi peron, keberangkatan, atau pangkalan, arus semua PO dipotong sebanding. Kursi ruang tunggu tidak membatasi arus; kursi masuk ke kepuasan (bagian 7).
 
 ### 4.1 Slot
 
 | Area | Unit | Awal | Slot | Bertambah lewat |
 |---|---|---|---|---|
-| Jalur | 1 halte kedatangan + 1 gerbang keberangkatan | 1 | 5 | Dibeli (permanen) |
-| Jendela loket | Disewa satu PO | 1 | 4 | Perluasan 1 (+2), 2 (+2), 4 (aula kedua +8) |
+| Jalur | 1 halte kedatangan + 1 gerbang keberangkatan | 1 | 5 | Perluasan 4 (Gedung Antarpulau, +2), 5 (+2) |
+| Jendela loket | Disewa satu PO | 1 | 4 | Perluasan 1 (+2), 2 (+2), 3 (lantai 2, +4), 4 (aula kedua, +4), 5 (+4) |
 | Blok kursi ruang tunggu | 60 kursi | 1 | 4 | Perluasan 3 (lantai 2, +4) |
-| Petak parkir bus | Kelompok 5 petak | 2 | 4 | Perluasan 2 (+2), 4 & 5 (dek +4 tiap tahap) |
+| Petak parkir bus | Kelompok 5 petak (dibangun lewat perluasan) | 2 | 2 | Perluasan 2 (+2), 4 & 5 (dek +4 tiap tahap) |
 | Kios ruang tunggu | Disewakan | 0 | 3 | |
 | Toko aula (minimarket, apotek) | Disewakan | 0 | 2 | Perluasan 3 (food court) |
 | Toilet | Blok | 0 | 1 | Perluasan 3 (+1) |
@@ -95,72 +95,77 @@ Semua angka PLACEHOLDER. Kursi ruang tunggu tidak membatasi arus; kursi masuk ke
 | Pos retribusi | Pintu masuk bus | 0 | 1 | |
 | Modernisasi | Sekali beli | | 6 | Seperti sekarang |
 
-Di terminal awal (1 jalur, 1 jendela, 2 kelompok petak, satu PO berjurusan Jakarta), arusnya min(permintaan ±120, peron 150, loket 40, keberangkatan 200, pangkalan 167) = 40 pnp/jam. Loket menjadi yang paling lambat, sama seperti sekarang, jadi langkah pertama tutorial tetap "bangun loket". Setelah empat jendela terisi, peron (150) yang paling lambat, lalu pangkalan (167).
+Di terminal awal (1 jalur, 1 jendela, 2 kelompok petak, satu PO berjurusan Jakarta), arusnya min(permintaan ±135, peron 100, loket 50, keberangkatan 150, pangkalan 333) = 50 pnp/jam. Loket menjadi yang paling lambat, sama seperti sekarang, jadi langkah pertama tutorial tetap "bangun loket". Setelah dua jendela, peron (100) yang paling lambat, sehingga petugas peron dan Jalur 2 langsung berguna. Pangkalan baru membatasi sekitar 300 pnp/jam (perluasan 2).
 
 ### 4.2 Bangun
 
-| Unit | Biaya (PLACEHOLDER) | Perawatan per hari |
+| Unit | Biaya | Perawatan per hari |
 |---|---|---|
-| Jalur 2 / 3 / 4 / 5 | Rp 25 jt / 150 jt / 750 jt / 3 M | Rp 150 rb per jalur |
-| Jendela loket | Rp 3 jt, naik 25% per jendela | Rp 50 rb |
-| Blok kursi | Rp 6 jt | Rp 30 rb |
-| Kios | Rp 8 jt | Rp 50 rb |
-| Minimarket, apotek | Rp 20 jt | Rp 100 rb |
-| Toilet | Rp 15 jt | Rp 80 rb |
-| Lahan parkir kendaraan | Rp 10 jt | Rp 50 rb |
-| Pos retribusi | Rp 10 jt | Rp 50 rb |
+| Jalur 2 / 3 / 4 / 5 | Rp 15 jt / 60 jt / 250 jt / 800 jt | Rp 500 rb per jalur |
+| Jalur 6 / 7 / 8 / 9 | Rp 1,5 M / 2,5 M / 4 M / 6 M | Rp 500 rb per jalur |
+| Jendela loket | Rp 2 jt, naik 25% per jendela | Rp 150 rb |
+| Blok kursi | Rp 4 jt | Rp 50 rb |
+| Kios | Rp 5 jt | Rp 100 rb |
+| Minimarket, apotek | Rp 12 jt | Rp 250 rb |
+| Toilet | Rp 8 jt | Rp 200 rb |
+| Lahan parkir kendaraan | Rp 6 jt | Rp 100 rb |
+| Pos retribusi | Rp 6 jt | Rp 100 rb |
+| Modernisasi | Rp 10 jt (mesin tiket) – Rp 400 jt (gate otomatis) | 0,1% harganya |
 
 - **Bongkar**: unit bisa dibongkar dengan pengembalian 30% biaya. Gunanya untuk mengurangi biaya perawatan bila salah bangun.
 - **Jendela loket kosong** (tidak disewa PO) tidak melayani dan tidak membayar sewa, tapi tetap butuh perawatan.
 
 ## 5. Petugas
 
-Petugas menggantikan Kepala. Mereka juga mengisi peran yang sudah terlihat di adegan (petugas gerbang, juru parkir, satpam, petugas kebersihan). Gaji dibayar terus selama terminal beroperasi.
+Petugas menggantikan Kepala. Mereka juga mengisi peran yang sudah terlihat di adegan (petugas gerbang, juru parkir, satpam, petugas kebersihan). Gaji dibayar terus selama terminal beroperasi. Terminal buka 24 jam, jadi satu **posisi** berarti tiga shift; gaji di tabel adalah gaji satu posisi per hari.
 
-| Peran | Efek | Batas | Gaji per hari (PLACEHOLDER) |
+| Peran | Efek | Batas | Gaji per posisi per hari |
 |---|---|---|---|
-| Petugas peron | +25% kapasitas halte kedatangannya | 1 per halte | Rp 150 rb |
-| Petugas gerbang | +25% kapasitas gerbangnya | 1 per gerbang | Rp 150 rb |
-| Petugas kebersihan | Kebersihan: 1 orang per 150 pnp/jam | | Rp 120 rb |
-| Satpam | Keamanan: 1 orang per jalur | | Rp 150 rb |
-| Juru parkir | Tanpa juru parkir, pendapatan parkir kendaraan −50% | 1 per lahan | Rp 100 rb |
-| Petugas toilet | Tanpa petugas, kebersihan toilet ikut turun | 1 per toilet | Rp 100 rb |
-| Petugas retribusi | Syarat pos retribusi memungut | 1 | Rp 120 rb |
-| Manajer Operasional | Syarat terminal beroperasi saat game ditutup (bagian 9) | 1 | Rp 600 rb |
-| Manajer Kemitraan | Memperpanjang kontrak & mengisi jendela kosong otomatis (pengganti Kepala Kemitraan) | 1 | Rp 500 rb |
+| Petugas peron | +25% kapasitas halte kedatangannya | 1 per halte | Rp 450 rb |
+| Petugas gerbang | +25% kapasitas gerbangnya | 1 per gerbang | Rp 450 rb |
+| Petugas kebersihan | Kebersihan: 1 orang per 150 pnp/jam | 2 per jalur + 2 | Rp 360 rb |
+| Satpam | Keamanan: 1 orang per jalur | 2 per jalur | Rp 450 rb |
+| Juru parkir | Tanpa juru parkir, pendapatan parkir kendaraan −50% | 1 per lahan | Rp 300 rb |
+| Petugas toilet | Tanpa petugas, kebersihan toilet ikut turun | 1 per toilet | Rp 300 rb |
+| Petugas retribusi | Tanpa petugas, pos retribusi hanya memungut separuh bus | 1 per pos | Rp 360 rb |
+| Manajer Operasional | Syarat terminal beroperasi saat game ditutup (bagian 9) | 1 | Rp 1,5 jt |
+| Manajer Kemitraan | Memperpanjang kontrak & mengisi jendela kosong otomatis (pengganti Kepala Kemitraan) | 1 | Rp 1,2 jt |
 
 - Petugas **jendela loket** adalah pegawai PO. Terminal tidak membayarnya.
 - Rekrut dan berhentikan tanpa biaya sekali bayar, supaya mengatur jumlah petugas mengikuti jam sibuk & musim terasa ringan. Gaji dihitung per detik.
+- State menyimpan **urutan rekrut**, bukan jumlah: yang terakhir direkrut berhenti lebih dulu (bagian 6.3), dan bila bangunannya dibongkar, kelebihan petugasnya keluar mulai dari yang terbaru.
 
 ## 6. Uang: pendapatan, biaya, laba
 
 ### 6.1 Pendapatan
 
-Semua tarif diatur pemain (bagian 6.4). Angka di bawah memakai tarif bawaan (PLACEHOLDER).
+Semua tarif diatur pemain (bagian 6.4). Angka di bawah memakai tarif bawaan.
 
 | Sumber | Rumus | Syarat |
 |---|---|---|
 | Biaya layanan terminal | 10% × harga tiket × penumpang | |
 | Sewa jendela loket | Rp 250 rb per hari per jendela yang disewa PO | |
-| Retribusi bus | Rp 20 rb per bus yang berangkat | Pos retribusi + petugasnya |
+| Retribusi bus | Rp 20 rb per bus yang berangkat | Pos retribusi (tanpa petugasnya separuh) |
 | Parkir kendaraan | Rp 5 rb × kendaraan pengantar (±30% penumpang) | Lahan parkir (kapasitas per baris) |
 | Toilet | Rp 2 rb × pemakai (±25% penumpang) | Toilet |
 | Sewa kios & toko | Rp 300 rb per hari per unit yang terisi | Kios / toko |
 
 - **Harga tiket** ditetapkan PO sendiri: harga normal = Rp 60 rb × nilai jurusan × nilai kelas × 1,06^(level PO − 1). Contoh: Jakarta Ekonomi Rp 60 rb, Surabaya Eksekutif Rp 230 rb, Medan Sleeper Rp 1,5 jt. Penumpang membayar tiket + biaya layanan terminal.
 - Di awal, satu penumpang menghasilkan ±Rp 6 rb biaya layanan (10% dari tiket Rp 60 rb). Pos retribusi menambah ±Rp 0,8 rb per penumpang (bus ±25 penumpang).
-- **Modal awal** Rp 35 jt (PLACEHOLDER). Modal inilah yang membiayai langkah tutorial sampai Jalur 2. Laba awal (±Rp 4 jt per hari terminal, ±Rp 3 rb per detik) baru terasa setelah loket & PO kedua bertambah.
-- **Biaya daftar PO** disusun ulang dalam Rupiah di langkah 1 (PO kedua ±Rp 5 jt).
+- **Modal awal** Rp 25 jt: cukup untuk jendela kedua, PO kedua, petugas, dan Jalur 2 di menit-menit pertama. Laba hari pertama ±Rp 30 jt (±Rp 1 jt per menit nyata).
+- **Biaya daftar PO** dalam Rupiah: PO kedua Rp 3 jt, Lumpia Kilat Rp 12 jt, Bakpia Rasa Rp 40 jt, sampai Kopi Gayo Rp 10 M. PO hadiah kelas & event tetap gratis.
 
 ### 6.2 Biaya
 
 | Pos | Rumus |
 |---|---|
-| Gaji | Jumlah petugas × gaji per hari |
+| Gaji | Jumlah posisi × gaji per hari (tabel 5) |
 | Perawatan | Jumlah unit × perawatan per hari (tabel 4.2) |
-| Listrik | Rp 200 rb per hari per jalur. Malam hari ×1,5 (lampu) |
+| Listrik | Rp 600 rb per hari per jalur. Malam hari ×1,5 (lampu) |
+| Gedung perluasan | Biaya operasional tiap tahap yang selesai (bagian 8) |
 
-Semua dihitung per detik, tapi dilaporkan **per hari** (laporan keuangan, bagian 11).
+- Gaji, perawatan, dan listrik dikali kelas terminal: Tipe C 1 · B 1,25 · A 1,5 · Terpadu 2. Kenaikannya dibuat landai supaya naik kelas tidak terasa seperti hukuman.
+- Semua dihitung per detik, tapi dilaporkan **per hari** (laporan keuangan, bagian 11).
 
 ### 6.3 Kas habis
 
@@ -173,14 +178,14 @@ Semua dihitung per detik, tapi dilaporkan **per hari** (laporan keuangan, bagian
 
 | Tarif | Bawaan | Rentang | Bila dinaikkan |
 |---|---|---|---|
-| Biaya layanan (% harga tiket) | 10% | 0–25% | Harga yang dibayar penumpang naik, permintaan turun menurut elastisitas jurusan & kelas (mesin harga tiket 0.2.0) |
+| Biaya layanan (% harga tiket) | 10% | 0–25% | Permintaan turun linear, lebih peka di kelas ekonomi; komponen harga di kepuasan turun |
 | Sewa jendela loket (per hari) | Rp 250 rb | Rp 0–1 jt | Kepuasan mitra PO turun |
 | Retribusi bus (per bus) | Rp 20 rb | Rp 0–60 rb | Kepuasan mitra PO turun |
 | Parkir kendaraan | Rp 5 rb | Rp 0–20 rb | Lebih sedikit pengantar yang parkir; komponen harga di kepuasan turun |
 | Toilet | Rp 2 rb | Rp 0–5 rb | Lebih sedikit pemakai; komponen harga di kepuasan turun |
 | Sewa kios & toko (per hari) | Rp 300 rb | Rp 0–2 jt | Unit bisa kosong bila sewa melebihi nilai keramaiannya |
 
-- Semua angka PLACEHOLDER.
+- Efek biaya layanan dibuat **linear** (× 1 + 0,5 × elastisitas segmen ÷ 1,5 × (1 − tarif ÷ bawaan)), bukan elastisitas harga total. Biaya layanan hanya bagian kecil dari harga tiket, sehingga dengan elastisitas harga total tarif maksimum hampir selalu paling untung. Sekarang tarif terbaik ±15% saat permintaan yang membatasi, lebih tinggi saat terminal sesak.
 - Tiap tarif punya tombol **Saran**: tarif yang memaksimalkan laba saat ini, seperti saran harga 0.2.0.
 - **Anti-curang** seperti 0.2.0: hadiah "N menit laba", target, rekor, dan offline dihitung dengan tarif bawaan, supaya tarif ekstrem sesaat tidak menggelembungkan hadiah.
 
@@ -189,9 +194,10 @@ Semua dihitung per detik, tapi dilaporkan **per hari** (laporan keuangan, bagian
 Model segmen 0.2.0 (PO × jurusan × kelas, persaingan, kejenuhan, reputasi) tetap dipakai. Ada dua perbedaan: permintaan kini **mutlak**, dan harga datang dari biaya layanan terminal, bukan harga per PO:
 
 ```
-pasar_j        = 40 pnp/jam × peminat_j × pengali kelas terminal × daya tarik kepuasan × ritme jam   (PLACEHOLDER)
-pengali kelas  = Tipe C 1 · B 2 · A 4 · Terpadu 8
-permintaan_ij  = pasar_j × bagian PO i (reputasi, persaingan, kejenuhan) × ((1 + biaya layanan) ÷ 1,1)^(−e)
+pasar_j        = 45 pnp/jam × peminat_j × pengali kelas terminal × daya tarik kepuasan × ritme jam
+pengali kelas  = Tipe C 1 · B 1,3 · A 1,6 · Terpadu 2
+daya tarik     = 0,6 + 0,8 × kepuasan
+permintaan_ij  = pasar_j × bagian PO i (reputasi, persaingan, kejenuhan) × faktor biaya layanan (bagian 6.4)
 ```
 
 Akibatnya:
@@ -208,7 +214,7 @@ Akibatnya:
 | Kebersihan | 20% | Petugas kebersihan & petugas toilet dibanding arus |
 | Keamanan | 10% | Satpam per jalur, terutama malam hari |
 | Fasilitas | 10% | Toilet, kios, toko aula, lahan parkir |
-| Harga | 10% | Tarif parkir & toilet dibanding tarif bawaan |
+| Harga | 10% | Biaya layanan, tarif parkir & toilet dibanding tarif bawaan |
 
 ### 7.1 Kepuasan mitra PO
 
@@ -227,29 +233,28 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
 
 ## 8. Progres
 
-- **Level terminal** tetap dari penumpang yang diberangkatkan. Arus kini realistis (puluhan sampai ribuan pnp per jam terminal, bukan ratusan per detik), jadi kurvanya berubah: XP kumulatif level L = **60 × (L − 1)^2,8** penumpang (PLACEHOLDER). Tempo mendekati keputusan 6 dokumen 12 (Tipe B ±1,4 jam, Tipe A ±5,9 jam, Terpadu ±17 jam):
+- **Level terminal** tetap dari penumpang yang diberangkatkan. Arus kini realistis (puluhan sampai ribuan pnp per jam terminal, bukan ratusan per detik), jadi kurvanya berubah: XP kumulatif level L = **50 × (L − 1)^2,75** penumpang. Tempo mendekati keputusan 6 dokumen 12 (Tipe B ±1,4 jam, Tipe A ±5,9 jam, Terpadu ±17 jam):
 
   | Level | 3 | 6 | 10 (Tipe B) | 20 (Tipe A) | 30 (Terpadu) |
   |---|---|---|---|---|---|
-  | Penumpang kumulatif | 420 | 5,4 rb | 28 rb | 230 rb | 750 rb |
-  | Arus rata-rata (pnp/jam terminal) | ±80 | ±150 | ±300 | ±600 | ±1.000 |
-  | Waktu main aktif | ±5 menit | ±40 menit | ±1,5 jam | ±6 jam | ±12 jam |
+  | Penumpang kumulatif | 340 | 4,2 rb | 21 rb | 164 rb | 525 rb |
+  | Waktu main aktif (pemain serakah) | ±3 menit | ±25 menit | ±1,6 jam | ±6,7 jam | ±14,8 jam |
 
 - **Kelas terminal**, slot PO, dan kelas bus mengikuti level seperti 0.2.0.
-- **Perluasan** tetap lima tahap pada Lv 3 / 6 / 10 / 20 / 30. Biayanya disamakan dengan ±1–4 jam laba di tahap itu: Rp 40 jt / 250 jt / 1 M / 5 M / 20 M (PLACEHOLDER). Proyeknya tetap sehari terminal. Tiap tahap menambah slot (tabel 4.1), bukan pengali.
+- **Perluasan** tetap lima tahap pada Lv 3 / 6 / 10 / 20 / 30, dengan biaya Rp 20 jt / 80 jt / 250 jt / 800 jt / 3 M. Proyeknya tetap sehari terminal. Tiap tahap menambah slot (tabel 4.1), bukan pengali. Setelah selesai, gedungnya punya biaya operasional per hari: Rp 0,5 jt / 2 jt / 6 jt / 20 jt / 60 jt (menumpuk).
+- **Laba** pemain serakah dengan tarif bawaan (dari tes tempo, bagian 14):
 
-  | Saat | Laba per jam terminal (±1 menit nyata) | Laba per hari terminal |
+  | Saat | Laba per hari terminal (24 menit nyata) | Biaya ÷ pendapatan |
   |---|---|---|
-  | Awal | Rp 0,2 jt | Rp 4 jt |
-  | Setelah Jalur 2 | Rp 1 jt | Rp 25 jt |
-  | Tipe B | Rp 6 jt | Rp 150 jt |
-  | Tipe A | Rp 25 jt | Rp 600 jt |
-  | Terpadu | Rp 80 jt | Rp 2 M |
+  | Hari pertama | ±Rp 30 jt | ±16% |
+  | Tipe B (hari ke-10) | ±Rp 110 jt | ±14% |
+  | Tipe A (hari ke-22) | ±Rp 215 jt | ±20% |
+  | Terpadu (hari ke-40–52) | ±Rp 320–360 jt | ±18–30% |
 
 ## 9. Offline
 
 - Terminal hanya beroperasi saat game ditutup bila ada **Manajer Operasional**. Tanpa manajer, terminal tutup: tidak ada pendapatan dan tidak ada biaya.
-- Dengan manajer, laba offline = pendapatan × 60% − biaya penuh, paling lama **8 jam** (PLACEHOLDER), cukup untuk semalam tidur. Bisa negatif bila petugasnya terlalu banyak. Popup "Selama kamu pergi…" menampilkan pendapatan, biaya, dan laba.
+- Dengan manajer, laba offline = pendapatan × 60% − biaya penuh, paling lama **8 jam**, cukup untuk semalam tidur. Bisa negatif bila petugasnya terlalu banyak. Popup "Selama kamu pergi…" menampilkan pendapatan, biaya, dan laba.
 - Proyek perluasan tetap berjalan, dengan atau tanpa manajer (keputusan 8 dokumen 12).
 
 ## 10. Target, tantangan, penghargaan, event, iklan
@@ -288,38 +293,44 @@ Sebagian besar sudah menggambarkan benda nyata: halte & gerbang per jalur, jende
 
 ## 14. Kalibrasi & target tempo
 
-Tempo untuk pemain aktif yang bermain optimal (PLACEHOLDER, diuji dengan tes seperti `tests/greedy.test.ts`):
+Tempo untuk pemain aktif yang bermain optimal, diukur dengan pemain serakah (`tests/tycoon-sim.ts`, dijaga `tests/tycoon-tempo.test.ts`). Tiap jam terminal ia membeli aksi yang paling cepat balik modal (laba rata-rata jam sibuk & sepi). Perluasan dinilai dari aksi terbaik yang dibuka slot barunya.
 
-| Momen | Target |
-|---|---|
-| Pembelian pertama | < 30 detik |
-| PO kedua | < 3 menit |
-| Jalur 2 | 8–12 menit |
-| Perluasan 1 (Lv 3) | ±30 menit |
-| Tipe B (Lv 10) | ±1,5 jam |
-| Tipe A (Lv 20) | ±6 jam |
-| Terpadu (Lv 30) | ±12–17 jam |
-| Laba per hari terminal | Awal ±Rp 4 jt, Tipe B Rp 100–300 jt, Terpadu Rp 2–5 M |
+| Momen | Target | Hasil kalibrasi |
+|---|---|---|
+| PO kedua | < 3 menit | menit ke-0 |
+| Jalur 2 | 8–12 menit | menit ke-2 |
+| Perluasan 1 dimulai | ±30 menit | menit ke-35 |
+| Lv 6 | ±40 menit | menit ke-25 |
+| Tipe B (Lv 10) | ±1,5 jam | 1,6 jam |
+| Tipe A (Lv 20) | ±6 jam | 6,7 jam |
+| Terpadu (Lv 30) | ±12–17 jam | 14,8 jam |
+| Perluasan 5 selesai | | 16 jam |
+| Jeda terlama tanpa membeli di jam pertama | | ±25 menit |
+| Petugas berhenti karena kas habis | 0 | 0 |
 
-Tes yang dibutuhkan:
+Catatan kalibrasi:
 
-- **Pemain tycoon serakah**: selalu membeli atau merekrut yang balik modalnya paling cepat, dan memberhentikan petugas yang tidak menambah laba. Ini memegang tabel tempo di atas.
-- **Tidak kehabisan kas**: strategi wajar (membangun sesuai bottleneck, tanpa petugas berlebih) tidak pernah membuat petugas berhenti karena kas habis.
-- **Tarif ekstrem merugi**: tarif terlalu tinggi menurunkan laba lewat permintaan, pengantar & pemakai toilet, atau kepuasan mitra; tarif nol juga merugi.
-- **Overbuild merugi**: membangun jauh melebihi pasar menurunkan laba (memastikan pasar mutlak bekerja).
-- **Offline**: tanpa manajer nol; dengan manajer sesuai rumus; biaya bisa membuat laba offline negatif.
+- Percobaan pertama memperlihatkan **pangkalan** (10 petak, bus parkir 1,5 jam = 167 pnp/jam) menjadi tembok sebelum Jalur 2 berguna. Lama parkir bus diturunkan ke 0,75 jam.
+- **Jendela loket** mentok 8 sampai perluasan 4 membuat Lv 10–20 sangat lambat. Perluasan 3 kini menambah 4 jendela (lantai 2).
+- Di awal, **pasar** (bukan kapasitas) yang membatasi: dua jurusan ±150 pnp/jam. Barang awal dibuat lebih murah dan pasar Tipe C lebih besar, supaya keputusan bermakna muncul tiap 3–10 menit.
+- **Biaya** awalnya hanya 5% pendapatan. Gaji kini per posisi tiga shift, perawatan & listrik dinaikkan. Pengali biaya per kelas sempat ×8 di Tipe A sehingga laba anjlok saat naik kelas; kini landai (1 → 2).
+- **Akhir permainan** sempat mentok karena peron maksimal di 5 jalur. Perluasan 4 & 5 kini menambah jalur.
+- Permintaan di akhir permainan masih ±1,6× kapasitas (kelancaran rendah). Biaya layanan yang lebih tinggi (bagian 6.4) dan Jalur 8–9 adalah jalan keluarnya; pemain serakah memakai tarif bawaan.
+
+Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.ts`, `operasi.test.ts` (termasuk pasar mutlak: membangun melebihi permintaan tidak menambah arus), `keuangan.test.ts` (termasuk overbuild merugi dan kas tidak pernah minus). Tes offline menyusul bersama peralihan state (langkah 2).
 
 ## 15. Rencana implementasi bertahap
 
-0. **Rancangan ini** + keputusan terbuka (bagian 16).
-1. **Simulasi murni** (`src/sim/`, `economy.config.ts`):
-   - state bangunan, petugas, tarif, kas, dan buku harian (pendapatan & biaya per hari);
-   - kapasitas area, pasar mutlak per jurusan, pendapatan & biaya;
+0. ✓ **Rancangan ini** + keputusan (bagian 2 & 16).
+1. ✓ **Modul murni & kalibrasi** (`src/sim/bangunan.ts`, `petugas.ts`, `tarif.ts`, `operasi.ts`, `keuangan.ts`, blok `EKONOMI.tycoon`):
+   - kapasitas area, pasar mutlak per jurusan, pendapatan & biaya, kas tidak minus;
    - harga tiket = harga normal PO, tarif terminal, kepuasan mitra PO;
-   - offline dengan manajer;
-   - hapus tahap, Kepala, Renovasi, milestone, bonus level;
-   - kalibrasi lewat tes tempo.
-2. **Save** skema 3 & cloud save (ekonomi lama dimulai baru, profil tetap).
+   - kalibrasi lewat pemain serakah & tes tempo.
+2. **Peralihan state & save**:
+   - `GameState` memakai bangunan, petugas (urut rekrut), tarif, kas (Rupiah `number`), dan buku harian (pendapatan & biaya per hari);
+   - aksi bangun / bongkar / rekrut / berhentikan / atur tarif; offline dengan Manajer Operasional;
+   - hapus tahap, Kepala, Renovasi, milestone, bonus level, harga per PO;
+   - save skema 3 & cloud save (ekonomi lama dimulai baru, profil tetap).
 3. **UI**: tab Bangun / Petugas, tarif & laporan keuangan di tab Terminal, kartu PO tanpa harga per jurusan, HUD laba, popup offline baru; tab Tahap & rel chip dihapus.
 4. **Adegan 3D**: blok kursi, petugas sesuai rekrutan, lahan parkir & pos retribusi, label area yang bisa diketuk, penanda bottleneck per area.
 5. **Tutorial**, target harian, tantangan, penghargaan, notifikasi, analitik. Tutorial usulan:

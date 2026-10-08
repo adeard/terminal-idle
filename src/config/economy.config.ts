@@ -1,4 +1,4 @@
-import type { EventId, FasilitasId, KelasBusId, PoId, TeknologiId } from '../sim/fitur';
+import type { BangunanId, EventId, FasilitasId, KelasBusId, PetugasId, PoId, TarifId, TeknologiId } from '../sim/fitur';
 import type { TahapId } from '../sim/tahap';
 
 /**
@@ -338,6 +338,130 @@ export interface KonfigEkonomi {
 
   /** Ekonomi mitra PO: tingkat & daftar PO, level PO & terminal, reputasi, kontrak, perluasan, Renovasi (documents/12). */
   readonly mitra: KonfigMitra;
+  /** Ekonomi tycoon: bangunan, petugas, tarif, pasar, biaya (documents/13). Belum dipakai game. */
+  readonly tycoon: KonfigTycoon;
+}
+
+/** Satu jenis bangunan tycoon di slot denah. */
+export interface KonfigBangunan {
+  /** Unit yang sudah ada di game baru. */
+  readonly awal: number;
+  /** Slot setelah tahap perluasan ke-i (indeks 0 = terminal awal; tahap di luar daftar memakai nilai terakhir). */
+  readonly slot: readonly number[];
+  /** Biaya unit tambahan ke-1, ke-2, … (di atas `awal`); sesudah daftar habis: biaya terakhir × pertumbuhan^(kelebihan). */
+  readonly biaya: readonly number[];
+  readonly pertumbuhan: number;
+  /** Perawatan per unit per hari terminal (Rp). */
+  readonly perawatan: number;
+}
+
+export interface KonfigTarif {
+  readonly bawaan: number;
+  readonly min: number;
+  readonly maks: number;
+  readonly langkah: number;
+}
+
+/** Skor 0–1 dari tarif: `skorBawaan` pada tarif bawaan, turun `turunPerRasio` tiap kelipatan bawaan di atasnya. */
+export interface KonfigSkorTarif {
+  readonly skorBawaan: number;
+  readonly turunPerRasio: number;
+}
+
+/**
+ * Ekonomi tycoon (documents/13-rancangan-tycoon.md): kapasitas dari bangunan &
+ * petugas, pasar penumpang mutlak, tarif terminal, biaya operasional. Satuan
+ * arus = penumpang per jam terminal (1 jam terminal = 60 detik main). Angka
+ * hasil kalibrasi pertama dengan pemain serakah (tests/tycoon-tempo.test.ts).
+ */
+export interface KonfigTycoon {
+  /** Kas game baru (Rp). */
+  readonly modalAwal: number;
+  readonly kapasitas: {
+    /** Penumpang per jam satu halte kedatangan, satu jendela loket, satu gerbang keberangkatan. */
+    readonly halte: number;
+    readonly jendela: number;
+    readonly gerbang: number;
+    /** Tambahan kapasitas halte / gerbang yang dijaga petugasnya (0.25 = +25%). */
+    readonly bonusPetugas: number;
+    /** Penumpang per bus, dan lama bus menempati petak parkir (jam terminal): dicuci & menunggu jadwal. */
+    readonly penumpangPerBus: number;
+    readonly jamParkirBus: number;
+  };
+  /** Petak parkir bus setelah tahap perluasan ke-i (indeks 0 = terminal awal). */
+  readonly petakBus: readonly number[];
+  readonly bangunan: Readonly<Record<BangunanId, KonfigBangunan>>;
+  /** Gaji satu posisi per hari terminal (Rp): terminal buka 24 jam, jadi satu posisi = tiga shift. */
+  readonly gaji: Readonly<Record<PetugasId, number>>;
+  readonly tarif: Readonly<Record<TarifId, KonfigTarif>>;
+  /** Biaya modernisasi & perawatannya per hari (Rp). Pengali kapasitasnya tetap dari `teknologi`. */
+  readonly teknologi: Readonly<Record<TeknologiId, { readonly biaya: number; readonly perawatan: number }>>;
+  /** Tahap perluasan ke-i (levelnya dari mitra.perluasan): biaya (Rp) & biaya operasional gedungnya per hari setelah selesai. */
+  readonly perluasan: readonly { readonly biaya: number; readonly operasional: number }[];
+  readonly biayaDaftarPo: Readonly<Record<PoId, number>>;
+  /** XP PO (bus yang datang): XP kumulatif level L = xpA × (L − 1)^xpK. */
+  readonly xpPo: { readonly xpA: number; readonly xpK: number };
+  /** XP terminal (penumpang): XP kumulatif level L = xpA × (L − 1)^xpK. */
+  readonly xpTerminal: { readonly xpA: number; readonly xpK: number };
+  /** Listrik per jalur per hari; malam hari (lampu) dikali pengaliMalam. */
+  readonly listrik: { readonly perJalur: number; readonly pengaliMalam: number };
+  /** Gaji, perawatan & listrik dikali ini menurut kelas terminal (indeks kelas; lebih dari daftar = nilai terakhir). */
+  readonly pengaliBiayaKelas: readonly number[];
+  /**
+   * Pasar: calon penumpang per jam = perPeminat × peminat jurusan × pengali kelas
+   * terminal × daya tarik (dayaTarikDasar + dayaTarikPerKepuasan × kepuasan) × ritme jam.
+   */
+  readonly pasar: {
+    readonly perPeminat: number;
+    readonly pengaliKelas: readonly number[];
+    readonly dayaTarikDasar: number;
+    readonly dayaTarikPerKepuasan: number;
+    /** Biaya layanan: permintaan × (1 + kepekaanLayanan × elastisitas segmen ÷ elastisitasAcuan × (1 − tarif ÷ bawaan)). */
+    readonly kepekaanLayanan: number;
+    readonly elastisitasAcuan: number;
+  };
+  /** Harga tiket normal = hargaTiketDasar × nilai jurusan × nilai kelas bus × nilai level PO (ditetapkan PO). */
+  readonly hargaTiketDasar: number;
+  /**
+   * Pengantar yang parkir & pemakai toilet: bagian penumpang pada tarif bawaan,
+   * berubah linear dengan tarif (× 1 + kepekaan × (1 − tarif ÷ bawaan)), dibatasi
+   * kapasitas per unit per jam.
+   */
+  readonly pengantar: { readonly bagian: number; readonly kepekaan: number; readonly perUnit: number };
+  readonly pemakaiToilet: { readonly bagian: number; readonly kepekaan: number; readonly perUnit: number };
+  /** Sewa wajar kios/toko per hari = nilaiPerArus × arus puncak; okupansi = jepit(1 + kepekaan × (1 − sewa ÷ wajar)). */
+  readonly kios: { readonly nilaiPerArus: number; readonly kepekaan: number };
+  readonly kepuasan: {
+    readonly bobot: {
+      readonly kelancaran: number;
+      readonly kenyamanan: number;
+      readonly kebersihan: number;
+      readonly keamanan: number;
+      readonly fasilitas: number;
+      readonly harga: number;
+    };
+    /** Kelancaran 0 bila arus ≤ rasioNol × permintaan, 1 bila ≥ rasioLancar × permintaan (jam sibuk). */
+    readonly rasioNol: number;
+    readonly rasioLancar: number;
+    readonly kursiPerBlok: number;
+    /** Lama penumpang menunggu di ruang tunggu (jam terminal): kursi dibutuhkan = arus × jamTunggu. */
+    readonly jamTunggu: number;
+    readonly arusPerPetugasKebersihan: number;
+    /** Kios + toko dibutuhkan = arus ÷ arusPerKios. */
+    readonly arusPerKios: number;
+    /** Komponen harga: biaya layanan, tarif parkir & toilet. */
+    readonly harga: KonfigSkorTarif;
+  };
+  /** Kepuasan mitra PO: bobot komponen, skor tarif sewa loket & retribusi, dan batas perpanjang kontrak / mau bergabung. */
+  readonly mitra: {
+    readonly bobot: { readonly tarif: number; readonly penuh: number; readonly jendela: number; readonly kepuasan: number };
+    readonly tarif: KonfigSkorTarif;
+    readonly minimal: number;
+  };
+  /** Offline (butuh Manajer Operasional): paling lama `batasDetik`, pendapatan × efisiensi, biaya penuh. */
+  readonly offline: { readonly batasDetik: number; readonly efisiensi: number };
+  /** Bagian biaya yang kembali saat membongkar unit. */
+  readonly bongkar: number;
 }
 
 export interface KonfigSimulasi {
@@ -554,6 +678,101 @@ export const EKONOMI: KonfigEkonomi = {
     ],
     detikProyek: 1440,
     poinMinRenovasi: 3,
+  },
+
+  // Tycoon: hasil kalibrasi pertama (documents/13 bagian 14), dijaga tests/tycoon-tempo.test.ts.
+  tycoon: {
+    modalAwal: 25_000_000,
+    kapasitas: { halte: 100, jendela: 50, gerbang: 150, bonusPetugas: 0.25, penumpangPerBus: 25, jamParkirBus: 0.75 },
+    petakBus: [10, 10, 20, 20, 40, 60],
+    bangunan: {
+      jalur: { awal: 1, slot: [5, 5, 5, 5, 7, 9], biaya: [15_000_000, 60_000_000, 250_000_000, 800_000_000, 1_500_000_000, 2_500_000_000, 4_000_000_000, 6_000_000_000], pertumbuhan: 1, perawatan: 500_000 },
+      jendela: { awal: 1, slot: [4, 6, 8, 12, 16, 20], biaya: [2_000_000], pertumbuhan: 1.25, perawatan: 150_000 },
+      kursi: { awal: 1, slot: [4, 4, 4, 8], biaya: [4_000_000], pertumbuhan: 1, perawatan: 50_000 },
+      kios: { awal: 0, slot: [3], biaya: [5_000_000], pertumbuhan: 1, perawatan: 100_000 },
+      toko: { awal: 0, slot: [2, 2, 2, 4], biaya: [12_000_000], pertumbuhan: 1, perawatan: 250_000 },
+      toilet: { awal: 0, slot: [1, 1, 1, 2], biaya: [8_000_000], pertumbuhan: 1, perawatan: 200_000 },
+      lahanParkir: { awal: 0, slot: [1, 1, 2], biaya: [6_000_000], pertumbuhan: 1, perawatan: 100_000 },
+      posRetribusi: { awal: 0, slot: [1], biaya: [6_000_000], pertumbuhan: 1, perawatan: 100_000 },
+    },
+    gaji: {
+      peron: 450_000,
+      gerbang: 450_000,
+      kebersihan: 360_000,
+      satpam: 450_000,
+      juruParkir: 300_000,
+      petugasToilet: 300_000,
+      petugasRetribusi: 360_000,
+      manajerOperasional: 1_500_000,
+      manajerKemitraan: 1_200_000,
+    },
+    tarif: {
+      layanan: { bawaan: 10, min: 0, maks: 25, langkah: 1 },
+      sewaLoket: { bawaan: 250_000, min: 0, maks: 1_000_000, langkah: 25_000 },
+      retribusiBus: { bawaan: 20_000, min: 0, maks: 60_000, langkah: 5_000 },
+      parkir: { bawaan: 5_000, min: 0, maks: 20_000, langkah: 1_000 },
+      toilet: { bawaan: 2_000, min: 0, maks: 5_000, langkah: 500 },
+      sewaKios: { bawaan: 300_000, min: 0, maks: 2_000_000, langkah: 50_000 },
+    },
+    teknologi: {
+      rambuHalte: { biaya: 15_000_000, perawatan: 15_000 },
+      pengaturBus: { biaya: 100_000_000, perawatan: 100_000 },
+      mesinTiket: { biaya: 10_000_000, perawatan: 10_000 },
+      eTiket: { biaya: 80_000_000, perawatan: 80_000 },
+      jadwalDigital: { biaya: 25_000_000, perawatan: 25_000 },
+      gateOtomatis: { biaya: 400_000_000, perawatan: 400_000 },
+    },
+    perluasan: [
+      { biaya: 20_000_000, operasional: 500_000 },
+      { biaya: 80_000_000, operasional: 2_000_000 },
+      { biaya: 250_000_000, operasional: 6_000_000 },
+      { biaya: 800_000_000, operasional: 20_000_000 },
+      { biaya: 3_000_000_000, operasional: 60_000_000 },
+    ],
+    biayaDaftarPo: {
+      ondelOndel: 0,
+      peuyeumKilat: 3_000_000,
+      lumpiaKilat: 12_000_000,
+      bakpiaRasa: 40_000_000,
+      wayangLestari: 80_000_000,
+      arekEkspres: 150_000_000,
+      teloletJaya: 250_000_000,
+      apelBatu: 350_000_000,
+      kecakLaju: 600_000_000,
+      sigerSakti: 900_000_000,
+      juaraKelas: 0,
+      sultanGarasi: 1_500_000_000,
+      rinjaniIndah: 2_500_000_000,
+      rumahGadang: 4_000_000_000,
+      juaraUmum: 0,
+      danauToba: 6_000_000_000,
+      kopiGayo: 10_000_000_000,
+      mudikCeria: 0,
+      merahPutih: 0,
+      kembangApi: 0,
+    },
+    xpPo: { xpA: 15, xpK: 3 },
+    xpTerminal: { xpA: 50, xpK: 2.75 },
+    listrik: { perJalur: 600_000, pengaliMalam: 1.5 },
+    pengaliBiayaKelas: [1, 1.25, 1.5, 2],
+    pasar: { perPeminat: 45, pengaliKelas: [1, 1.3, 1.6, 2], dayaTarikDasar: 0.6, dayaTarikPerKepuasan: 0.8, kepekaanLayanan: 0.5, elastisitasAcuan: 1.5 },
+    hargaTiketDasar: 60_000,
+    pengantar: { bagian: 0.3, kepekaan: 0.5, perUnit: 60 },
+    pemakaiToilet: { bagian: 0.25, kepekaan: 0.5, perUnit: 200 },
+    kios: { nilaiPerArus: 1_500, kepekaan: 0.5 },
+    kepuasan: {
+      bobot: { kelancaran: 0.3, kenyamanan: 0.2, kebersihan: 0.2, keamanan: 0.1, fasilitas: 0.1, harga: 0.1 },
+      rasioNol: 0.5,
+      rasioLancar: 0.95,
+      kursiPerBlok: 60,
+      jamTunggu: 0.5,
+      arusPerPetugasKebersihan: 150,
+      arusPerKios: 100,
+      harga: { skorBawaan: 0.75, turunPerRasio: 0.25 },
+    },
+    mitra: { bobot: { tarif: 0.5, penuh: 0.2, jendela: 0.15, kepuasan: 0.15 }, tarif: { skorBawaan: 0.8, turunPerRasio: 0.4 }, minimal: 0.5 },
+    offline: { batasDetik: 8 * 3600, efisiensi: 0.6 },
+    bongkar: 0.3,
   },
 };
 
