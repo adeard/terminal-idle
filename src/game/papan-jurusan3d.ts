@@ -1,27 +1,35 @@
 /**
  * Papan di aula loket & pangkalan yang mengikuti mitra PO: papan nama PO
  * (warna livery) di atas tiap jendela loket yang dipakai PO itu (lihat
- * jendelaPo di perluasan-adegan.ts), dan papan jurusan di pulau tiap kelompok
- * parkir yang sudah dibangun dan jurusannya dilayani. Jendela yang tidak
- * dipakai & kelompok yang belum dibuka menampilkan "SEGERA DIBUKA"; papan
- * pulau mendapat baris kedua berikon kapal untuk rute antarpulau kelompoknya
- * yang dilayani, dan rambu pelabuhan muncul di median jalan raya
- * (antarpulau3d.ts). Tiap papan punya beberapa tampilan (grup mesh) yang
- * dibangun sekali saat pertama dibutuhkan, lalu ditukar visibilitasnya.
+ * jendelaPo di perluasan-adegan.ts), dan papan di pulau tiap kelompok parkir
+ * menurut keadaannya (keadaanKelompokParkir): nama jurusan bila ada jurusannya
+ * yang dilayani, "PARKIR TAMBAHAN" (papan putih) bila sudah dibangun tapi
+ * jurusannya belum dilayani, dan "SEGERA DIBUKA" bila belum dibangun. Jendela
+ * yang tidak dipakai juga bertuliskan "SEGERA DIBUKA". Papan pulau mendapat
+ * baris kedua berikon kapal untuk rute antarpulau kelompoknya yang dilayani,
+ * dan rambu pelabuhan muncul di median jalan raya (antarpulau3d.ts). Tiap
+ * papan punya beberapa tampilan (grup mesh) yang dibangun sekali saat pertama
+ * dibutuhkan, lalu ditukar visibilitasnya.
  */
 import * as THREE from 'three';
 import { LIVERY_PO } from '../config/livery.config';
 import { PO_IDS, type PoId } from '../sim/fitur';
 import { RambuPelabuhan } from './antarpulau3d';
 import { Kumpulan, persegiTegak, type Titik2 } from './geometri';
-import type { PustakaMaterial } from './material3d';
-import { GEDUNG, KELOMPOK_PARKIR, kunciPapanPulau, PARKIR_SERONG, PULAU_JURUSAN, TINGGI_LANTAI_GEDUNG, TUJUAN_BUS, X_LOKET } from './tata-letak';
+import type { PapanTeks, PustakaMaterial } from './material3d';
+import { keadaanKelompokParkir } from './perluasan-adegan';
+import { GEDUNG, KELOMPOK_PARKIR, kunciPapanPulau, PARKIR_SERONG, PULAU_JURUSAN, TINGGI_LANTAI_GEDUNG, TUJUAN_BUS, X_LOKET, type KelompokParkir } from './tata-letak';
 
 /** Papan jurusan di pulau parkir (bawah & atas, lebar); tiang & bingkainya di lingkungan3d.ts. */
 export const PAPAN_JURUSAN = { bawah: 1.12, atas: 1.72, lebar: 2.3 } as const;
 
 const TEKS_TUTUP = 'SEGERA DIBUKA';
 const WARNA_TUTUP = '#475569';
+/** Kunci tampilan papan pulau: belum dibangun & parkir tambahan (berjurusan: 1 + bit antarpulau, lihat kunciPapanPulau; −1 = belum tampil). */
+const PULAU_BELUM = 0;
+const PULAU_TAMBAHAN = -2;
+/** Papan parkir tambahan: putih bertulisan biru tua, beda dari papan jurusan berwarna & papan "SEGERA DIBUKA". */
+const PAPAN_TAMBAHAN = { latar: '#f1f5f9', warna: '#1e3a8a' } as const;
 
 /** Keadaan yang menentukan tampilan papan. */
 export interface KeadaanPapan {
@@ -119,18 +127,12 @@ export class PapanJurusan {
     KELOMPOK_PARKIR.forEach((g, i) => {
       const px = PULAU_JURUSAN[i]!;
       this.tambahVarian(
-        (k) => (i < k.kelompok ? kunciPapanPulau(g.tujuan, g.antarpulau, k.mask) : 0),
+        (k) => {
+          const keadaan = keadaanKelompokParkir(k.mask, k.kelompok)[i];
+          return keadaan === 'belum' ? PULAU_BELUM : keadaan === 'tambahan' ? PULAU_TAMBAHAN : kunciPapanPulau(g.tujuan, g.antarpulau, k.mask);
+        },
         (k, kunci) => {
-          // Baris kedua: kota antarpulau kelompok ini yang dilayani.
-          const kota = g.antarpulau
-            .filter((_, b) => Math.floor((kunci - 1) / 2 ** b) % 2 === 1)
-            .map((t) => TUJUAN_BUS[t]!)
-            .join(' · ');
-          const latar = '#' + g.warna.toString(16).padStart(6, '0');
-          const papan =
-            kunci === 0
-              ? m.teks(TEKS_TUTUP, { lebar: 640, tinggi: 160, latar: WARNA_TUTUP, warna: '#e2e8f0', ukuranHuruf: 56 })
-              : m.teks(g.nama, { lebar: 640, tinggi: 160, latar, warna: '#ffffff', ukuranHuruf: 60, ...(kota ? { barisKapal: kota } : {}) });
+          const papan = papanPulau(m, g, kunci);
           for (const [dx, dy] of [
             [c, sn],
             [c, -sn],
@@ -144,4 +146,19 @@ export class PapanJurusan {
       );
     });
   }
+}
+
+/** Tulisan papan pulau kelompok parkir untuk kunci tampilannya (lihat papanPangkalan). */
+function papanPulau(m: PustakaMaterial, g: KelompokParkir, kunci: number): PapanTeks {
+  if (kunci === PULAU_BELUM) return m.teks(TEKS_TUTUP, { lebar: 640, tinggi: 160, latar: WARNA_TUTUP, warna: '#e2e8f0', ukuranHuruf: 56 });
+  // Baris kedua: jurusan kelompok ini yang belum punya mitra PO.
+  if (kunci === PULAU_TAMBAHAN) {
+    return m.teks('PARKIR TAMBAHAN', { lebar: 640, tinggi: 160, ...PAPAN_TAMBAHAN, garisTepi: PAPAN_TAMBAHAN.warna, ukuranHuruf: 76, baris2: `BELUM ADA PO ${g.nama}` });
+  }
+  // Baris kedua: kota antarpulau kelompok ini yang dilayani.
+  const kota = g.antarpulau
+    .filter((_, b) => Math.floor((kunci - 1) / 2 ** b) % 2 === 1)
+    .map((t) => TUJUAN_BUS[t]!)
+    .join(' · ');
+  return m.teks(g.nama, { lebar: 640, tinggi: 160, latar: hex(g.warna), warna: '#ffffff', ukuranHuruf: 60, ...(kota ? { barisKapal: kota } : {}) });
 }

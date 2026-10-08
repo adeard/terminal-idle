@@ -1,10 +1,11 @@
 /**
  * Perluasan terminal di adegan (murni, tanpa DOM & three.js; lihat
  * documents/12-rancangan-ekonomi-po.md bagian 8): jendela loket & kelompok
- * parkir yang sudah dibangun tiap tahap perluasan, pembagian jendela loket ke
- * mitra PO, dan lokasi proyek pembangunan (pagar seng, crane, material,
- * pekerja, tempat peresmian). Tahap 3–5 (bangunan bertingkat) belum punya
- * bentuk akhir di adegan, tapi proyeknya sudah terlihat.
+ * parkir yang sudah dibangun tiap tahap perluasan, keadaan tiap kelompok
+ * parkir (belum dibangun, berjurusan, atau parkir tambahan), pembagian jendela
+ * loket ke mitra PO, dan lokasi proyek pembangunan (pagar seng, crane,
+ * material, pekerja, tempat peresmian). Tahap 3–5 (bangunan bertingkat) belum
+ * punya bentuk akhir di adegan, tapi proyeknya sudah terlihat.
  */
 import type { PoId } from '../sim/fitur';
 import { jurusanDiMask, KELOMPOK_PARKIR, LOKET, PARKIR_SERONG, SAYAP_BARAT, URUTAN_LOKET, X_LOKET, type Persegi, type Titik } from './tata-letak';
@@ -78,14 +79,17 @@ export function jendelaPo(dipakai: number, po: readonly { readonly id: PoId; rea
 }
 
 /**
- * Kelompok parkir yang dipakai bus (urut KELOMPOK_PARKIR): yang sudah dibangun
- * dan punya jurusan yang dilayani. Bila tidak satu pun kelompok yang sudah
- * dibangun punya jurusan yang dilayani (jurusannya ada di kelompok yang belum
- * dibangun), semua kelompok yang sudah dibangun dipakai.
+ * Keadaan kelompok parkir di adegan:
+ * - belum: belum dibangun (tahap perluasan); mulut petaknya dibarikade, papannya "SEGERA DIBUKA".
+ * - jurusan: ada jurusannya yang dilayani mitra PO; papannya nama jurusan.
+ * - tambahan: sudah dibangun tapi jurusannya belum dilayani; jadi parkir
+ *   tambahan bagi bus yang kelompok jurusannya penuh, papannya "PARKIR TAMBAHAN".
  */
-export function kelompokParkirBuka(mask: number, dibangun: number): boolean[] {
-  const ada = KELOMPOK_PARKIR.map((k, i) => i < dibangun && k.tujuan.some((t) => jurusanDiMask(mask, t)));
-  return ada.some(Boolean) ? ada : KELOMPOK_PARKIR.map((_, i) => i < dibangun);
+export type KeadaanKelompokParkir = 'belum' | 'jurusan' | 'tambahan';
+
+/** Keadaan tiap kelompok parkir (urut KELOMPOK_PARKIR) menurut jurusan yang dilayani & kelompok yang sudah dibangun. */
+export function keadaanKelompokParkir(mask: number, dibangun: number): KeadaanKelompokParkir[] {
+  return KELOMPOK_PARKIR.map((k, i) => (i >= dibangun ? 'belum' : k.tujuan.some((t) => jurusanDiMask(mask, t)) ? 'jurusan' : 'tambahan'));
 }
 
 // ---------------------------------------------------------------------------

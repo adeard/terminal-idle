@@ -609,7 +609,7 @@ Simpanan naik ke `schemaVersion` 2 dengan satu fungsi di `MIGRASI` (`src/sim/sav
    - tes greedy & tes tempo seperti `tests/greedy.test.ts`.
 2. ✓ **Migrasi save** v1 → v2, dengan tes dari save v1 (`tests/save.test.ts`).
 3. ✓ **UI**: tab PO (kartu PO dengan harga per jurusan & kontrak), tab Terminal (level, perluasan, Renovasi, kelas bus), tujuan loket di panel Loket, HUD level, popup Renovasi, notifikasi.
-4. ✓ **Adegan 3D tahap 0–2**: jendela loket per PO, bus per PO, kelompok parkir & jendela dibuka per tahap perluasan, modul proyek (pagar seng, crane, material, pekerja, kembang api peresmian). Lokasi proyek tahap 3–5 sudah terlihat, bentuk akhirnya menyusul di langkah 7–9.
+4. ✓ **Adegan 3D tahap 0–2**: jendela loket per PO, bus per PO, kelompok parkir & jendela dibuka per tahap perluasan, modul proyek (pagar seng, crane, material, pekerja, kembang api peresmian). Kelompok parkir yang sudah dibangun tapi jurusannya belum dilayani PO menjadi parkir tambahan (papan putih, tanpa barikade) bagi bus yang kelompok jurusannya penuh. Lokasi proyek tahap 3–5 sudah terlihat, bentuk akhirnya menyusul di langkah 7–9.
 5. ✓ **Tutorial** baru. Urutannya mengikuti biaya di awal permainan (bangun loket Rp 22 langsung terjangkau, PO kedua Rp 50):
    - bangun loket (upgrade tahap paling lambat, di awal Loket);
    - daftarkan PO kedua;

@@ -25,7 +25,7 @@
 import type { PoId } from '../sim/fitur';
 import { bezier, Jalur, lintasanS, sambung } from './jalur';
 import type { LajuVisual, PoVisual } from './laju';
-import { kelompokParkirBuka } from './perluasan-adegan';
+import { keadaanKelompokParkir } from './perluasan-adegan';
 import { dalamRentang, JAM_LOKET_MALAM, tokoBuka, type JenisToko } from './kehidupan-malam';
 import { anggotaRombongan } from './rombongan';
 import {
@@ -906,26 +906,28 @@ export class DuniaVisual {
   }
 
   /**
-   * Petak untuk bus yang keluar dari halte kedatangan: kelompok jurusan dengan
-   * petak kosong terbanyak yang bisa dicapai (seri → diundi, supaya semua
-   * kelompok terisi merata), lalu salah satu petak kosongnya secara acak.
-   * Hanya kelompok yang sudah dibangun (tahap perluasan) dan punya jurusan yang
-   * dilayani (lihat kelompokParkirBuka; yang lain dipagari pembangunan3d.ts).
-   * Bus milik PO mendahulukan kelompok jurusan PO-nya; bila penuh, kelompok
-   * terbuka lain. Bila semua yang terbuka penuh, bus langsung keluar terminal.
+   * Petak untuk bus yang keluar dari halte kedatangan: kelompok dengan petak
+   * kosong terbanyak yang bisa dicapai (seri → diundi, supaya semua kelompok
+   * terisi merata), lalu salah satu petak kosongnya secara acak. Kelompok
+   * dicoba berurutan (lihat keadaanKelompokParkir): kelompok jurusan PO
+   * pemiliknya (bus tanpa PO: semua kelompok berjurusan), lalu parkir tambahan
+   * (sudah dibangun tapi jurusannya belum dilayani), lalu kelompok jurusan lain.
+   * Kelompok yang belum dibangun dibarikade (pembangunan3d.ts) dan tidak
+   * dipakai; bila semua penuh, bus langsung keluar terminal.
    * @param lurus bus bisa maju lurus di lajur halte (semua petak terjangkau), bukan menyalip lewat sirkulasi.
    * @param po pemilik bus (null = tanpa PO)
    */
   private pilihPetak(lurus: boolean, po: PoId | null): number {
-    const terbuka = kelompokParkirBuka(this.maskJurusan, this.kelompokDibangun);
-    const buka = KELOMPOK_PARKIR.filter((_, i) => terbuka[i]);
+    const keadaan = keadaanKelompokParkir(this.maskJurusan, this.kelompokDibangun);
+    const berjurusan = KELOMPOK_PARKIR.filter((_, i) => keadaan[i] === 'jurusan');
+    const tambahan = KELOMPOK_PARKIR.filter((_, i) => keadaan[i] === 'tambahan');
     const maskPo = this.maskPo(po);
-    if (maskPo !== null) {
-      const milikPo = buka.filter((k) => k.tujuan.some((t) => jurusanDiMask(maskPo, t)));
-      const petak = milikPo.length > 0 ? this.pilihPetakDari(milikPo, lurus) : null;
+    const utama = maskPo === null ? berjurusan : berjurusan.filter((k) => k.tujuan.some((t) => jurusanDiMask(maskPo, t)));
+    for (const kelompok of [utama, tambahan, berjurusan]) {
+      const petak = kelompok.length > 0 ? this.pilihPetakDari(kelompok, lurus) : null;
       if (petak !== null) return petak;
     }
-    return this.pilihPetakDari(buka, lurus) ?? -1;
+    return -1;
   }
 
   /** Jurusan yang dilayani PO pemilik bus (null = tanpa PO, atau PO sudah tidak terdaftar). */
@@ -955,7 +957,7 @@ export class DuniaVisual {
     this.petak[petak] = b.id;
     // Jurusan bus mengikuti kelompok petaknya: kota yang dilayani PO pemiliknya (atau terminal,
     // bila tanpa PO), sebanding bagian penumpangnya. Bila kelompok itu tidak memuat jurusan PO-nya
-    // (kelompok jurusannya belum dibangun atau penuh), salah satu jurusan PO-nya yang lain.
+    // (parkir tambahan, atau kelompok jurusannya belum dibangun / penuh), salah satu jurusan PO-nya.
     const kelompok = KELOMPOK_PARKIR.find((k) => k.petak.includes(petak));
     const mask = this.maskPo(b.po) ?? this.maskJurusan;
     const semua = (m: number): number[] => TUJUAN_BUS.map((_, i) => i).filter((i) => jurusanDiMask(m, i));

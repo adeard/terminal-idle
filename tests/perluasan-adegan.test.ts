@@ -7,7 +7,7 @@ import {
   jendelaPo,
   jendelaTahap,
   jendelaTersedia,
-  kelompokParkirBuka,
+  keadaanKelompokParkir,
   kelompokParkirDibangun,
   kelompokTahap,
   LOKASI_PROYEK,
@@ -118,13 +118,13 @@ describe('perluasan terminal di adegan', () => {
     }
   });
 
-  it('kelompok parkir yang dipakai: sudah dibangun & jurusannya dilayani; bila tidak ada, semua yang dibangun', () => {
-    expect(kelompokParkirBuka(MASK_SEMUA_JURUSAN, 2)).toEqual([true, true, false, false]);
-    expect(kelompokParkirBuka(MASK_SEMUA_JURUSAN, 4)).toEqual([true, true, true, true]);
-    // Jakarta saja: hanya kelompok Jakarta-Bandung.
-    expect(kelompokParkirBuka(2 ** 0, 4)).toEqual([true, false, false, false]);
-    // Surabaya saja, padahal kelompoknya belum dibangun: bus memakai kelompok yang sudah ada.
-    expect(kelompokParkirBuka(2 ** 5, 2)).toEqual([true, true, false, false]);
+  it('keadaan kelompok parkir: belum dibangun, berjurusan (ada jurusannya dilayani), atau parkir tambahan', () => {
+    expect(keadaanKelompokParkir(MASK_SEMUA_JURUSAN, 2)).toEqual(['jurusan', 'jurusan', 'belum', 'belum']);
+    expect(keadaanKelompokParkir(MASK_SEMUA_JURUSAN, 4)).toEqual(['jurusan', 'jurusan', 'jurusan', 'jurusan']);
+    // Jakarta saja: kelompok lain yang sudah dibangun jadi parkir tambahan.
+    expect(keadaanKelompokParkir(2 ** 0, 4)).toEqual(['jurusan', 'tambahan', 'tambahan', 'tambahan']);
+    // Surabaya saja, padahal kelompoknya belum dibangun: semua kelompok yang sudah ada jadi parkir tambahan.
+    expect(keadaanKelompokParkir(2 ** 5, 2)).toEqual(['tambahan', 'tambahan', 'belum', 'belum']);
   });
 });
 

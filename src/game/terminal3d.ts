@@ -478,10 +478,10 @@ export class Terminal3D {
     const hiasanKelas = new HiasanKelas(m);
     hiasanKelas.perbarui(kelasTerminal(pembaca.state), pembaca.state.profil.namaTerminal);
     const hiasanEvent = new HiasanEvent(m);
-    // Bagian terminal yang belum dibangun (jalur & parkir jurusan yang belum dibuka), dan proyek perluasan yang sedang berjalan.
+    // Bagian terminal yang belum dibangun (jalur & kelompok parkir), dan proyek perluasan yang sedang berjalan.
     const bangunan = bangunanTerminal(pembaca.state);
     const pembangunan = new PembangunanTerminal();
-    pembangunan.perbarui({ jalur: pembaca.state.terminal.jalur, mask: bangunan.mask, kelompok: bangunan.kelompok });
+    pembangunan.perbarui({ jalur: pembaca.state.terminal.jalur, kelompok: bangunan.kelompok });
     const proyek = new ProyekPerluasan(m);
     proyek.perbarui(tahapProyek(pembaca.state), 0, 0);
     adegan.scene.add(pembangunan.objek, proyek.objek);
@@ -588,7 +588,7 @@ export class Terminal3D {
     const bangunan = bangunanTerminal(state);
     this.jendela = bangunan.jendela;
     this.papanJurusan.perbarui({ mask: bangunan.mask, jendela: this.pemilikJendela(state), kelompok: bangunan.kelompok });
-    this.pembangunan.perbarui({ jalur: state.terminal.jalur, mask: bangunan.mask, kelompok: bangunan.kelompok });
+    this.pembangunan.perbarui({ jalur: state.terminal.jalur, kelompok: bangunan.kelompok });
     this.parkirBaris2.visible = state.perkembangan.perluasan >= TAHAP_PARKIR_MOBIL_PENUH;
     this.perbaruiProyek(state, dt, dtNyata);
     this.modernisasi.perbarui(state.terminal.teknologi);

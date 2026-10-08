@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { acakBerbenih, DuniaVisual, kurvaKeluarPetak, kurvaMasukPetak, petugasCuci, posisiPetugasCuci, ruteKeGerbang, ruteKeKursi, saatLewat, tingkatKotor, type BusVisual, type FaseBus } from '../src/game/dunia-visual';
 import { Jalur, lintasanS } from '../src/game/jalur';
 import { loketBuka } from '../src/game/kehidupan-malam';
-import { batasArusLoket, hitungLajuVisual, lajuDasar, maskJurusanState, terapkanRitme, type LajuVisual } from '../src/game/laju';
+import { batasArusLoket, hitungLajuVisual, lajuDasar, maskJurusanState, terapkanRitme, type LajuVisual, type PoVisual } from '../src/game/laju';
+import type { KeadaanKelompokParkir } from '../src/game/perluasan-adegan';
 import { MEJA_TUNGGU, Y_MEJA_TUNGGU } from '../src/game/gedung3d';
 import { BLOK_KURSI, BUS, CUCI, diGedung, GERBANG_KELUAR_X, GERBANG_X, JUMLAH_ORANG_LABIRIN, JUMLAH_SLOT_LABIRIN, KECEPATAN_JALAN, KIOS_TUNGGU, KURSI_TUNGGU, LAJUR, LEBAR_GERBANG_PAGAR, LOKET, LORONG_PARKIR, MAKS_ORANG, maskAwal, PARKIR_SERONG, PERON, PERON_BERANGKAT, PINTU_BUS, PINTU_RUANG_TUNGGU, RUANG_TUNGGU, TALI_LABIRIN, VARIASI_JALAN, X_LOKET, Y_PAGAR } from '../src/game/tata-letak';
 import { buatStateBaru, kepuasanTerminal } from '../src/sim/state';
@@ -730,41 +731,106 @@ describe('halte keberangkatan tanpa maju', () => {
   }, 30_000);
 });
 
-describe('jurusan yang dilayani', () => {
-  /** Jalankan 300 detik: jurusan tujuan bus & berapa kali bus parkir di kelompok yang jurusannya dilayani / tidak. */
-  async function amati(mask: number, benih: number): Promise<{ tujuan: Set<number>; parkirTerbuka: number; parkirLain: number }> {
-    const { KELOMPOK_PARKIR, kelompokPetak, jurusanDiMask } = await import('../src/game/tata-letak');
-    const dunia = new DuniaVisual({ acak: acakBerbenih(benih) });
-    const tujuan = new Set<number>();
-    let parkirTerbuka = 0;
-    let parkirLain = 0;
-    for (let t = 0; t < 300; t += 1 / 30) {
-      dunia.perbarui(1 / 30, { ...SEIMBANG, maskJurusan: mask });
-      for (const b of dunia.bus) {
-        if (b.tujuan >= 0) tujuan.add(b.tujuan);
-        if (b.fase === 'parkir') {
-          if (KELOMPOK_PARKIR[kelompokPetak(b.petak)]!.tujuan.some((j) => jurusanDiMask(mask, j))) parkirTerbuka++;
-          else parkirLain++;
-        }
-      }
-    }
-    return { tujuan, parkirTerbuka, parkirLain };
+describe('jurusan yang dilayani & parkir tambahan', () => {
+  interface Amatan {
+    readonly tujuan: Set<number>;
+    /** Bus × frame yang parkir di kelompok berjurusan / parkir tambahan / belum dibangun. */
+    readonly parkir: Record<KeadaanKelompokParkir, number>;
+    /** Bus yang mendapat petak parkir tambahan padahal kelompok berjurusan masih punya petak kosong yang terjangkau. */
+    readonly luapanDini: number;
   }
 
-  it('bus hanya melayani jurusan yang dilayani PO; kelompok parkir tanpa jurusan dilayani dipagari', async () => {
-    const h = await amati(maskAwal(3), 101);
+  /** Jalankan `detik`: jurusan tujuan bus, di kelompok mana bus parkir, dan apakah parkir tambahan hanya dipakai luapan. */
+  async function amati(laju: LajuVisual, benih: number, detik = 300): Promise<Amatan> {
+    const { KELOMPOK_PARKIR, kelompokPetak, MASK_SEMUA_JURUSAN, X_TURUN_KE_LORONG } = await import('../src/game/tata-letak');
+    const { keadaanKelompokParkir } = await import('../src/game/perluasan-adegan');
+    const keadaan = keadaanKelompokParkir(laju.maskJurusan ?? MASK_SEMUA_JURUSAN, laju.kelompokParkir ?? KELOMPOK_PARKIR.length);
+    // Petak berjurusan yang terjangkau bus mana pun (juga bus yang menyalip lewat sirkulasi, lihat pilihPetakDari).
+    const terjangkau = KELOMPOK_PARKIR.flatMap((k, g) => (keadaan[g] === 'jurusan' ? k.petak : [])).filter(
+      (i) => PARKIR_SERONG.pusatX[i]! - PARKIR_SERONG.jarakMasuk >= X_TURUN_KE_LORONG[1],
+    );
+    const penuh = (dipakai: ReadonlySet<number>): boolean => terjangkau.every((i) => dipakai.has(i));
+    const dunia = new DuniaVisual({ acak: acakBerbenih(benih) });
+    const tujuan = new Set<number>();
+    const parkir: Record<KeadaanKelompokParkir, number> = { belum: 0, jurusan: 0, tambahan: 0 };
+    let luapanDini = 0;
+    let petakLalu = new Map<number, number>();
+    let dipakaiLalu = new Set<number>();
+    for (let t = 0; t < detik; t += 1 / 30) {
+      dunia.perbarui(1 / 30, laju);
+      const dipakai = new Set(dunia.bus.filter((b) => b.petak >= 0).map((b) => b.petak));
+      for (const b of dunia.bus) {
+        if (b.tujuan >= 0) tujuan.add(b.tujuan);
+        if (b.petak < 0) continue;
+        const k = keadaan[kelompokPetak(b.petak)]!;
+        if (b.fase === 'parkir') parkir[k]++;
+        // Baru mendapat petak tambahan: petak berjurusan yang terjangkau penuh sebelum atau sesudah langkah ini.
+        if (k === 'tambahan' && petakLalu.get(b.id) !== b.petak && !penuh(dipakaiLalu) && !penuh(dipakai)) luapanDini++;
+      }
+      petakLalu = new Map(dunia.bus.map((b) => [b.id, b.petak]));
+      dipakaiLalu = dipakai;
+    }
+    return { tujuan, parkir, luapanDini };
+  }
+
+  it('bus hanya melayani jurusan yang dilayani PO; kelompok lain hanya jadi parkir tambahan saat kelompok jurusannya penuh', async () => {
+    const h = await amati({ ...SEIMBANG, maskJurusan: maskAwal(3) }, 101);
     expect([...h.tujuan].every((j) => j < 3)).toBe(true);
     expect(h.tujuan.size).toBe(3);
-    expect(h.parkirTerbuka).toBeGreaterThan(0);
-    expect(h.parkirLain).toBe(0);
+    expect(h.parkir.jurusan).toBeGreaterThan(h.parkir.tambahan);
+    expect(h.luapanDini).toBe(0);
   }, 30_000);
 
   it('jurusan yang dilayani tidak harus urut (tiap PO punya jurusannya sendiri)', async () => {
     // Jakarta & Surabaya saja: kelompok Jakarta-Bandung dan Surabaya-Denpasar.
-    const mask = 2 ** 0 + 2 ** 5;
-    const h = await amati(mask, 102);
+    const h = await amati({ ...SEIMBANG, maskJurusan: 2 ** 0 + 2 ** 5 }, 102);
     expect([...h.tujuan].sort((a, b) => a - b)).toEqual([0, 5]);
-    expect(h.parkirTerbuka).toBeGreaterThan(0);
-    expect(h.parkirLain).toBe(0);
+    expect(h.parkir.jurusan).toBeGreaterThan(h.parkir.tambahan);
+    expect(h.luapanDini).toBe(0);
+  }, 30_000);
+
+  it('kelompok yang belum dibangun tidak dipakai; yang sudah dibangun tapi jurusannya belum dilayani menampung luapan', async () => {
+    // Semarang saja (kelompok 2) di terminal awal (kelompok 1–2 sudah dibangun), bus dua kali lebih sering:
+    // kelompok 1 jadi parkir tambahan, kelompok 3–4 dibarikade.
+    const h = await amati({ ...SEIMBANG, busDatang: SEIMBANG.busDatang * 2, maskJurusan: 2 ** 2, kelompokParkir: 2 }, 103);
+    expect([...h.tujuan]).toEqual([2]);
+    expect(h.parkir.belum).toBe(0);
+    expect(h.parkir.jurusan).toBeGreaterThan(0);
+    expect(h.parkir.tambahan).toBeGreaterThan(0);
+    expect(h.luapanDini).toBe(0);
+  }, 30_000);
+
+  it('bus milik PO: jurusannya dari PO itu, dan parkir di kelompok jurusan PO-nya lebih dulu', async () => {
+    const { KELOMPOK_PARKIR, kelompokPetak, jurusanDiMask } = await import('../src/game/tata-letak');
+    // PO pertama melayani Jakarta (kelompok 1), PO kedua Surabaya (kelompok 4); kelompok 2–3 parkir tambahan.
+    const po: PoVisual[] = [
+      { id: 'ondelOndel', bagian: 0.5, maskJurusan: 2 ** 0, kelas: ['ekonomi'] },
+      { id: 'arekEkspres', bagian: 0.5, maskJurusan: 2 ** 5, kelas: ['ekonomi'] },
+    ];
+    const laju: LajuVisual = { ...SEIMBANG, maskJurusan: 2 ** 0 + 2 ** 5, po };
+    const dunia = new DuniaVisual({ acak: acakBerbenih(104) });
+    const galat: string[] = [];
+    const pemilik = new Set<string>();
+    const bus = new Map<number, boolean>();
+    for (let t = 0; t < 300; t += 1 / 30) {
+      dunia.perbarui(1 / 30, laju);
+      for (const b of dunia.bus) {
+        if (b.jenis !== 'terminal') continue;
+        if (b.po === null) {
+          galat.push(`bus ${b.id} tanpa PO`);
+          continue;
+        }
+        pemilik.add(b.po);
+        const mask = po.find((p) => p.id === b.po)!.maskJurusan;
+        if (b.tujuan >= 0 && !jurusanDiMask(mask, b.tujuan)) galat.push(`bus ${b.id} (${b.po}) ke jurusan ${b.tujuan}`);
+        // Kelompok petak tiap bus saat pertama parkir: kelompok jurusan PO-nya atau bukan.
+        if (b.fase === 'parkir' && !bus.has(b.id)) bus.set(b.id, KELOMPOK_PARKIR[kelompokPetak(b.petak)]!.tujuan.some((j) => jurusanDiMask(mask, j)));
+      }
+    }
+    expect(galat.slice(0, 5)).toEqual([]);
+    expect([...pemilik].sort()).toEqual(['arekEkspres', 'ondelOndel']);
+    const diKelompokSendiri = [...bus.values()].filter(Boolean).length;
+    expect(bus.size).toBeGreaterThan(10);
+    expect(diKelompokSendiri).toBeGreaterThan(bus.size / 2);
   }, 30_000);
 });
