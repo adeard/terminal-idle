@@ -12,7 +12,7 @@ const GAME = import.meta.glob<string>('../src/game/**/*.ts', { query: '?raw', im
 const IMPORT_RENDER_ATAU_PLATFORM = /from\s+['"](three|three\/[^'"]*|postprocessing|@capacitor\/[^'"]*|\.\.\/(game|ui|platform)\/[^'"]*)['"]/;
 const IMPORT_3D = /from\s+['"](three|three\/[^'"]*|postprocessing)['"]/;
 /** Modul game yang sengaja murni (tanpa three.js) supaya logikanya bisa dites di Node. */
-const GAME_MURNI = ['tata-letak.ts', 'dunia-visual.ts', 'jalur.ts', 'laju.ts', 'langit.ts', 'suara.ts', 'rombongan.ts', 'kamera.ts', 'kehidupan-malam.ts', 'jadwal.ts', 'bayangan.ts', 'label-bus.ts', 'label-loket.ts', 'kas-visual.ts', 'telolet.ts', 'livery.ts', 'aset.ts', 'aset-data.ts', 'kelas-bus.ts', 'cache-sel.ts', 'antarpulau.ts', 'sinema.ts'];
+const GAME_MURNI = ['tata-letak.ts', 'dunia-visual.ts', 'jalur.ts', 'laju.ts', 'langit.ts', 'suara.ts', 'rombongan.ts', 'kamera.ts', 'kehidupan-malam.ts', 'jadwal.ts', 'bayangan.ts', 'label-bus.ts', 'label-loket.ts', 'kas-visual.ts', 'telolet.ts', 'livery.ts', 'aset.ts', 'aset-data.ts', 'kelas-bus.ts', 'cache-sel.ts', 'antarpulau.ts', 'sinema.ts', 'perluasan-adegan.ts', 'kembang-api.ts'];
 
 describe('arsitektur', () => {
   it('menemukan file di tiap lapisan', () => {

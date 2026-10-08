@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { acakBerbenih, DuniaVisual, type OrangVisual } from '../src/game/dunia-visual';
 import { loketBuka } from '../src/game/kehidupan-malam';
-import { hitungLajuVisual, maskJurusanState, type LajuVisual } from '../src/game/laju';
+import { hitungLajuVisual, type LajuVisual } from '../src/game/laju';
 import {
   BILIK,
   BLOK_KURSI,
@@ -25,7 +25,7 @@ import {
   type Titik,
   type TitikSinggah,
 } from '../src/game/tata-letak';
-import { denganLevelTerminal, denganPo, ruasBerpotongan, stateOtomatis } from './helpers';
+import { denganLevelTerminal, denganPerluasan, denganPo, ruasBerpotongan, stateOtomatis } from './helpers';
 
 const JK: readonly JenisKelamin[] = ['pria', 'wanita'];
 type Ruas = readonly [number, number, number, number];
@@ -244,12 +244,13 @@ describe('penumpang mampir', () => {
   it('beli tiket tidak instan: beberapa detik per pembeli, dan jendela yang buka tetap bukan hambatan palsu', () => {
     // Beberapa benih: antrean dua baris yang bergerombol per baris dulu hanya menumpuk pada sebagian benih.
     const awal = stateOtomatis({ peron: 120, loket: 200, keberangkatan: 120 });
-    // Semua jurusan dilayani: empat PO di Lv 12 di terminal Terpadu.
-    let semua = denganLevelTerminal(awal, 30);
+    // Semua jurusan dilayani: delapan PO Lv 12 di terminal Terpadu yang aula loketnya sudah diperluas (8 jendela).
+    let semua = denganPerluasan(denganLevelTerminal(awal, 30), 2);
     for (const id of ['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa', 'sigerSakti', 'rinjaniIndah', 'rumahGadang', 'danauToba'] as const) semua = denganPo(semua, id, { level: 12 });
     for (const [k, s, benih] of [awal, semua].flatMap((st, k) => [0, 2, 5].map((b) => [k, st, b] as const))) {
-      // Seperti di game: hanya jendela jurusan yang dilayani yang melayani.
-      const laju: LajuVisual = { ...hitungLajuVisual(s), loketBuka: loketBuka(12, maskJurusanState(s)) };
+      // Seperti di game: hanya jendela yang dipakai mitra PO (satu per loket disewa) yang melayani.
+      const l = hitungLajuVisual(s);
+      const laju: LajuVisual = { ...l, loketBuka: loketBuka(12, l.jendela) };
       const dunia = new DuniaVisual({ acak: acakBerbenih(43 + k * 14 + benih * 100), wanita });
       const lama: number[] = [];
       const dicatat = new Set<number>();

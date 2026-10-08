@@ -1,19 +1,30 @@
 /**
  * Bagian terminal yang belum dibangun (terminal "tumbuh" seiring jalur bus &
- * jurusan dilayani mitra PO): kerucut & palang merah-putih di tepi peron kedatangan dan
- * peron keberangkatan milik jalur yang belum dibangun (gerbangnya tertutup
- * pintu gulung, lihat malam3d.ts), dan barikade di mulut tiap petak parkir
- * kelompok yang belum ada jurusannya dilayani (bus tidak parkir di sana, lihat
- * DuniaVisual.pilihPetak). Tiap bagian satu grup mesh yang ditukar
- * visibilitasnya.
+ * perluasan & jurusan yang dilayani mitra PO): kerucut & palang merah-putih di
+ * tepi peron kedatangan dan peron keberangkatan milik jalur yang belum dibangun
+ * (gerbangnya tertutup pintu gulung, lihat malam3d.ts), dan barikade di mulut
+ * tiap petak parkir kelompok yang belum dibangun atau belum ada jurusannya
+ * dilayani (bus tidak parkir di sana, lihat kelompokParkirBuka). Tiap bagian
+ * satu grup mesh yang ditukar visibilitasnya.
  */
 import * as THREE from 'three';
 import { kotak, Kumpulan, silinder } from './geometri';
-import { GERBANG_X, HALTE_DATANG_X, jurusanDiMask, KELOMPOK_PARKIR, PARKIR_SERONG, PERON, PERON_BERANGKAT, PINTU_BUS, TINGGI_PERON } from './tata-letak';
+import { kelompokParkirBuka } from './perluasan-adegan';
+import { GERBANG_X, HALTE_DATANG_X, KELOMPOK_PARKIR, PARKIR_SERONG, PERON, PERON_BERANGKAT, PINTU_BUS, TINGGI_PERON } from './tata-letak';
+
+/** Keadaan terminal yang menentukan bagian mana yang masih tertutup. */
+export interface KeadaanPembangunan {
+  /** Jalur bus yang sudah dibangun. */
+  readonly jalur: number;
+  /** Jurusan yang dilayani mitra PO (bitmask, lihat MASK_SEMUA_JURUSAN). */
+  readonly mask: number;
+  /** Kelompok parkir yang sudah dibangun (tahap perluasan). */
+  readonly kelompok: number;
+}
 
 interface Bagian {
   readonly grup: THREE.Group;
-  readonly tutup: (jalur: number, maskJurusan: number) => boolean;
+  readonly tutup: (k: KeadaanPembangunan) => boolean;
 }
 
 /** Kerucut lalu lintas (unit): tinggi, jari-jari bawah & atas, alas persegi. */
@@ -31,18 +42,18 @@ export class PembangunanTerminal {
   constructor() {
     // Halte kedatangan jalur ke-(k+1): pagar di tepi peron, tepat di depan pintu bus. Jalur 1 selalu ada.
     HALTE_DATANG_X.forEach((x, k) => {
-      if (k > 0) this.tambah((jalur) => jalur <= k, (kp) => this.pagarTepi(kp, x + PINTU_BUS, PERON.y0 + 0.14));
+      if (k > 0) this.tambah((s) => s.jalur <= k, (kp) => this.pagarTepi(kp, x + PINTU_BUS, PERON.y0 + 0.14));
     });
     GERBANG_X.forEach((x, k) => {
-      if (k > 0) this.tambah((jalur) => jalur <= k, (kp) => this.pagarTepi(kp, x, PERON_BERANGKAT.y0 + 0.14));
+      if (k > 0) this.tambah((s) => s.jalur <= k, (kp) => this.pagarTepi(kp, x, PERON_BERANGKAT.y0 + 0.14));
     });
-    // Mulut petak parkir kelompok yang belum ada jurusannya dilayani (posisi pita warna kelompok).
+    // Mulut petak parkir kelompok yang belum dibangun atau belum ada jurusannya dilayani (posisi pita warna kelompok).
     const { pusatY, sudut } = PARKIR_SERONG;
     const c = Math.cos(sudut);
     const sn = Math.sin(sudut);
-    for (const g of KELOMPOK_PARKIR) {
+    KELOMPOK_PARKIR.forEach((g, i) => {
       this.tambah(
-        (_, mask) => !g.tujuan.some((t) => jurusanDiMask(mask, t)),
+        (s) => !kelompokParkirBuka(s.mask, s.kelompok)[i],
         (kp) => {
           for (const petak of g.petak) {
             const sx = PARKIR_SERONG.pusatX[petak]!;
@@ -59,15 +70,14 @@ export class PembangunanTerminal {
           }
         },
       );
-    }
+    });
   }
 
-  /** @param mask jurusan yang dilayani (kelompok parkir, lihat MASK_SEMUA_JURUSAN). */
-  perbarui(jalur: number, mask: number): void {
-    const kunci = `${jalur}|${mask}`;
+  perbarui(k: KeadaanPembangunan): void {
+    const kunci = `${k.jalur}|${k.mask}|${k.kelompok}`;
     if (kunci === this.kunciLalu) return;
     this.kunciLalu = kunci;
-    for (const b of this.bagian) b.grup.visible = b.tutup(jalur, mask);
+    for (const b of this.bagian) b.grup.visible = b.tutup(k);
   }
 
   private tambah(tutup: Bagian['tutup'], bangun: (k: Kumpulan) => void): void {

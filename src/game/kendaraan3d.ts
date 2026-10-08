@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import type { KelasBusId, PoId } from '../sim/fitur';
 import { BUS_TERMINAL, KENDARAAN_LEWAT, type TipeKendaraan } from './aset';
 import { busDiHalte, petugasDiPintu, tingkatKotor, type BusVisual } from './dunia-visual';
+import type { PoVisual } from './laju';
 import { LENGKUNG, pilihKelasBus, RODA_BUS, TAMPIL_KELAS_BUS } from './kelas-bus';
 import { LembarBus, R, SEL, type LiveryBus } from './lembar-bus';
 import { pilihLivery } from './livery';
@@ -255,8 +256,9 @@ export class ArmadaKendaraan {
   private readonly kolong: THREE.InstancedMesh;
   private readonly sel: THREE.InstancedBufferAttribute;
   private readonly lembar: LembarBus;
-  /** Mitra PO yang sudah bergabung (livery-nya ikut dipakai bus terminal yang baru muncul). */
+  /** Mitra PO terdaftar: id (livery bus tanpa pemilik) & kelas bus tiap PO (bus miliknya). */
   private po: readonly PoId[] = [];
+  private readonly kelasPo = new Map<PoId, readonly KelasBusId[]>();
   /** Kelas bus yang beroperasi (bus terminal yang baru muncul memakai salah satunya). */
   private kelasBus: readonly KelasBusId[] = ['ekonomi'];
   /** Bagian penumpang tiap kelas (harga tiket); null = sama rata. */
@@ -353,9 +355,10 @@ export class ArmadaKendaraan {
     }
   }
 
-  /** Mitra PO yang terdaftar (dari state); berlaku untuk bus terminal yang muncul berikutnya. */
-  aturPo(po: readonly PoId[]): void {
-    this.po = po;
+  /** Mitra PO yang terdaftar (dari laju visual); berlaku untuk bus terminal yang muncul berikutnya. */
+  aturPo(po: readonly PoVisual[]): void {
+    if (po.length !== this.po.length || po.some((p, i) => p.id !== this.po[i])) this.po = po.map((p) => p.id);
+    for (const p of po) if (this.kelasPo.get(p.id) !== p.kelas) this.kelasPo.set(p.id, p.kelas);
   }
 
   /**
@@ -374,10 +377,12 @@ export class ArmadaKendaraan {
     // Bus Emas: bus kuning besar, diberi rona emas (lihat perbarui).
     if (b.emas) return tetap(BUS_EMAS);
     if (b.jenis === 'lewat') return tetap(KENDARAAN_LEWAT[b.livery % KENDARAAN_LEWAT.length]!);
-    const p = pilihLivery(b.id, b.livery, BUS_TERMINAL.length, this.po);
+    // Bus milik PO memakai livery PO itu & salah satu kelas busnya; bus tanpa pemilik memakai livery bawaan atau PO terdaftar.
+    const p = b.po !== null ? ({ jenis: 'po', po: b.po } as const) : pilihLivery(b.id, b.livery, BUS_TERMINAL.length, this.po);
     const livery: LiveryBus = p.jenis === 'po' ? { jenis: 'po', po: p.po } : { jenis: 'bawaan', indeks: p.indeks };
     const bagian = this.bagianKelas;
-    const kelas = pilihKelasBus(b.id, b.livery, this.kelasBus, bagian ? (k) => bagian[k] : undefined);
+    const kelasPo = b.po !== null ? this.kelasPo.get(b.po)?.filter((k) => this.kelasBus.includes(k)) : undefined;
+    const kelas = pilihKelasBus(b.id, b.livery, kelasPo && kelasPo.length > 0 ? kelasPo : this.kelasBus, bagian ? (k) => bagian[k] : undefined);
     const sel = this.lembar.pesan(kelas, livery, (b.id * 0.3819660113) % 1);
     const k = TAMPIL_KELAS_BUS[sel.kelas];
     return {

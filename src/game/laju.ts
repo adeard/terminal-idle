@@ -11,11 +11,23 @@
  * penumpangnya (lihat sim/segmen.ts).
  */
 import { throughput } from '../sim/economy';
-import type { KelasBusId } from '../sim/fitur';
-import { dayaTarikKepuasan, jurusanDilayani, kepuasanTerminal, permintaanPenumpang, segmenState, semuaKapasitas, type GameState } from '../sim/state';
+import type { KelasBusId, PoId } from '../sim/fitur';
+import { dayaTarikKepuasan, jurusanDilayani, kepuasanTerminal, loketTerisi, permintaanPenumpang, segmenState, semuaKapasitas, type GameState } from '../sim/state';
 import type { TahapId } from '../sim/tahap';
 import { loketBuka } from './kehidupan-malam';
-import { MASK_SEMUA_JURUSAN, maskJurusan, MUATAN_BUS } from './tata-letak';
+import { jendelaDipakai, kelompokParkirDibangun } from './perluasan-adegan';
+import { jurusanDiMask, maskJurusan, MUATAN_BUS, X_LOKET } from './tata-letak';
+
+/** Mitra PO di adegan: bus PO ini datang sebanding bagian penumpangnya, ke jurusannya, dengan kelas busnya. */
+export interface PoVisual {
+  readonly id: PoId;
+  /** Bagian penumpang terminal yang naik bus PO ini (0–1). */
+  readonly bagian: number;
+  /** Jurusan yang dilayani PO ini (bitmask, bit i = TUJUAN_BUS[i]). */
+  readonly maskJurusan: number;
+  /** Kelas bus yang dioperasikan PO ini (urut KELAS_BUS_IDS). */
+  readonly kelas: readonly KelasBusId[];
+}
 
 export interface LajuVisual {
   /** Orang turun dari bus di peron kedatangan. */
@@ -34,6 +46,12 @@ export interface LajuVisual {
   readonly maskJurusan?: number;
   /** Jalur bus yang sudah dibangun (halte kedatangan & keberangkatan terdepan); bawaan: semua. */
   readonly jalur?: number;
+  /** Kelompok parkir yang sudah dibangun (urut KELOMPOK_PARKIR, lihat perluasan-adegan.ts); bawaan: semua. */
+  readonly kelompokParkir?: number;
+  /** Jendela loket yang dipakai mitra PO di siang hari (lihat jendelaDipakai); bawaan: semua. */
+  readonly jendela?: number;
+  /** Mitra PO terdaftar: bus terminal yang muncul milik salah satunya; bawaan: tanpa PO (livery & jurusan bawaan). */
+  readonly po?: readonly PoVisual[];
   /** Bus Emas (hadiah iklan) sedang bisa diketuk: bus berwarna emas lewat di jalan raya. */
   readonly busEmas?: boolean;
   /** Indeks jendela loket yang buka (malam hari separuh tutup); bawaan: semua. */
@@ -69,15 +87,16 @@ const PERMINTAAN = 0.93;
 /**
  * Arus dasar paling tinggi per jendela loket yang buka di siang hari (orang/detik).
  * Dengan transaksi natural (±2,5 detik + melangkah maju) satu jendela sanggup
- * ±0,24 orang/detik, jadi terminal dengan sedikit jurusan tampak lebih sepi dan
- * makin ramai tiap jurusan baru dilayani. Semua tahap ikut diskalakan, jadi
- * bottleneck tetap terlihat di tempatnya.
+ * ±0,24 orang/detik, jadi terminal dengan sedikit loket tampak lebih sepi dan
+ * makin ramai tiap loket baru disewa PO (sampai semua jendela yang sudah
+ * dibangun terpakai). Semua tahap ikut diskalakan, jadi bottleneck tetap
+ * terlihat di tempatnya.
  */
 export const ARUS_PER_JENDELA = 0.24;
 
-/** Batas arus dasar (orang/detik) dari jendela loket yang jurusannya dilayani (mask). */
-export function batasArusJurusan(mask: number = MASK_SEMUA_JURUSAN): number {
-  return ARUS_PER_JENDELA * loketBuka(12, mask).length;
+/** Batas arus dasar (orang/detik) dari jendela loket yang dipakai di siang hari. */
+export function batasArusLoket(jendela: number = X_LOKET.length): number {
+  return ARUS_PER_JENDELA * loketBuka(12, jendela).length;
 }
 
 /** Jurusan yang dilayani mitra PO terdaftar sebagai bitmask (lihat tata-letak.ts MASK_SEMUA_JURUSAN). */
@@ -94,10 +113,18 @@ export function hitungLajuVisual(state: GameState): LajuVisual {
   const kap = semuaKapasitas(state);
   const potensial = throughput(kap);
   const mask = maskJurusanState(state);
-  const dasar = Math.min(lajuDasar(potensial), batasArusJurusan(mask));
+  const perluasan = state.perkembangan.perluasan;
+  const jendela = jendelaDipakai(perluasan, loketTerisi(state));
+  const dasar = Math.min(lajuDasar(potensial), batasArusLoket(jendela));
   const laju = (id: TahapId): number => dasar * Math.min(RASIO_MAKS, Math.sqrt(kap[id] / potensial));
   const seg = segmenState(state, permintaanPenumpang(state));
   const tarik = dayaTarikKepuasan(kepuasanTerminal(state).nilai) * seg.peminat;
+  const po = state.mitra.terdaftar.map((p, i): PoVisual => {
+    const h = seg.po[i];
+    let maskPo = 0;
+    for (const j of h?.jurusan ?? []) if (!jurusanDiMask(maskPo, j)) maskPo += 2 ** j;
+    return { id: p.id, bagian: h && seg.terisi > 0 ? h.terisi / seg.terisi : 0, maskJurusan: maskPo, kelas: h?.kelas ?? [] };
+  });
 
   const muatanBus = Math.round(Math.min(MUATAN_BUS.maks, Math.max(MUATAN_BUS.min, 8 + dasar * 6)));
   return {
@@ -109,6 +136,9 @@ export function hitungLajuVisual(state: GameState): LajuVisual {
     faktorKecepatanBus: 1 + Math.min(0.8, Math.max(0, dasar - 1.4) / 7),
     maskJurusan: mask,
     jalur: state.terminal.jalur,
+    kelompokParkir: kelompokParkirDibangun(perluasan),
+    jendela,
+    po,
     kiosDibangun: state.terminal.fasilitas.kios > 0,
     bagianJurusan: seg.bagianJurusan,
     bagianKelas: seg.bagianKelas,

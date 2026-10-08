@@ -3,7 +3,7 @@
  * adegan dan sorotan berkedip pada tombol yang dituju. Tidak pernah
  * menghalangi: pemain boleh melakukan apa saja, dan langkah maju sendiri
  * begitu syaratnya terpenuhi. Sambutan di awal, "Lewati" kapan saja.
- * Sasarannya dicari di DOM overlay (data-tahap, data-tab, data-fasilitas),
+ * Sasarannya dicari di DOM overlay (data-tahap, data-tab, data-po, data-jalur),
  * jadi ikut berpindah bila pemain berganti tab atau meringkas panel.
  */
 import type { Analitik } from '../app/analitik';
@@ -14,13 +14,12 @@ import {
   langkahTerpenuhi,
   LANGKAH_TUTORIAL,
   sasaranLangkah,
-  type IdLangkahTutorial,
   type SasaranTutorial,
   type StatusTutorial,
 } from '../app/tutorial';
 import type { GameState } from '../sim/state';
 import { formatUang } from './format';
-import { NAMA_TAHAP, TEKS } from './teks';
+import { NAMA_PO, NAMA_TAHAP, TEKS } from './teks';
 
 export interface OpsiTutorial {
   /** Akar overlay (#ui): tempat mencari tombol yang disorot. */
@@ -36,21 +35,28 @@ export interface OpsiTutorial {
 
 const KELAS_SOROT = 'sorot-tutorial';
 
-const JUDUL: Readonly<Record<IdLangkahTutorial, string>> = {
-  upgrade: TEKS.tutorialUpgradeJudul,
-  kepala: TEKS.tutorialKepalaJudul,
-  fasilitas: TEKS.tutorialFasilitasJudul,
-  jalur: TEKS.tutorialJalurJudul,
-};
+function judulLangkah(s: SasaranTutorial): string {
+  switch (s.jenis) {
+    case 'upgrade':
+      return s.tahap === 'loket' ? TEKS.tutorialLoketJudul : TEKS.tutorialUpgradeJudul;
+    case 'po':
+      return TEKS.tutorialPoJudul;
+    case 'kepala':
+      return TEKS.tutorialKepalaJudul;
+    case 'jalur':
+      return TEKS.tutorialJalurJudul;
+  }
+}
 
 function teksLangkah(s: SasaranTutorial): string {
   switch (s.jenis) {
     case 'upgrade':
-      return TEKS.tutorialUpgrade(NAMA_TAHAP[s.tahap]);
+      // Tahap Loket = loket milik mitra PO: tombolnya membangun loket untuk PO tujuan.
+      return s.tahap === 'loket' && s.po ? TEKS.tutorialLoket(NAMA_PO[s.po].nama) : TEKS.tutorialUpgrade(NAMA_TAHAP[s.tahap]);
+    case 'po':
+      return TEKS.tutorialPo(NAMA_PO[s.po].nama);
     case 'kepala':
       return TEKS.tutorialKepala(NAMA_TAHAP[s.tahap]);
-    case 'fasilitas':
-      return TEKS.tutorialFasilitas;
     case 'jalur':
       return TEKS.tutorialJalur;
   }
@@ -76,10 +82,10 @@ export function elemenSasaran(akar: HTMLElement, s: SasaranTutorial): HTMLElemen
       if (ringkas) return q('.tombol-ringkas');
       if (tab !== 'tahap') return q('.tab[data-tab="tahap"]');
       return q(`.panel[data-tahap="${s.tahap}"] .tombol-${s.jenis}`);
-    case 'fasilitas':
+    case 'po':
       if (ringkas) return q('.tombol-ringkas');
-      if (tab !== 'fasilitas') return q('.tab[data-tab="fasilitas"]');
-      return q(`[data-fasilitas="${s.fasilitas}"] .tombol-beli`);
+      if (tab !== 'po') return q('.tab[data-tab="po"]');
+      return q(`.item-po[data-po="${s.po}"] .tombol-beli`);
     case 'jalur':
       if (ringkas) return q('.tombol-ringkas');
       if (tab !== 'fasilitas') return q('.tab[data-tab="fasilitas"]');
@@ -119,7 +125,12 @@ export function pasangTutorial(o: OpsiTutorial): void {
 
   const sorot = (daftar: HTMLElement[]): void => {
     for (const e of disorot) if (!daftar.includes(e)) e.classList.remove(KELAS_SOROT);
-    for (const e of daftar) e.classList.add(KELAS_SOROT);
+    for (const e of daftar) {
+      if (e.classList.contains(KELAS_SOROT)) continue;
+      e.classList.add(KELAS_SOROT);
+      // Tombol di dalam daftar yang bergulir (mis. PO di bawah kartu PO terdaftar): gulir sampai terlihat.
+      if (e.closest('.isi-tab')) e.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
     disorot = daftar;
   };
   const tampil = (isi: { nomor: string; judul: string; teks: string; kemajuan: string; utama: string | null; lewati: boolean }): void => {
@@ -168,7 +179,7 @@ export function pasangTutorial(o: OpsiTutorial): void {
     const sasaran = sasaranLangkah(id, s);
     tampil({
       nomor: TEKS.tutorialNomor(LANGKAH_TUTORIAL.indexOf(id) + 1, LANGKAH_TUTORIAL.length),
-      judul: JUDUL[id],
+      judul: judulLangkah(sasaran),
       teks: teksLangkah(sasaran),
       kemajuan: teksKemajuan(s, sasaran),
       utama: null,

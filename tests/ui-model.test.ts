@@ -101,6 +101,10 @@ describe('view model pengelolaan terminal', () => {
     expect(m.mitra.tersedia.find((p) => p.id === 'peuyeumKilat')).toMatchObject({ bisa: true, kurang: null, levelRiwayat: null });
     expect(m.mitra.tersedia.find((p) => p.id === 'apelBatu')?.kurang).toEqual({ jenis: 'kelas', kelas: 1 });
     expect(m.mitra.tersedia.some((p) => p.id === 'ondelOndel')).toBe(false);
+    // Di tiap golongan yang termurah dulu: PO kedua yang disarankan tutorial di paling atas.
+    expect(m.mitra.tersedia[0]!.id).toBe('peuyeumKilat');
+    const bisa = m.mitra.tersedia.filter((p) => p.kurang === null).map((p) => p.biaya.toNumber());
+    expect(bisa).toEqual([...bisa].sort((a, b) => a - b));
     expect(m.terminal).toMatchObject({ level: 1, kelas: 0, slot: 2, levelKelasBerikut: 10 });
     expect(m.terminal.perluasan.berikut).toMatchObject({ tahap: 1, level: EKONOMI.mitra.perluasan[0]!.level, levelKurang: true, bisa: false });
     expect(m.terminal.renovasi).toMatchObject({ jumlah: 0, poin: 0, bisa: false, poinMin: EKONOMI.mitra.poinMinRenovasi });

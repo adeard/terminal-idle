@@ -617,8 +617,9 @@ function modelMitra(state: GameState, kepuasan: number, seg: HasilSegmen, cfg: K
         event: EVENT_IDS.find((e) => cfg.event[e].po === id) ?? null,
       };
     })
-    // Yang bisa didaftarkan (atau tinggal slot/uang) lebih dulu, lalu yang terkunci kelas/event/kepuasan.
-    .sort((a, b) => urutanTersedia(a) - urutanTersedia(b));
+    // Yang bisa didaftarkan (atau tinggal slot/uang) lebih dulu, lalu yang terkunci kelas/event/kepuasan;
+    // di tiap golongan yang termurah dulu (PO kedua yang disarankan tutorial ada di paling atas).
+    .sort((a, b) => urutanTersedia(a) - urutanTersedia(b) || a.biaya.cmp(b.biaya));
   const slot = slotPoState(state, cfg);
   const slotBerikut = cfg.mitra.terminal.slot.find(([lv, n]) => lv > level && n > slot);
   const normal = nilaiPerPenumpangState(state, cfg);

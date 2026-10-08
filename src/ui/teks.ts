@@ -188,10 +188,13 @@ export const TEKS = {
   tutorialNomor: (ke: number, dari: number) => `Langkah ${ke}/${dari}`,
   tutorialUpgradeJudul: 'Percepat tahap paling lambat',
   tutorialUpgrade: (tahap: string) => `Terminalmu sudah berjalan dan uang masuk sendiri. Upgrade ${tahap} (bertanda PALING LAMBAT) supaya lebih banyak penumpang terlayani.`,
+  tutorialLoketJudul: 'Bangun loket',
+  tutorialLoket: (po: string) =>
+    `Terminalmu sudah berjalan dan uang masuk sendiri. Penumpang mengantre di Loket (bertanda PALING LAMBAT): bangun loket baru untuk ${po} supaya lebih banyak tiket terjual.`,
+  tutorialPoJudul: 'Daftarkan PO kedua',
+  tutorialPo: (po: string) => `Mitra PO membawa jurusan & busnya sendiri. Di tab PO, daftarkan ${po}: jurusan baru menarik lebih banyak penumpang, dan PO baru langsung menyewa loket.`,
   tutorialKepalaJudul: 'Rekrut Kepala',
   tutorialKepala: (tahap: string) => `Rekrut Kepala ${tahap}. Dengan Kepala di ketiga tahap, terminal tetap berjalan saat game ditutup.`,
-  tutorialFasilitasJudul: 'Bangun fasilitas',
-  tutorialFasilitas: 'Buka tab Fasilitas, lalu bangun Kios & Minimarket: penumpang berbelanja dan sewanya dibayar tiap hari.',
   tutorialJalurJudul: 'Bangun Jalur 2',
   tutorialJalur: 'Terminalmu baru punya satu jalur, jadi bus mengantre di jalan raya. Di tab Fasilitas, bangun Jalur 2: Peron & Keberangkatan jadi lebih cepat.',
   tutorialUang: (uang: string, biaya: string) => `Uang ${uang} / ${biaya}`,
@@ -412,7 +415,7 @@ export const TEKS = {
   telolet: 'TELOLET!',
   tutorialSelesaiJudul: 'Terminalmu sudah berjalan!',
   tutorialSelesai:
-    'Jaga kepuasan penumpang supaya terminal makin ramai, daftarkan mitra PO baru di tab PO, dan kembali besok untuk target harian. Tips: ketuk bus untuk membunyikan klakson telolet!',
+    'Bangun fasilitas seperti Kios & Minimarket supaya penumpang betah, jaga kepuasan supaya terminal makin ramai, dan kembali besok untuk target harian. Tips: ketuk bus untuk membunyikan klakson telolet!',
   offlineJudul: 'Selama kamu pergi…',
   offlineDurasi: (durasi: string, dibatasi: boolean) =>
     dibatasi ? `Terminal beroperasi ${durasi} (batas maksimal)` : `Terminal beroperasi ${durasi}`,

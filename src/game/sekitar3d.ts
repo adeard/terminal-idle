@@ -15,10 +15,14 @@ export const JALAN_BELAKANG = { y0: 20.4, y1: 21.8, lajurTimur: 20.75, lajurBara
 
 const PENUH = { u0: 0, v0: 0, u1: 1, v1: 1 } as const;
 
-export function bangunSekitar(k: Kumpulan, m: PustakaMaterial, garisListrik: THREE.Object3D): void {
+/**
+ * @param parkirBaris2 tempat mobil di baris kedua parkir mobil (dibangun di tahap
+ *   perluasan 2; pemanggil menampilkannya setelah tahap itu selesai)
+ */
+export function bangunSekitar(k: Kumpulan, m: PustakaMaterial, garisListrik: THREE.Object3D, parkirBaris2: Kumpulan = k): void {
   jalanBelakang(k, m);
   pagarKompleks(k, m);
-  parkir(k, m);
+  parkir(k, m, parkirBaris2);
   ruko(k, m);
   kampung(k, m);
   spbu(k, m);
@@ -79,22 +83,22 @@ function gerbangPagar(k: Kumpulan, m: PustakaMaterial, x: number, tulisan: strin
   k.tambah(m.pavingGang, uvDunia(bidang(x - w - 0.05, 17.55, x + w + 0.05, 19.96, 0.016), SKALA_UV.paving), { bayangan: false });
 }
 
-function parkir(k: Kumpulan, m: PustakaMaterial): void {
+function parkir(k: Kumpulan, m: PustakaMaterial, baris2: Kumpulan): void {
   const acak = acakBerbenih(61);
   const mobil = geometriMobil();
   const motor = geometriMotor();
-  // Dua baris petak mobil (menghadap ke utara/selatan bergantian).
-  for (const [yBaris, sudut] of [
-    [14.95, Math.PI / 2],
-    [16.75, -Math.PI / 2],
+  // Dua baris petak mobil (menghadap ke utara/selatan bergantian); mobil baris kedua di kumpulan sendiri.
+  for (const [yBaris, sudut, kMobil] of [
+    [14.95, Math.PI / 2, k],
+    [16.75, -Math.PI / 2, baris2],
   ] as const) {
     for (let i = 0; i < 30; i++) {
       const x = 30.8 + i * 0.52;
       if (x > RUANG_TUNGGU.x1 - 0.2) break;
       k.tambah(m.marka, bidang(x - 0.26, yBaris - 0.5, x - 0.235, yBaris + 0.5, 0.026), { bayangan: false });
       if (acak() < 0.72) {
-        k.tambah(m.kendaraan, kendaraanDiwarnai(mobil, WARNA_MOBIL[Math.floor(acak() * WARNA_MOBIL.length)]!, x, yBaris, sudut));
-        k.tambah(m.kontak, bayanganKontak(x - 0.17, yBaris - 0.44, x + 0.17, yBaris + 0.44, 0.12, 0.4, 0.03), { bayangan: false, terimaBayangan: false });
+        kMobil.tambah(m.kendaraan, kendaraanDiwarnai(mobil, WARNA_MOBIL[Math.floor(acak() * WARNA_MOBIL.length)]!, x, yBaris, sudut));
+        kMobil.tambah(m.kontak, bayanganKontak(x - 0.17, yBaris - 0.44, x + 0.17, yBaris + 0.44, 0.12, 0.4, 0.03), { bayangan: false, terimaBayangan: false });
       }
     }
   }

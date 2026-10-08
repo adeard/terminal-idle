@@ -57,6 +57,11 @@ export function denganPo(state: GameState, id: PoId, o: { readonly level?: numbe
   return { ...state, mitra, terminal: aturLevelLoket(state.terminal, mitra) };
 }
 
+/** Terminal dengan sekian tahap perluasan sudah selesai dibangun (tanpa proyek berjalan). */
+export function denganPerluasan(state: GameState, tahap: number): GameState {
+  return { ...state, perkembangan: { ...state.perkembangan, perluasan: tahap, proyekDetik: 0 } };
+}
+
 /** Terminal pada level tertentu (XP kumulatifnya); perluasan tidak berubah. */
 export function denganLevelTerminal(state: GameState, level: number): GameState {
   return { ...state, perkembangan: { ...state.perkembangan, xpTerminal: xpKumulatifTerminal(level) } };

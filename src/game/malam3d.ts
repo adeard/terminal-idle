@@ -1,10 +1,11 @@
 /**
  * Rolling door yang turun saat toko/kios/loket tutup (lihat jam buka di
  * kehidupan-malam.ts): apotek di aula (minimarket buka 24 jam), tiga kios di
- * ruang tunggu, dan jendela loket yang tutup di malam hari. Toko aula & kios
- * juga tertutup selama fasilitas Kios & Minimarket belum dibangun, dan gerbang
- * ruang tunggu milik jalur yang belum dibangun (dengan papan SEGERA DIBUKA di
- * kedua sisi). Tiap pintu satu grup mesh yang ditukar visibilitasnya.
+ * ruang tunggu, dan jendela loket yang tidak dipakai mitra PO atau tutup di
+ * malam hari. Toko aula & kios juga tertutup selama fasilitas Kios &
+ * Minimarket belum dibangun, dan gerbang ruang tunggu milik jalur yang belum
+ * dibangun (dengan papan SEGERA DIBUKA di kedua sisi). Tiap pintu satu grup
+ * mesh yang ditukar visibilitasnya.
  */
 import * as THREE from 'three';
 import { kotak, Kumpulan, persegiTegak } from './geometri';
@@ -38,8 +39,8 @@ function teksturRolling(): THREE.CanvasTexture {
 /** Keadaan terminal yang menentukan pintu mana yang tertutup. */
 interface KeadaanPintu {
   readonly jam: number;
-  /** Jurusan yang dilayani (lihat MASK_SEMUA_JURUSAN). */
-  readonly maskJurusan: number;
+  /** Jendela loket yang dipakai mitra PO di siang hari (lihat jendelaDipakai di perluasan-adegan.ts). */
+  readonly jendela: number;
   readonly kiosDibangun: boolean;
   /** Jalur bus yang sudah dibangun (gerbang JALUR 1 … jalur terbuka). */
   readonly jalur: number;
@@ -85,7 +86,7 @@ export class RollingDoor {
     const tulisan = m.teks('TUTUP', { lebar: 128, tinggi: 48, latar: '#b91c1c', warna: '#ffffff', ukuranHuruf: 32 });
     X_LOKET.forEach((x, i) => {
       this.tambah(
-        (k) => !loketBuka(k.jam, k.maskJurusan).includes(i),
+        (k) => !loketBuka(k.jam, k.jendela).includes(i),
         (k) => {
           const w = LOKET.setengahLebar;
           const y = LOKET.yMeja - 0.085;
@@ -119,12 +120,12 @@ export class RollingDoor {
 
   /**
    * @param jam jam terminal (0–24)
-   * @param maskJurusan jendela loket yang jurusannya tidak dilayani juga tertutup
+   * @param jendela jendela loket yang dipakai mitra PO di siang hari: jendela lain tertutup
    * @param kiosDibangun fasilitas Kios & Minimarket sudah dibangun
    * @param jalur jalur bus yang sudah dibangun: gerbang jalur lain tertutup
    */
-  perbarui(jam: number, maskJurusan: number, kiosDibangun: boolean, jalur = GERBANG_X.length): void {
-    const k: KeadaanPintu = { jam, maskJurusan, kiosDibangun, jalur };
+  perbarui(jam: number, jendela: number, kiosDibangun: boolean, jalur = GERBANG_X.length): void {
+    const k: KeadaanPintu = { jam, jendela, kiosDibangun, jalur };
     for (const p of this.pintu) p.grup.visible = p.tutup(k);
   }
 

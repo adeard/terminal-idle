@@ -4,8 +4,8 @@
  * Penyedia sungguhan (Google Analytics 4 lewat gtag.js) ada di
  * platform/analitik.ts; tanpa ID pengukuran semua peristiwa diabaikan.
  *
- * Tujuannya mengukur corong pemain baru (tutorial → upgrade → Kepala →
- * fasilitas → Jalur 2) dan hal yang membuat pemain bertahan. Retensi
+ * Tujuannya mengukur corong pemain baru (tutorial → loket → PO kedua →
+ * Kepala → Jalur 2) dan hal yang membuat pemain bertahan. Retensi
  * (kembali esok hari / minggu depan) dihitung GA4 sendiri dari kunjungan.
  * Kejadian yang sering (bus datang, penumpang naik, uang masuk) tidak dicatat
  * satu per satu: cukup ringkasan tiap sesi (ringkasanSesi). Error dilaporkan

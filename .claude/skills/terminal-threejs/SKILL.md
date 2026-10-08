@@ -13,7 +13,7 @@ bahasa Indonesia. Balas pengguna dalam bahasa Indonesia.
 | Folder | Isi | Boleh import three.js? |
 | --- | --- | --- |
 | `src/sim/`, `src/config/`, `src/app/` | ekonomi, state, save, jam, cuaca | **Tidak** (juga tanpa DOM, dicek `tsconfig.sim.json`) |
-| `src/game/` modul murni | `tata-letak`, `dunia-visual`, `jalur`, `laju`, `langit`, `suara`, `rombongan`, `kamera`, `kehidupan-malam`, `jadwal`, `bayangan`, `label-bus`, `label-loket`, `kas-visual`, `telolet`, `aset*` | **Tidak** (daftar `GAME_MURNI` di `tests/arsitektur.test.ts`) |
+| `src/game/` modul murni | `tata-letak`, `dunia-visual`, `jalur`, `laju`, `langit`, `suara`, `rombongan`, `kamera`, `kehidupan-malam`, `jadwal`, `bayangan`, `label-bus`, `label-loket`, `kas-visual`, `telolet`, `perluasan-adegan`, `kembang-api`, `aset*` | **Tidak** (daftar `GAME_MURNI` di `tests/arsitektur.test.ts`) |
 | `src/game/*3d.ts`, `adegan.ts`, `terminal3d.ts` | render three.js | Ya — hanya **membaca** state, tidak pernah mengirim aksi |
 | `src/ui/` | overlay DOM | Tidak |
 
@@ -72,7 +72,7 @@ orang → `k.selesai()`. `DataOrang`: `id` unik & stabil, `x, y, h`, `penampilan
 `pose: 'duduk'`, `hadap`, `payung`, `lambai`, `sapu`, `baki`. Arah hadap & ayunan langkah
 dihitung dari perpindahan posisi, jadi cukup gerakkan x/y. Rentang id:
 `ID_TROTOAR` 1 jt, `ID_STATIS` 2 jt (+200 kebersihan, +210 asongan),
-`ID_PETUGAS_CUCI` 3 jt, `ID_PENGIKUT` 4 jt.
+`ID_PETUGAS_CUCI` 3 jt, `ID_PENGIKUT` 4 jt, `ID_PEKERJA_PROYEK` 5 jt.
 
 ## 5. Material, siang–malam, cuaca
 

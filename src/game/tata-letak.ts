@@ -436,15 +436,14 @@ export function posisiPembeli(xLoket: number, k: number): Titik {
 export const LABIRIN = { xBarat: 18.95, xTimur: 22.47, yLajur: [12.8, 13.12, 13.44], jarak: 0.32, kolom: 2, geserKolom: 0.075 } as const;
 
 /**
- * Urutan jendela loket dibuka seiring jurusan: yang terdekat ke kepala antrean
- * (ujung timur labirin) dulu. Dengan sedikit jendela pun jalan dari antrean ke
- * jendela tetap pendek, jadi loket tidak tampak macet padahal bukan bottleneck.
+ * Urutan jendela loket dipakai (seiring loket yang disewa mitra PO) dan dibangun
+ * (seiring tahap perluasan): yang terdekat ke kepala antrean (ujung timur
+ * labirin) dulu. Dengan sedikit jendela pun jalan dari antrean ke jendela tetap
+ * pendek, jadi loket tidak tampak macet padahal bukan bottleneck.
  */
 export const URUTAN_LOKET: readonly number[] = X_LOKET.map((x, i) => ({ i, jarak: Math.abs(x - LABIRIN.xTimur) }))
   .sort((a, b) => a.jarak - b.jarak || a.i - b.i)
   .map((e) => e.i);
-/** Jurusan (indeks TUJUAN_BUS) yang dijual tiap jendela loket; jendela lain bertuliskan "SEGERA DIBUKA" sampai jurusannya dibuka. */
-export const JURUSAN_JENDELA: readonly number[] = X_LOKET.map((_, i) => URUTAN_LOKET.indexOf(i) % TUJUAN_BUS.length);
 /** Slot per baris di dalam labirin (3 lajur × 12). */
 export const JUMLAH_SLOT_LABIRIN = 36;
 /** Slot luapan per baris: dari ekor labirin ke pintu masuk, lalu keluar berbaris ke barat menyusuri fasad. */

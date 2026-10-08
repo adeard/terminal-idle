@@ -4,7 +4,7 @@
  * pedagang asongan yang mondar-mandir di gerbang. Murni (tanpa three.js):
  * posisi orang dihitung dari waktu saja, jadi deterministik dan bisa dites.
  */
-import { GERBANG_KELUAR_X, GERBANG_MASUK_X, jurusanDiMask, JURUSAN_JENDELA, MASK_SEMUA_JURUSAN, URUTAN_LOKET, Y_PAGAR, type Titik } from './tata-letak';
+import { GERBANG_KELUAR_X, GERBANG_MASUK_X, URUTAN_LOKET, X_LOKET, Y_PAGAR, type Titik } from './tata-letak';
 
 // ---------------------------------------------------------------------------
 // Jam buka
@@ -30,36 +30,29 @@ export function tokoBuka(jenis: JenisToko, jam: number): boolean {
 
 /** Rentang jam separuh loket tutup (sepi penumpang). */
 export const JAM_LOKET_MALAM: readonly [number, number] = [22, 5];
-/** Di malam hari tetap buka paling sedikit sekian jendela (kalau jurusannya ada). */
+/** Di malam hari tetap buka paling sedikit sekian jendela (kalau jendelanya ada). */
 const MIN_LOKET_MALAM = 2;
 
-/** Hasil loketBuka per mask jurusan: [siang, malam], dihitung sekali per mask (dipanggil tiap frame tanpa alokasi). */
-const TABEL_LOKET = new Map<number, readonly [readonly number[], readonly number[]]>();
-
-function tabelLoket(mask: number): readonly [readonly number[], readonly number[]] {
-  let t = TABEL_LOKET.get(mask);
-  if (!t) {
-    // Jendela yang jurusannya dilayani, terdekat ke kepala antrean dulu (minimal satu jendela).
-    const dilayani = URUTAN_LOKET.filter((i) => jurusanDiMask(mask, JURUSAN_JENDELA[i]!));
-    const jendela = dilayani.length > 0 ? dilayani : URUTAN_LOKET.slice(0, 1);
-    const [siang, malam] = [false, true].map((m) => {
-      const n = m ? Math.min(jendela.length, Math.max(MIN_LOKET_MALAM, Math.ceil(jendela.length / 2))) : jendela.length;
-      return jendela.slice(0, n).sort((a, b) => a - b);
-    }) as [number[], number[]];
-    t = [siang, malam];
-    TABEL_LOKET.set(mask, t);
-  }
-  return t;
-}
+/** Hasil loketBuka per [malam?][banyaknya jendela dipakai], dihitung sekali (dipanggil tiap frame tanpa alokasi). */
+const TABEL_LOKET: readonly (readonly (readonly number[])[])[] = [false, true].map((malam) =>
+  Array.from({ length: X_LOKET.length + 1 }, (_, dipakai) => {
+    // Jendela terdekat ke kepala antrean dulu (minimal satu).
+    const jendela = URUTAN_LOKET.slice(0, Math.max(1, dipakai));
+    const n = malam ? Math.min(jendela.length, Math.max(MIN_LOKET_MALAM, Math.ceil(jendela.length / 2))) : jendela.length;
+    return jendela.slice(0, n).sort((a, b) => a - b);
+  }),
+);
 
 /**
- * Indeks jendela loket yang melayani pada jam ini: hanya jendela yang
- * jurusannya dilayani mitra PO (lainnya "SEGERA DIBUKA": tutup, tanpa petugas),
- * dan di malam hari separuhnya, yang terdekat ke kepala antrean.
- * @param mask jurusan yang dilayani (lihat MASK_SEMUA_JURUSAN)
+ * Indeks jendela loket yang melayani pada jam ini: jendela yang dipakai mitra PO
+ * (satu per loket yang disewa, sebatas jendela yang sudah dibangun; lihat
+ * jendelaDipakai di perluasan-adegan.ts), terdekat ke kepala antrean. Jendela
+ * lain tutup tanpa petugas. Di malam hari separuhnya tutup.
+ * @param dipakai banyaknya jendela yang dipakai di siang hari (bawaan: semua)
  */
-export function loketBuka(jam: number, mask: number = MASK_SEMUA_JURUSAN): readonly number[] {
-  return tabelLoket(mask)[dalamRentang(jam, JAM_LOKET_MALAM) ? 1 : 0];
+export function loketBuka(jam: number, dipakai: number = X_LOKET.length): readonly number[] {
+  const n = Math.max(0, Math.min(X_LOKET.length, Math.floor(dipakai)));
+  return TABEL_LOKET[dalamRentang(jam, JAM_LOKET_MALAM) ? 1 : 0]![n]!;
 }
 
 /** Satpam luar berpatroli keliling plaza (siang berjaga di posnya). */

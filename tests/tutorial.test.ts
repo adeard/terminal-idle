@@ -1,9 +1,9 @@
 import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
-import { cocokUntukTutorial, FASILITAS_TUTORIAL, langkahBerikut, sasaranLangkah } from '../src/app/tutorial';
+import { cocokUntukTutorial, langkahBerikut, sasaranLangkah } from '../src/app/tutorial';
 import { EKONOMI } from '../src/config/economy.config';
 import { terapkanAksi, type Aksi } from '../src/sim/aksi';
-import { buatStateBaru, tahapBottleneck, type GameState } from '../src/sim/state';
+import { buatStateBaru, poTujuanLoket, tahapBottleneck, type GameState } from '../src/sim/state';
 import { TAHAP_IDS } from '../src/sim/tahap';
 import { jalankan, stateOtomatis, T0 } from './helpers';
 
@@ -21,7 +21,7 @@ describe('tutorial terpandu', () => {
     expect(cocokUntukTutorial({ ...baru(), renovasi: { ...baru().renovasi, jumlah: 1 } })).toBe(false);
   });
 
-  it('langkah maju sendiri saat syaratnya terpenuhi: upgrade → Kepala → fasilitas → Jalur 2 → tamat', () => {
+  it('langkah maju sendiri saat syaratnya terpenuhi: loket → PO kedua → Kepala → Jalur 2 → tamat', () => {
     let s = baru();
     expect(langkahBerikut(s)).toBe('upgrade');
     // Uang masuk tanpa diketuk; langkah upgrade menunggu pemain membeli.
@@ -29,36 +29,48 @@ describe('tutorial terpandu', () => {
     expect(s.statistik.totalPenumpang).toBeGreaterThan(0);
     expect(langkahBerikut(s)).toBe('upgrade');
     s = lakukan(kaya(s), { jenis: 'upgrade', tahap: 'loket' });
+    expect(langkahBerikut(s)).toBe('po');
+    s = lakukan(s, { jenis: 'daftarPo', po: 'peuyeumKilat' });
+    expect(s.mitra.terdaftar).toHaveLength(2);
     expect(langkahBerikut(s)).toBe('kepala');
     s = lakukan(s, { jenis: 'rekrutKepala', tahap: 'peron' });
-    expect(langkahBerikut(s)).toBe('fasilitas');
-    s = lakukan(s, { jenis: 'bangunFasilitas', fasilitas: FASILITAS_TUTORIAL });
     expect(langkahBerikut(s)).toBe('jalur');
     s = lakukan(s, { jenis: 'bukaJalur' });
     expect(s.terminal.jalur).toBe(2);
     expect(langkahBerikut(s)).toBeNull();
   });
 
-  it('urutan bebas: Kepala yang direkrut lebih dulu tetap dihitung, yang ditampilkan langkah pertama yang belum', () => {
-    let s = lakukan(kaya(baru()), { jenis: 'rekrutKepala', tahap: 'peron' }, { jenis: 'bangunFasilitas', fasilitas: 'toilet' }, { jenis: 'bukaJalur' });
+  it('urutan bebas: langkah yang terpenuhi lebih dulu tetap dihitung, yang ditampilkan langkah pertama yang belum', () => {
+    // PO kedua langsung menyewa loket bawaannya: Loket naik level, langkah pertama ikut terpenuhi.
+    expect(langkahBerikut(lakukan(kaya(baru()), { jenis: 'daftarPo', po: 'peuyeumKilat' }))).toBe('kepala');
+    let s = lakukan(kaya(baru()), { jenis: 'rekrutKepala', tahap: 'peron' }, { jenis: 'bukaJalur' });
     expect(langkahBerikut(s)).toBe('upgrade');
     s = lakukan(s, { jenis: 'upgrade', tahap: 'peron' });
+    expect(langkahBerikut(s)).toBe('po');
+    s = lakukan(s, { jenis: 'daftarPo', po: 'lumpiaKilat' });
     expect(langkahBerikut(s)).toBeNull();
   });
 
-  it('sasaran: upgrade tahap paling lambat, Kepala termurah, Kios & Minimarket', () => {
+  it('sasaran: tahap paling lambat (Loket: loket untuk PO tujuannya), PO termurah yang bisa didaftarkan, Kepala termurah, Jalur 2', () => {
     let s = baru();
     const up = sasaranLangkah('upgrade', s);
     expect(up.jenis === 'upgrade' && up.tahap).toBe(tahapBottleneck(s));
+    // Di awal Loket yang paling lambat: tombolnya membangun loket untuk PO pertama.
+    expect(up).toMatchObject({ jenis: 'upgrade', tahap: 'loket', po: s.mitra.terdaftar[0]!.id });
+    expect(up.jenis === 'upgrade' && up.po).toBe(poTujuanLoket(s));
+    expect(sasaranLangkah('upgrade', stateOtomatis({ peron: 1, loket: 50, keberangkatan: 50 }))).toMatchObject({ jenis: 'upgrade', tahap: 'peron', po: null });
+    const po = sasaranLangkah('po', s);
+    expect(po).toMatchObject({ jenis: 'po', po: 'peuyeumKilat' });
+    expect(po.biaya.toNumber()).toBe(EKONOMI.mitra.po.peuyeumKilat.biayaDaftar);
+    // PO yang sedang jeda (baru diputus) dilewati: berikutnya yang termurah.
+    const jeda: GameState = { ...s, mitra: { ...s.mitra, jedaSampai: { peuyeumKilat: s.statistik.waktuMainDetik + 1000 } } };
+    expect(sasaranLangkah('po', jeda)).toMatchObject({ jenis: 'po', po: 'lumpiaKilat' });
     const kepala = sasaranLangkah('kepala', s);
     const termurah = [...TAHAP_IDS].sort((a, b) => EKONOMI.tahap[a].biayaKepala - EKONOMI.tahap[b].biayaKepala)[0];
     expect(kepala.jenis === 'kepala' && kepala.tahap).toBe(termurah);
     s = lakukan(kaya(s), { jenis: 'rekrutKepala', tahap: termurah! });
     const berikut = sasaranLangkah('kepala', s);
     expect(berikut.jenis === 'kepala' && berikut.tahap).not.toBe(termurah);
-    const f = sasaranLangkah('fasilitas', s);
-    expect(f).toMatchObject({ jenis: 'fasilitas', fasilitas: 'kios' });
-    expect(f.jenis === 'fasilitas' && f.biaya.toNumber()).toBe(EKONOMI.fasilitas.kios.biayaAwal);
     expect(sasaranLangkah('jalur', s)).toMatchObject({ jenis: 'jalur' });
     const j = sasaranLangkah('jalur', s);
     expect(j.jenis === 'jalur' && j.biaya.toNumber()).toBe(EKONOMI.jalur.biaya[0]);

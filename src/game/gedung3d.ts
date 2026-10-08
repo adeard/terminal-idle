@@ -348,7 +348,7 @@ function deretanLoket(k: Kumpulan, m: PustakaMaterial): void {
     k.tambah(m.besiGelap, kotak(x + 0.12, L.yMeja - 0.2, x + 0.28, L.yMeja - 0.17, hMeja + 0.025, hMeja + 0.13));
     const nomor = m.teks(`LOKET ${i + 1}`, { lebar: 256, tinggi: 60, latar: warnaLoket, warna: '#1d232b', ukuranHuruf: 40 });
     k.tambah(nomor.material, persegiTegak([x - 0.26, yDinding], [x + 0.26, yDinding], ALAS + 0.58, ALAS + 0.7, nomor.uv, 0.004), { bayangan: false });
-    // Papan kota tujuan di atasnya ada di papan-jurusan3d.ts (mengikuti jurusan yang dibuka).
+    // Papan nama PO pemilik jendela di atasnya ada di papan-jurusan3d.ts (mengikuti mitra PO).
   });
   // Papan judul di atas deretan loket.
   const cx = (xa + xb) / 2;

@@ -22,8 +22,10 @@
  * baris, jendela loket, gerbang), jadi langkah yang pelan tidak memunculkan
  * hambatan palsu.
  */
+import type { PoId } from '../sim/fitur';
 import { bezier, Jalur, lintasanS, sambung } from './jalur';
-import type { LajuVisual } from './laju';
+import type { LajuVisual, PoVisual } from './laju';
+import { kelompokParkirBuka } from './perluasan-adegan';
 import { dalamRentang, JAM_LOKET_MALAM, tokoBuka, type JenisToko } from './kehidupan-malam';
 import { anggotaRombongan } from './rombongan';
 import {
@@ -106,6 +108,8 @@ export interface BusVisual {
   readonly id: number;
   readonly jenis: JenisBus;
   readonly livery: number;
+  /** Mitra PO pemilik bus terminal (livery, kelas bus, & jurusannya); null = tanpa PO (bus lewat, atau laju tanpa daftar PO). */
+  readonly po: PoId | null;
   /** Bus Emas (hadiah iklan): bus lewat berwarna emas. */
   readonly emas: boolean;
   x: number;
@@ -225,6 +229,18 @@ function pilihBerbobot<T>(pilihan: readonly (readonly [T, number])[], u: number)
     x -= bobot;
   }
   return pilihan[0]![0];
+}
+
+/**
+ * Mitra PO pemilik bus terminal yang baru muncul: sebanding bagian penumpang
+ * tiap PO, tetap untuk id bus yang sama (tanpa generator acak model, jadi
+ * urutan acak lainnya tidak berubah). Tanpa bagian sama sekali: bergiliran.
+ */
+export function pilihPoBus(idBus: number, po: readonly PoVisual[]): PoId | null {
+  if (po.length === 0) return null;
+  const bobot = po.filter((p) => p.bagian > 0).map((p) => [p.id, p.bagian] as const);
+  if (bobot.length === 0) return po[idBus % po.length]!.id;
+  return pilihBerbobot(bobot, (((idBus * 0.4142135624 + 0.29) % 1) + 1) % 1);
 }
 
 /**
@@ -478,9 +494,13 @@ export class DuniaVisual {
   private faktorBergegas = 1;
   /** Jurusan yang dilayani mitra PO (bitmask, lihat MASK_SEMUA_JURUSAN): bus hanya melayani jurusan ini. */
   private maskJurusan = MASK_SEMUA_JURUSAN;
+  /** Kelompok parkir yang sudah dibangun (urut KELOMPOK_PARKIR, tahap perluasan). */
+  private kelompokDibangun = KELOMPOK_PARKIR.length;
+  /** Mitra PO terdaftar: pemilik bus terminal yang baru muncul. */
+  private poVisual: readonly PoVisual[] = [];
   /** Bagian penumpang tiap jurusan (harga tiket); null = sama rata. */
   private bagianJurusan: readonly number[] | null = null;
-  /** Jendela loket yang melayani (jurusannya dilayani; malam hari separuh tutup); pembeli hanya dipanggil ke jendela ini. */
+  /** Jendela loket yang melayani (dipakai mitra PO; malam hari separuh tutup); pembeli hanya dipanggil ke jendela ini. */
   private loketBuka: readonly number[] = SEMUA_LOKET;
   /** Jam terminal (jam buka toko & kios, waktu sholat). */
   private jam = 12;
@@ -510,6 +530,8 @@ export class DuniaVisual {
     this.faktorKecepatan = laju.faktorKecepatanBus;
     // Paling sedikit satu jurusan (jaga-jaga): tanpa jurusan, bus tidak punya kelompok parkir.
     this.maskJurusan = (laju.maskJurusan ?? MASK_SEMUA_JURUSAN) % (MASK_SEMUA_JURUSAN + 1) || 1;
+    this.kelompokDibangun = Math.max(1, Math.min(KELOMPOK_PARKIR.length, laju.kelompokParkir ?? KELOMPOK_PARKIR.length));
+    this.poVisual = laju.po ?? [];
     this.bagianJurusan = laju.bagianJurusan ?? null;
     // Jalur yang belum dibangun: halte kedatangan & keberangkatan paling belakang tidak dipakai.
     this.halteDatang.aktif = Math.max(1, Math.min(HALTE_DATANG_X.length, laju.jalur ?? HALTE_DATANG_X.length));
@@ -717,6 +739,7 @@ export class DuniaVisual {
       jenis,
       emas,
       livery: emas ? 0 : Math.floor(this.acak() * this.jumlahLivery),
+      po: jenis === 'terminal' ? pilihPoBus(id, this.poVisual) : null,
       x: X_MUNCUL,
       y: lajur,
       sudut: 0,
@@ -862,7 +885,7 @@ export class DuniaVisual {
    */
   private tinggalkanHalteDatang(b: BusVisual): void {
     const lurus = this.halteDatang.penghuni.slice(0, b.halte).every((id) => id === 0);
-    const petak = this.pilihPetak(lurus);
+    const petak = this.pilihPetak(lurus, b.po);
     if (petak >= 0 && lurus) {
       this.masukPetak(b, petak, [[b.x, b.y]]);
       return;
@@ -886,13 +909,30 @@ export class DuniaVisual {
    * Petak untuk bus yang keluar dari halte kedatangan: kelompok jurusan dengan
    * petak kosong terbanyak yang bisa dicapai (seri → diundi, supaya semua
    * kelompok terisi merata), lalu salah satu petak kosongnya secara acak.
-   * Kelompok yang belum ada jurusannya dilayani dipagari (pembangunan3d.ts) dan
-   * tidak dipakai; bila yang terbuka penuh, bus langsung keluar terminal.
+   * Hanya kelompok yang sudah dibangun (tahap perluasan) dan punya jurusan yang
+   * dilayani (lihat kelompokParkirBuka; yang lain dipagari pembangunan3d.ts).
+   * Bus milik PO mendahulukan kelompok jurusan PO-nya; bila penuh, kelompok
+   * terbuka lain. Bila semua yang terbuka penuh, bus langsung keluar terminal.
    * @param lurus bus bisa maju lurus di lajur halte (semua petak terjangkau), bukan menyalip lewat sirkulasi.
+   * @param po pemilik bus (null = tanpa PO)
    */
-  private pilihPetak(lurus: boolean): number {
-    const buka = KELOMPOK_PARKIR.filter((k) => k.tujuan.some((t) => jurusanDiMask(this.maskJurusan, t)));
+  private pilihPetak(lurus: boolean, po: PoId | null): number {
+    const terbuka = kelompokParkirBuka(this.maskJurusan, this.kelompokDibangun);
+    const buka = KELOMPOK_PARKIR.filter((_, i) => terbuka[i]);
+    const maskPo = this.maskPo(po);
+    if (maskPo !== null) {
+      const milikPo = buka.filter((k) => k.tujuan.some((t) => jurusanDiMask(maskPo, t)));
+      const petak = milikPo.length > 0 ? this.pilihPetakDari(milikPo, lurus) : null;
+      if (petak !== null) return petak;
+    }
     return this.pilihPetakDari(buka, lurus) ?? -1;
+  }
+
+  /** Jurusan yang dilayani PO pemilik bus (null = tanpa PO, atau PO sudah tidak terdaftar). */
+  private maskPo(po: PoId | null): number | null {
+    if (po === null) return null;
+    const p = this.poVisual.find((x) => x.id === po);
+    return p && p.maskJurusan > 0 ? p.maskJurusan : null;
   }
 
   private pilihPetakDari(kelompok: readonly KelompokParkir[], lurus: boolean): number | null {
@@ -913,11 +953,15 @@ export class DuniaVisual {
 
   private masukPetak(b: BusVisual, petak: number, awal: Titik[]): void {
     this.petak[petak] = b.id;
-    // Jurusan bus mengikuti kelompok petaknya (kota yang dilayani, sebanding bagian penumpangnya).
-    // pilihPetak hanya memberi petak di kelompok yang dilayani; cadangan semua jurusan yang dilayani hanya jaga-jaga.
+    // Jurusan bus mengikuti kelompok petaknya: kota yang dilayani PO pemiliknya (atau terminal,
+    // bila tanpa PO), sebanding bagian penumpangnya. Bila kelompok itu tidak memuat jurusan PO-nya
+    // (kelompok jurusannya belum dibangun atau penuh), salah satu jurusan PO-nya yang lain.
     const kelompok = KELOMPOK_PARKIR.find((k) => k.petak.includes(petak));
-    const bukaDiKelompok = kelompok ? kelompok.tujuan.filter((t) => jurusanDiMask(this.maskJurusan, t)) : [];
-    const pilihan = bukaDiKelompok.length > 0 ? bukaDiKelompok : TUJUAN_BUS.map((_, i) => i).filter((i) => jurusanDiMask(this.maskJurusan, i));
+    const mask = this.maskPo(b.po) ?? this.maskJurusan;
+    const semua = (m: number): number[] => TUJUAN_BUS.map((_, i) => i).filter((i) => jurusanDiMask(m, i));
+    const diKelompok = kelompok ? kelompok.tujuan.filter((t) => jurusanDiMask(mask, t)) : [];
+    const cadangan = diKelompok.length > 0 ? diKelompok : semua(mask);
+    const pilihan = cadangan.length > 0 ? cadangan : semua(this.maskJurusan);
     b.tujuan = pilihTujuan(pilihan, this.bagianJurusan, b.id);
     this.halteDatang.lepas(b.halte, b.id);
     b.halte = -1;

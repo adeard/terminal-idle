@@ -1,6 +1,6 @@
 # 12 · Rancangan Ekonomi v2: Mitra PO
 
-> **Status: diimplementasi sebagian di cabang `ekonomi-v2`** (langkah 0–3 di bagian 18 dan sebagian langkah 4: simulasi, save & migrasi v1 → v2, tab PO & Terminal, adegan mengikuti jurusan yang dilayani PO). Belum: jendela loket per PO & tahap perluasan di 3D, tutorial baru, rilis bertahap, dan bangunan bertingkat. Dokumen 01–11 masih menggambarkan v1. Isinya disusun dari diskusi desain 7 Oktober 2026.
+> **Status: diimplementasi sebagian di cabang `ekonomi-v2`** (langkah 0–5 di bagian 18: simulasi, save & migrasi v1 → v2, tab PO & Terminal, adegan 3D tahap 0–2 dengan jendela loket & bus per PO dan modul proyek perluasan, tutorial baru). Belum: rilis bertahap dan bangunan bertingkat (tahap 3–5). Dokumen 01–11 masih menggambarkan v1. Isinya disusun dari diskusi desain 7 Oktober 2026.
 >
 > Angka bertanda **PLACEHOLDER** adalah titik awal hasil simulasi (bagian 15), bukan angka final. Setelah diimplementasi, angka tuning tetap tinggal di `src/config/economy.config.ts`.
 
@@ -609,10 +609,10 @@ Simpanan naik ke `schemaVersion` 2 dengan satu fungsi di `MIGRASI` (`src/sim/sav
    - tes greedy & tes tempo seperti `tests/greedy.test.ts`.
 2. ✓ **Migrasi save** v1 → v2, dengan tes dari save v1 (`tests/save.test.ts`).
 3. ✓ **UI**: tab PO (kartu PO dengan harga per jurusan & kontrak), tab Terminal (level, perluasan, Renovasi, kelas bus), tujuan loket di panel Loket, HUD level, popup Renovasi, notifikasi.
-4. **Adegan 3D tahap 0–2**: jendela loket per PO, bus per PO, kelompok parkir & jendela dibuka per tahap perluasan, modul proyek. Sebagian: adegan sudah mengikuti jurusan yang dilayani PO (bitmask, tidak harus urut) dan livery PO terdaftar.
-5. **Tutorial** baru:
+4. ✓ **Adegan 3D tahap 0–2**: jendela loket per PO, bus per PO, kelompok parkir & jendela dibuka per tahap perluasan, modul proyek (pagar seng, crane, material, pekerja, kembang api peresmian). Lokasi proyek tahap 3–5 sudah terlihat, bentuk akhirnya menyusul di langkah 7–9.
+5. ✓ **Tutorial** baru. Urutannya mengikuti biaya di awal permainan (bangun loket Rp 22 langsung terjangkau, PO kedua Rp 50):
+   - bangun loket (upgrade tahap paling lambat, di awal Loket);
    - daftarkan PO kedua;
-   - bangun loket;
    - rekrut Kepala;
    - Jalur 2.
 6. **Rilis bertahap**: build uji (`?v2=1`), lalu paksa pembaruan klien, lalu migrasi.
