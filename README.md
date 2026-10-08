@@ -23,7 +23,7 @@ Save tamu disimpan di `localStorage` (kunci `terminal-bus-tycoon/save`; awalan n
 
 ## Rilis web (PWA) & pembaruan in-game
 
-Versi web adalah PWA (`vite-plugin-pwa`): bisa dipasang ke layar utama ("Install app" / "Tambahkan ke layar utama") dan dimainkan offline. Situs resmi `bustation.games` di-host di Cloudflare Pages (project `bustation`): deploy dengan `npm run deploy:web` (build lalu `wrangler pages deploy`; sekali saja jalankan `npx wrangler login` dulu). Deploy harus lewat Wrangler dari folder ini, bukan unggah lewat dashboard, supaya `functions/` dan `wrangler.toml` ikut:
+Versi web adalah PWA (`vite-plugin-pwa`): bisa dipasang ke layar utama ("Install app" / "Tambahkan ke layar utama") dan dimainkan offline. Situs resmi `bustation.games` di-host di Cloudflare Pages (project `bustation`): deploy dengan `npm run deploy:web` (build lalu `wrangler pages deploy --branch production`; sekali saja jalankan `npx wrangler login` dulu). Cabang produksi proyek Pages bernama `production`: tanpa `--branch production`, Wrangler memakai nama cabang git (mis. `main`) dan hasilnya hanya pratinjau di `<cabang>.bustation.pages.dev`, bukan bustation.games. Deploy harus lewat Wrangler dari folder ini, bukan unggah lewat dashboard, supaya `functions/` dan `wrangler.toml` ikut:
 
 - `functions/__/[[path]].js` meneruskan `/__/*` ke `bustation-a4de9.firebaseapp.com` sehingga login Google berjalan di domain sendiri (juga di Safari/iPhone);
 - `functions/api/peringkat/` adalah API papan peringkat. Binding database D1-nya (`DB` → `bustation-peringkat`) ada di `wrangler.toml`.

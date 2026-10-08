@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
-    "deploy:web": "npm run build && npx wrangler pages deploy dist --project-name bustation",
+    "deploy:web": "npm run build && npx wrangler pages deploy dist --project-name bustation --branch production",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.sim.json",
     "test": "vitest run",
     "test:watch": "vitest",
