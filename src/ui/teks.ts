@@ -222,7 +222,6 @@ export const TEKS = {
   hudHariIni: (laba: string, penumpang: string) => `Hari ini ${laba} · ${penumpang} pnp`,
   hudHariIniRingkas: (laba: string) => `Hari ini ${laba}`,
   arus: 'Arus',
-  palingLambat: 'PALING LAMBAT',
   petunjukManajer: 'Rekrut Manajer Operasional supaya terminal tetap jalan saat kamu pergi.',
   petunjukKasMenipis: 'Kas menipis: terminal merugi. Kurangi petugas, ubah tarif, atau bongkar unit yang tidak terpakai.',
   // Tutorial terpandu (ui/tutorial.ts).
@@ -235,7 +234,7 @@ export const TEKS = {
   tutorialNomor: (ke: number, dari: number) => `Langkah ${ke}/${dari}`,
   tutorialJendelaJudul: 'Bangun jendela loket',
   tutorialJendela: (po: string) =>
-    `Terminalmu sudah berjalan dan uang masuk sendiri. Penumpang mengantre di Loket (bertanda PALING LAMBAT): di tab Bangun, bangun jendela loket baru untuk ${po}.`,
+    `Terminalmu sudah berjalan dan uang masuk sendiri. Penumpang menumpuk di Loket, area yang paling lambat (lantainya berkedip merah): di tab Bangun, bangun jendela loket baru untuk ${po}.`,
   tutorialPoJudul: 'Daftarkan PO kedua',
   tutorialPo: (po: string) => `Mitra PO membawa jurusan & busnya sendiri. Di tab PO, daftarkan ${po}: jurusan baru menarik lebih banyak penumpang, dan PO baru langsung menyewa jendela loket.`,
   tutorialPetugasJudul: 'Rekrut petugas peron',
@@ -416,6 +415,7 @@ export const TEKS = {
   tarifNaik: (nama: string) => `Naikkan ${nama}`,
   tarifPer: (per: string) => `per ${per}`,
   tarifBawaan: (nilai: string) => `bawaan ${nilai}`,
+  layananPerPenumpang: (rupiah: string, hargaTiket: string) => `≈ ${rupiah} per penumpang (tiket rata-rata ${hargaTiket}, ditetapkan PO)`,
   tarifCatatan:
     'Harga tiket ditetapkan PO. Tarif lebih tinggi menambah pendapatan per penumpang, tapi menurunkan permintaan, pemakai parkir & toilet, okupansi kios, atau kepuasan mitra PO. Saran = tarif yang paling menguntungkan sehari, dengan mitra PO tetap mau memperpanjang kontrak.',
   keuanganJudul: 'Laporan keuangan',
@@ -520,6 +520,8 @@ export const TEKS = {
   notifTarget: '🎯 Target harian selesai! Klaim di tab Target',
   panelRingkas: 'Ringkas',
   panelBuka: 'Buka panel',
+  panelPenuh: 'Layar penuh',
+  panelKecilkan: 'Kecilkan panel',
   putarKiri: 'Putar kiri (Q)',
   putarKanan: 'Putar kanan (E)',
   arahAwal: 'Kompas: ketuk untuk kembali ke arah awal',

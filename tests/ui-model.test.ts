@@ -4,7 +4,7 @@ import { EKONOMI } from '../src/config/economy.config';
 import { terapkanAksi } from '../src/sim/aksi';
 import { slotBangunan } from '../src/sim/bangunan';
 import { aturTarif, buatStateBaru, daftarPo, keuanganSekarang, operasiState, tick, type GameState } from '../src/sim/state';
-import { AREA_IDS, buatModel } from '../src/ui/model';
+import { AREA_IDS, buatModel, hargaTiketRata } from '../src/ui/model';
 import { denganBangunan, denganPetugas, denganPo, jalankan, kaya, padaJam, stateOtomatis, T0 } from './helpers';
 
 const T = EKONOMI.tycoon;
@@ -94,6 +94,20 @@ describe('aksi & pengendali', () => {
 });
 
 describe('view model pengelolaan terminal', () => {
+  it('biaya layanan dalam rupiah per penumpang, dari rata-rata harga tiket yang ditetapkan PO', () => {
+    // PO Ondel-Ondel Lv 1: hanya Jakarta, kelas Ekonomi → harga tiket dasar.
+    const s = stateOtomatis();
+    expect(hargaTiketRata(s)).toBeCloseTo(EKONOMI.tycoon.hargaTiketDasar, 6);
+    const tarif = buatModel(s).terminal.tarif;
+    expect(tarif.filter((t) => t.perPenumpang !== null).map((t) => t.id)).toEqual(['layanan']);
+    const layanan = tarif.find((t) => t.id === 'layanan')!.perPenumpang!;
+    expect(layanan.hargaTiket).toBeCloseTo(EKONOMI.tycoon.hargaTiketDasar, 6);
+    expect(layanan.rupiah).toBeCloseTo((EKONOMI.tycoon.hargaTiketDasar * EKONOMI.tycoon.tarif.layanan.bawaan) / 100, 6);
+    // Tarif naik → rupiah per penumpang naik sebanding; PO yang naik level menaikkan harga tiket.
+    expect(buatModel(aturTarif(s, 'layanan', 20)).terminal.tarif.find((t) => t.id === 'layanan')!.perPenumpang!.rupiah).toBeCloseTo(layanan.rupiah * 2, 6);
+    expect(hargaTiketRata(denganPo(s, 'ondelOndel', { level: 12 }))).toBeGreaterThan(EKONOMI.tycoon.hargaTiketDasar);
+  });
+
   it('tab Bangun: jumlah/slot, biaya, perawatan, bongkar; slot penuh menunjuk perluasan yang menambahnya', () => {
     const s = kaya(stateOtomatis({ toilet: 1 }));
     const b = buatModel(s).bangun;

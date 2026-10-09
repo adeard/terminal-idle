@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { acakBerbenih, DuniaVisual, type JenisTransaksi, type TransaksiVisual } from '../src/game/dunia-visual';
-import { JENIS_TRANSAKSI, KasVisual, lajuUangState, LOMPATAN_MAKS_DETIK, POP_MIN, type LajuUang, type PopUang } from '../src/game/kas-visual';
+import { bulatkanPop, JENIS_TRANSAKSI, KasVisual, lajuUangState, LOMPATAN_MAKS_DETIK, POP_MIN, type LajuUang, type PopUang } from '../src/game/kas-visual';
 import { hitungLajuVisual, terapkanRitme } from '../src/game/laju';
 import { LOKET, PARKIR_SERONG, X_LOKET } from '../src/game/tata-letak';
 import { tick, type GameState } from '../src/sim/state';
@@ -36,6 +36,32 @@ describe('KasVisual: uang sim dibagikan ke transaksi yang terlihat', () => {
     for (const x of stabil) expect(Math.abs(x - 5)).toBeLessThan(5 * 0.25);
     expect(jumlah(pop) + kas.sisa('tiket')).toBeCloseTo(10 * t, 6);
     expect(kas.sisa('retribusi')).toBeCloseTo(4 * t, 6);
+  });
+
+  it('angka "+Rp" bulat (dua angka penting) & berturut-turut sama besar, totalnya tetap = uang yang masuk', () => {
+    expect(bulatkanPop(6123)).toBe(6100);
+    expect(bulatkanPop(21437)).toBe(21000);
+    expect(bulatkanPop(208.7)).toBe(210);
+    expect(bulatkanPop(5.04)).toBeCloseTo(5, 9);
+    expect(bulatkanPop(0)).toBe(0);
+    const kas = new KasVisual();
+    const l = laju({ tiket: 6123.4 });
+    kas.perbarui(0, 0, l, []);
+    const pop: PopUang[] = [];
+    let t = 0;
+    // Satu pembeli tiap detik, sesekali dua sekaligus (datang tak teratur).
+    for (let i = 1; i <= 1200; i++) {
+      t = i / 10;
+      const n = i % 10 === 0 ? (i % 70 === 0 ? 2 : 1) : 0;
+      pop.push(...kas.perbarui(t, 0.1, l, Array.from({ length: n }, () => tx('tiket'))));
+    }
+    const nilai = pop.slice(15).map((p) => p.jumlah);
+    for (const x of nilai) expect(bulatkanPop(x)).toBeCloseTo(x, 6);
+    // Tidak berganti tiap pembeli: kebanyakan sama dengan "+Rp" sebelumnya.
+    const ganti = nilai.filter((x, i) => i > 0 && x !== nilai[i - 1]).length;
+    expect(ganti).toBeLessThan(nilai.length / 10);
+    expect(jumlah(pop) + kas.sisa('tiket')).toBeCloseTo(6123.4 * t, 4);
+    expect(Math.abs(kas.sisa('tiket'))).toBeLessThan(TRANSAKSI_BATAS * 6123.4);
   });
 
   it('beberapa transaksi dalam satu frame mendapat bagian yang sama', () => {

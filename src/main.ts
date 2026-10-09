@@ -395,7 +395,8 @@ async function mulai(): Promise<void> {
     const dt = (sekarang - terakhir) / 1000;
     terakhir = sekarang;
     sesi.detak(dt, kecepatan);
-    if (terminal) {
+    // Panel layar penuh menutupi adegan: tidak perlu digambar (hemat baterai); ekonomi tetap berjalan.
+    if (terminal && !overlay.panelPenuh()) {
       terminal.perbarui(dt, kecepatan);
       tombolKamera?.perbarui(terminal.arahUtara);
     }

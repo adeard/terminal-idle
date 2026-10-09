@@ -30,6 +30,8 @@ export interface Overlay {
   notif(teks: string): void;
   /** Buka tab Bangun di bagian area ini (label area di peta diketuk); panel ringkas dibuka dulu. */
   bukaArea(area: AreaId): void;
+  /** Panel sedang layar penuh (menutupi adegan): adegan 3D tidak perlu digambar. */
+  panelPenuh(): boolean;
   lepas(): void;
 }
 
@@ -60,6 +62,8 @@ const LABEL_TAB: Readonly<Record<IdTab, () => string>> = {
 
 /** Jalur panah tombol lipat panel: ke atas = buka panel, ke bawah = ringkas. */
 const CHEVRON = { atas: 'M6 15l6-6 6 6', bawah: 'M6 9l6 6 6-6' } as const;
+/** Ikon tombol layar penuh: sudut keluar = perbesar, sudut masuk = kecilkan. */
+const IKON_PENUH = { besar: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5', kecil: 'M9 4v5H4M15 4v5h5M15 20v-5h5M9 20v-5H4' } as const;
 
 export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, opsi: OpsiOverlay = {}): Overlay {
   // PO yang diputus pemain sendiri: keluarnya tidak diberi notifikasi "kontrak habis".
@@ -142,6 +146,7 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     tombolRingkas.title = teks;
   };
   const ubahRingkas = (r: boolean): void => {
+    if (r && penuh) aturPenuh(false);
     aturRingkas(r);
     opsi.saatUbahRingkas?.(r);
     // Panel yang dibuka lagi langsung menampilkan state terbaru.
@@ -150,6 +155,38 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   tombolRingkas.addEventListener('click', () => ubahRingkas(!ringkas));
   daftar.prepend(tombolRingkas);
   aturRingkas(ringkas);
+
+  // Layar penuh: panel menutupi adegan supaya pengaturan yang banyak lebih leluasa. Selama itu
+  // adegan tidak digambar (main.ts) dan kanvasnya dibiarkan di tempat (bingkai.ts), jadi sudut
+  // kamera tetap saat panel dikecilkan lagi. Tidak disimpan: game selalu mulai dengan adegan.
+  const tombolPenuh = el('button', 'tab-penuh');
+  tombolPenuh.type = 'button';
+  tombolPenuh.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const ikonPenuh = tombolPenuh.querySelector('path')!;
+  barTab.append(tombolPenuh);
+  let penuh = false;
+  const tandaiPenuh = (): void => {
+    const teks = penuh ? TEKS.panelKecilkan : TEKS.panelPenuh;
+    ikonPenuh.setAttribute('d', penuh ? IKON_PENUH.kecil : IKON_PENUH.besar);
+    tombolPenuh.setAttribute('aria-pressed', String(penuh));
+    tombolPenuh.setAttribute('aria-label', teks);
+    tombolPenuh.title = teks;
+  };
+  const aturPenuh = (p: boolean): void => {
+    penuh = p;
+    akar.classList.toggle('panel-penuh', p);
+    tandaiPenuh();
+    // Tata letak berubah: bingkai menghitung ulang (dan menempatkan kanvas lagi saat keluar).
+    window.dispatchEvent(new Event('resize'));
+    if (p) tab[tabAktif].perbarui(buatModel(pengendali.state));
+  };
+  tombolPenuh.addEventListener('click', () => aturPenuh(!penuh));
+  tandaiPenuh();
+  const saatTombol = (e: KeyboardEvent): void => {
+    // Esc menutup popup lebih dulu (popup memasang penanganannya sendiri).
+    if (e.key === 'Escape' && penuh && !akar.querySelector('.popup-latar')) aturPenuh(false);
+  };
+  window.addEventListener('keydown', saatTombol);
 
   const area = el('div', 'area-adegan');
   const kontrol = el('div', 'kontrol-adegan');
@@ -171,7 +208,7 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     timerNotif = window.setTimeout(() => notif.classList.remove('tampil'), 3500);
   };
 
-  const lepas = pengendali.berlangganan((state) => {
+  const lepasLangganan = pengendali.berlangganan((state) => {
     const model = buatModel(state);
     hud.perbarui(model.hud, model.event);
     // Hanya tab yang terlihat yang diperbarui (dan semuanya sekali di awal) supaya hemat DOM.
@@ -196,7 +233,11 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     tab.bangun.perbarui(buatModel(pengendali.state));
     tab.bangun.sorot?.(id);
   };
-  return { area, kontrol, aturKecepatan: hud.aturKecepatan, notif: tampilkanNotif, bukaArea, lepas };
+  const lepas = (): void => {
+    lepasLangganan();
+    window.removeEventListener('keydown', saatTombol);
+  };
+  return { area, kontrol, aturKecepatan: hud.aturKecepatan, notif: tampilkanNotif, bukaArea, panelPenuh: () => penuh, lepas };
 }
 
 // ---------------------------------------------------------------------------

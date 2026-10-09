@@ -715,6 +715,8 @@ function buatBarisTarif(id: TarifId, kirim: Kirim): { readonly elemen: HTMLEleme
       setDisabled(p.turun, !t.bisaTurun);
       setDisabled(p.naik, !t.bisaNaik);
       setTeks(bawaan, TEKS.tarifBawaan(teksTarif(id, t.bawaan)));
+      // Biaya layanan dalam rupiah: harga tiket ditetapkan PO, terminal memungut persennya.
+      if (t.perPenumpang) setTeks(ket, TEKS.layananPerPenumpang(formatUang(t.perPenumpang.rupiah), formatUang(t.perPenumpang.hargaTiket)));
     },
   };
 }

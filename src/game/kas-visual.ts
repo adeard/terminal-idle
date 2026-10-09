@@ -12,6 +12,11 @@
  * per detik (jadi tidak melonjak-lonjak walau transaksinya datang tak teratur),
  * ditambah sedikit koreksi dari selisih yang terkumpul. Totalnya tetap sama
  * dengan pendapatan, dan angkanya ikut membesar saat terminal berkembang.
+ *
+ * Angka yang tampil dibulatkan (dua angka penting) dan baru berganti bila
+ * sasarannya bergeser cukup jauh, jadi "+Rp" berturut-turut sama besar: tidak
+ * terlihat seperti harga yang berbeda-beda. Tiap orang di keramaian mewakili
+ * beberapa penumpang sim, jadi "+Rp" di loket bukan harga satu tiket.
  */
 import { WAKTU } from '../config/waktu.config';
 import { keuanganSekarang, type GameState } from '../sim/state';
@@ -59,6 +64,15 @@ const TRANSAKSI_RATA = 12;
 const RENTANG_RATA = { min: 15, maks: 150 } as const;
 /** Selisih yang terkumpul (lebih/kurang) dikoreksi dalam ±sekian transaksi. */
 const TRANSAKSI_KOREKSI = 8;
+/** Angka "+Rp" yang tampil baru berganti bila sasarannya bergeser lebih dari porsi ini. */
+const BEDA_GANTI = 0.12;
+
+/** Dibulatkan ke dua angka penting (6.123 → 6.100, 21.437 → 21.000). */
+export function bulatkanPop(x: number): number {
+  if (!(x > 0)) return 0;
+  const langkah = Math.pow(10, Math.floor(Math.log10(x)) - 1);
+  return Math.round(x / langkah) * langkah;
+}
 
 interface Sumber {
   /** Uang yang masuk tapi belum tampil (bisa sedikit negatif: tampil lebih dulu, dikoreksi pop berikutnya). */
@@ -66,10 +80,12 @@ interface Sumber {
   /** Rata-rata bergerak transaksi per detik & bobotnya (koreksi awal rata-rata yang masih sedikit datanya). */
   frek: number;
   bobot: number;
+  /** Besar "+Rp" yang sedang tampil (0 = belum ada). */
+  tampil: number;
 }
 
 export class KasVisual {
-  private readonly sumber = new Map<JenisTransaksi, Sumber>(JENIS_TRANSAKSI.map((j) => [j, { terkumpul: 0, frek: 0, bobot: 0 }]));
+  private readonly sumber = new Map<JenisTransaksi, Sumber>(JENIS_TRANSAKSI.map((j) => [j, { terkumpul: 0, frek: 0, bobot: 0, tampil: 0 }]));
   private detikLalu: number | null = null;
 
   /**
@@ -103,8 +119,11 @@ export class KasVisual {
       s.bobot += a * (1 - s.bobot);
       if (t.length === 0) continue;
       const frek = s.frek / s.bobot;
-      const per = l / frek + s.terkumpul / TRANSAKSI_KOREKSI;
-      if (!(per >= POP_MIN)) continue;
+      const sasaran = l / frek + s.terkumpul / TRANSAKSI_KOREKSI;
+      if (!(sasaran >= POP_MIN)) continue;
+      // Angka bulat yang tetap sampai sasarannya bergeser jauh; selisihnya terbawa di `terkumpul`.
+      if (!(s.tampil >= POP_MIN) || Math.abs(sasaran - s.tampil) > s.tampil * BEDA_GANTI) s.tampil = Math.max(POP_MIN, bulatkanPop(sasaran));
+      const per = s.tampil;
       for (const x of t) pop.push({ jenis: j, x: x.x, y: x.y, jumlah: per });
       s.terkumpul -= per * t.length;
     }

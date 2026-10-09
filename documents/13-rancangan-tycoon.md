@@ -276,8 +276,9 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
 - **PO**: pengaturan harga per jurusan dihapus. Kartu PO menampilkan harga tiket PO (informasi), kepuasan mitra, kontrak, dan jendela loketnya.
 - **Terminal**: level & kelas, perluasan, **tarif** (dengan tombol Saran), dan **laporan keuangan** (hari ini & kemarin: pendapatan per sumber, biaya per pos, laba, kas).
 - **HUD**: kas, laba hari ini (hijau/merah), arus, kepuasan, jam.
-- **Adegan**: label area (PERON, LOKET, KEBERANGKATAN, PANGKALAN) bisa diketuk untuk membuka kartu Bangun area itu. Penanda "PALING LAMBAT" tetap ada di area yang membatasi arus.
+- **Adegan**: label area (PERON, LOKET, KEBERANGKATAN, PANGKALAN) bisa diketuk untuk membuka kartu Bangun area itu. Area yang membatasi arus ditandai sorotan lantai merah berdenyut; label teks "PALING LAMBAT" dihapus atas permintaan user (9 Oktober 2026).
 - **Mode ringkas** hanya menyembunyikan panel. Rel chip tahap dihapus.
+- **Layar penuh** (9 Oktober 2026, permintaan user): panel bisa menutupi adegan karena tab yang berisi banyak pengaturan terlalu sempit di bawah adegan. Adegan berhenti digambar selama itu dan kameranya tidak berubah.
 - Semua di atas sudah diterapkan (langkah 3); label area yang bisa diketuk menyusul di langkah 4 (bagian 12). Label PANGKALAN hanya muncul saat pangkalan yang paling lambat, karena di sana sudah ada papan "PANGKALAN BUS".
 
 ## 12. Adegan 3D
@@ -289,7 +290,7 @@ Sebagian besar sudah menggambarkan benda nyata: halte & gerbang per jalur, jende
 - **Lahan parkir kendaraan** (baris 1, baris 2 di tahap 2) dan **pos retribusi** mengikuti yang dibangun.
 - **Label area** bisa diketuk (bagian 11).
 
-Yang sudah ikut langkah 2: lencana "K" dihapus dari label area, penanda "PALING LAMBAT" mengikuti area yang membatasi arus jam sibuk (`bottleneckState`), penjaga kios & toko hadir per unit yang dibangun, dan juru parkir, petugas toilet, serta petugas retribusi hanya hadir bila bangunannya ada **dan** petugasnya direkrut. Efek "+Rp" memetakan enam sumber pendapatan ke empat tempat transaksi (loket, bus parkir, lorong parkir, kios/toko); "+Rp" sewa kios harian dihapus.
+Yang sudah ikut langkah 2: lencana "K" dihapus dari label area, sorotan area yang membatasi arus jam sibuk mengikuti `bottleneckState`, penjaga kios & toko hadir per unit yang dibangun, dan juru parkir, petugas toilet, serta petugas retribusi hanya hadir bila bangunannya ada **dan** petugasnya direkrut. Efek "+Rp" memetakan enam sumber pendapatan ke empat tempat transaksi (loket, bus parkir, lorong parkir, kios/toko); "+Rp" sewa kios harian dihapus.
 
 Langkah 4 (9 Oktober 2026; logika murni di `src/game/fasilitas-adegan.ts`, posisi di `tata-letak.ts`):
 

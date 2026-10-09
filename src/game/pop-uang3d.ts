@@ -6,7 +6,7 @@
  */
 import { formatAngka } from '../ui/format';
 import type { PopUang, JenisPopUang } from './kas-visual';
-import { IKON_TIKET, skalaJarak } from './label-bus3d';
+import { skalaJarak } from './label-bus3d';
 import { TINGGI_LANTAI_GEDUNG, tinggiLantai } from './tata-letak';
 import type { Proyektor } from './zona3d';
 
@@ -15,7 +15,8 @@ const NS_SVG = 'http://www.w3.org/2000/svg';
 type JenisPop = JenisPopUang | 'telolet';
 /** Ikon tiap jenis (viewBox 24, fill-rule evenodd). */
 const IKON: Readonly<Record<JenisPop, string>> = {
-  tiket: IKON_TIKET,
+  // Koin bertanda persen: biaya layanan & sewa jendela untuk terminal (bukan harga tiket).
+  tiket: 'M12 3a9 9 0 1 1 0 18a9 9 0 0 1 0-18zM9 7.4a1.6 1.6 0 1 0 0 3.2a1.6 1.6 0 0 0 0-3.2zM15 13.4a1.6 1.6 0 1 0 0 3.2a1.6 1.6 0 0 0 0-3.2zM15.2 7l1.4 1.1l-7.8 9.9l-1.4-1.1z',
   // Bus tampak depan: kaca & dua lampu berlubang.
   retribusi: 'M6 3h12a3 3 0 0 1 3 3v11a1 1 0 0 1-1 1h-1v2.5h-3V18H8v2.5H5V18H4a1 1 0 0 1-1-1V6a3 3 0 0 1 3-3zM5.5 6.5v5h13v-5zM6 14v1.6h3V14zM15 14v1.6h3V14z',
   // Rambu parkir "P".

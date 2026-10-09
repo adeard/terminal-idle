@@ -1,9 +1,9 @@
 /**
  * Penanda area di dunia 3D: sorotan merah berdenyut + garis tepi di tanah
- * (area yang membatasi arus jam sibuk), dan label DOM (nama area, "⚠ PALING
- * LAMBAT") yang mengikuti proyeksi kamera. Label DOM dipilih supaya teks tetap
- * tajam di semua zoom. Label pangkalan hanya tampil saat pangkalan paling
- * lambat. Label bisa diketuk (lihat areaDiKetuk): lapisan label tidak menerima
+ * (area yang membatasi arus jam sibuk), dan label DOM nama area yang mengikuti
+ * proyeksi kamera. Label DOM dipilih supaya teks tetap tajam di semua zoom.
+ * Label pangkalan hanya tampil saat pangkalan paling lambat. Label bisa
+ * diketuk (lihat areaDiKetuk): lapisan label tidak menerima
  * pointer, jadi geser kamera tetap jalan, dan ketukan di kanvas dicocokkan
  * dengan kotak label terakhir.
  */
@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { WARNA, WARNA_AREA, keHexCss } from '../config/tema';
 import { AREA_IDS, type AreaId } from '../sim/operasi';
 import { bottleneckState, type GameState } from '../sim/state';
-import { NAMA_AREA, TEKS } from '../ui/teks';
+import { NAMA_AREA } from '../ui/teks';
 import { bidang, kotak } from './geometri';
 import { ZONA } from './tata-letak';
 
@@ -31,11 +31,9 @@ interface TampilanZona {
   readonly sorotan: THREE.Mesh;
   readonly tepi: THREE.Mesh;
   readonly label: HTMLElement;
-  readonly lambat: HTMLElement;
-  /** Ukuran label terakhir (px) dan isi yang tampil saat diukur; diukur ulang hanya bila isinya berubah. */
+  /** Ukuran label (px), diukur sekali saat pertama tampil: isinya tetap. */
   lebarLabel: number;
   tinggiLabel: number;
-  kunciLabel: string;
   /** Kotak label frame terakhir; null = tidak tampil. */
   kotak: KotakLabel | null;
 }
@@ -97,16 +95,15 @@ export class ZonaArea {
 
       const label = el('label-zona');
       label.style.setProperty('--warna', keHexCss(WARNA_AREA[id]));
-      const lambat = el('lz-lambat', `⚠ ${TEKS.palingLambat}`);
       const baris = el('lz-baris');
       const nama = el('lz-nama');
       // Panah kecil: label bisa diketuk untuk membuka tab Bangun area ini.
       nama.append(el('lz-teks', NAMA_AREA[id].toUpperCase()), el('lz-panah', '›'));
       baris.append(nama);
-      label.append(lambat, baris);
+      label.append(baris);
       label.hidden = true;
       wadahLabel.append(label);
-      this.zona[id] = { sorotan, tepi, label, lambat, lebarLabel: 0, tinggiLabel: 0, kunciLabel: '', kotak: null };
+      this.zona[id] = { sorotan, tepi, label, lebarLabel: 0, tinggiLabel: 0, kotak: null };
     }
   }
 
@@ -119,7 +116,6 @@ export class ZonaArea {
       const isLambat = lambat === id;
       z.sorotan.visible = isLambat;
       z.tepi.visible = isLambat && denyut > 0.25;
-      z.lambat.hidden = !isLambat;
 
       const [x, y, h] = ZONA[id].label;
       const p = kamera.proyeksi(x, y, h);
@@ -131,10 +127,8 @@ export class ZonaArea {
         continue;
       }
       // Tetap di dalam layar supaya label di tepi tidak terpotong. Membaca offsetWidth
-      // tiap frame memaksa layout ulang seluruh halaman, jadi ukuran disimpan per isi label.
-      const kunci = String(isLambat);
-      if (kunci !== z.kunciLabel || z.lebarLabel === 0) {
-        z.kunciLabel = kunci;
+      // tiap frame memaksa layout ulang seluruh halaman, jadi ukuran label disimpan.
+      if (z.lebarLabel === 0) {
         z.lebarLabel = z.label.offsetWidth;
         z.tinggiLabel = z.label.offsetHeight;
       }

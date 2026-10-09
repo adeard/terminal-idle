@@ -97,16 +97,6 @@ body {
   opacity: 0.85;
 }
 
-.lz-lambat {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #e63946;
-  color: #fff;
-  font-size: 9.5px;
-  font-weight: 800;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-}
-
 /* Label keberangkatan di atas bus yang memuat penumpang (piksel CSS, tidak ikut di-scale). */
 .label-bus {
   --warna: #5b6ee1;
@@ -787,6 +777,71 @@ body {
 #ui.lanskap .tombol-ringkas {
   flex: none;
   align-self: flex-end;
+}
+
+/*
+ * Layar penuh: panel menutupi adegan (kanvas dibiarkan di tempatnya & tidak
+ * digambar, lihat bingkai.ts & main.ts). Portrait: HUD tetap di atas, panel
+ * mengisi sisanya. Landscape: bilah melebar, isinya di tengah supaya baris
+ * tidak terlalu panjang.
+ */
+#ui.panel-penuh {
+  pointer-events: auto;
+  background: #0b1016;
+}
+
+#ui.panel-penuh .area-adegan {
+  flex: 0 0 0;
+  overflow: hidden;
+}
+
+#ui.panel-penuh .tombol-ringkas {
+  display: none;
+}
+
+#ui.potret.panel-penuh .panel-daftar {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#ui.potret.panel-penuh .isi-tab {
+  flex: 1 1 auto;
+  height: auto;
+}
+
+#ui.lanskap.panel-penuh .bilah {
+  flex: 1 1 auto;
+  width: auto;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 10px;
+}
+
+/* Tombol layar penuh di ujung bilah tab. */
+.tab-penuh {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: #93a1b1;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tab-penuh svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tab-penuh[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 
 /*

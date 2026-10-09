@@ -58,6 +58,9 @@ export function pasangBingkai(o: OpsiBingkai): () => void {
     ui.style.height = `${t.tinggiLogis}px`;
     ui.style.transform = `scale(${t.skala})`;
     ui.style.visibility = 'visible';
+    // Panel layar penuh menutupi adegan: kanvas dibiarkan di tempat & ukurannya (kamera tidak
+    // dibingkai ulang), lalu ditempatkan lagi begitu panel kembali (overlay memicu resize).
+    if (ui.classList.contains('panel-penuh')) return;
     // Adegan 3D menempati kotak `.area-adegan` (diukur setelah tata letak CSS diterapkan).
     const area = ui.querySelector('.area-adegan')?.getBoundingClientRect();
     const kotak = area && area.width > 0 && area.height > 0 ? area : r;

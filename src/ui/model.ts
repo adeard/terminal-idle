@@ -303,6 +303,12 @@ export interface ModelTarif {
   readonly langkah: number;
   readonly bisaTurun: boolean;
   readonly bisaNaik: boolean;
+  /**
+   * Biaya layanan saja: rupiah yang dipungut terminal per penumpang dengan tarif
+   * ini, dari rata-rata harga tiket (ditetapkan PO; beda tiap jurusan, kelas bus,
+   * & level PO) penumpang yang berangkat sekarang. null untuk tarif lain.
+   */
+  readonly perPenumpang: { readonly rupiah: number; readonly hargaTiket: number } | null;
 }
 
 /** Buku keuangan satu hari terminal. */
@@ -709,6 +715,18 @@ function modelBuku(b: BukuHarian): ModelBuku {
 }
 
 /** Level & kelas terminal, perluasan, tarif, keuangan. */
+/**
+ * Rata-rata harga tiket penumpang yang berangkat sekarang (ditimbang arus tiap
+ * PO × jurusan × kelas bus); saat sepi, rata-rata segmennya; tanpa PO, harga dasar.
+ */
+export function hargaTiketRata(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
+  const segmen = operasiState(state, cfg).segmen;
+  if (segmen.length === 0) return cfg.tycoon.hargaTiketDasar;
+  const arus = segmen.reduce((a, s) => a + s.arus, 0);
+  if (arus > 0) return segmen.reduce((a, s) => a + s.arus * s.harga, 0) / arus;
+  return segmen.reduce((a, s) => a + s.harga, 0) / segmen.length;
+}
+
 function modelTerminal(state: GameState, rata: { readonly pendapatan: number; readonly biaya: number; readonly laba: number }, cfg: KonfigEkonomi): ModelTerminal {
   const level = levelTerminal(state, cfg);
   const kelas = kelasDariLevel(level, cfg);
@@ -733,10 +751,12 @@ function modelTerminal(state: GameState, rata: { readonly pendapatan: number; re
           }
         : null,
   };
+  const hargaTiket = hargaTiketRata(state, cfg);
   const tarif = TARIF_IDS.map((id): ModelTarif => {
     const t = cfg.tycoon.tarif[id];
     const nilai = state.terminal.tarif[id];
-    return { id, nilai, bawaan: t.bawaan, langkah: t.langkah, bisaTurun: nilai > t.min, bisaNaik: nilai < t.maks };
+    const perPenumpang = id === 'layanan' ? { rupiah: (hargaTiket * nilai) / 100, hargaTiket } : null;
+    return { id, nilai, bawaan: t.bawaan, langkah: t.langkah, bisaTurun: nilai > t.min, bisaNaik: nilai < t.maks, perPenumpang };
   });
   const k = state.keuangan;
   const beroperasi = new Set(kelasBusBeroperasi(state, cfg));
