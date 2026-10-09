@@ -27,7 +27,7 @@ Beberapa fitur terbaru di repo mungkin belum dirilis ke situs:
 | 10 | [API Specification](10-api-specification.md) | Endpoint dan kontrak komunikasi game ↔ server |
 | 11 | [MVP Definition](11-mvp-definition.md) | Batasan versi pertama dan kriteria rilisnya |
 | 12 | [Rancangan Ekonomi v2: Mitra PO](12-rancangan-ekonomi-po.md) | **Dirilis 0.2.0.** Loket milik PO, level PO & terminal, kontrak, reputasi, perluasan terminal, Renovasi, hasil simulasi |
-| 13 | [Rancangan Tycoon](13-rancangan-tycoon.md) | **Dirilis 0.3.0** (9 Okt 2026; state, save skema 3, UI lima tab, tutorial & target memakai ekonomi tycoon, adegan 3D mengikuti bangunan & petugas). Dari idle ke tycoon: panel Tahap dihapus, kapasitas dari bangunan & petugas, biaya operasional & laba, pasar penumpang mutlak, Renovasi dihapus, uang realistis |
+| 13 | [Rancangan Tycoon](13-rancangan-tycoon.md) | **Dirilis 0.3.0** (9 Okt 2026; state, save skema 3, UI lima tab, tutorial & target memakai ekonomi tycoon, adegan 3D mengikuti bangunan & petugas), lalu **0.3.1** (penumpang tidak membayar terminal, kontrak PO dibayar di muka, slot PO terus bertambah). Dari idle ke tycoon: panel Tahap dihapus, kapasitas dari bangunan & petugas, biaya operasional & laba, pasar penumpang mutlak, Renovasi dihapus, uang realistis |
 
 ## Istilah yang sering dipakai
 

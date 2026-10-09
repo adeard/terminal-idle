@@ -2,7 +2,7 @@
 
 > **Status: dirilis sebagai 0.3.0 (9 Oktober 2026)** di `main` & bustation.games. Langkah 1–6 selesai (bagian 15): modul murni & kalibrasi, `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik memakai ekonomi tycoon, dan adegan 3D mengikuti bangunan & petugas (bagian 12). Belum: bentuk adegan bangunan bertingkat tahap 3–5, judul game (masih "Idle Bus"), dan keputusan terbuka bagian 16. Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
 >
-> **Pembaruan sesudah 0.3.0 (9 Oktober 2026, di cabang `tycoon`, belum dirilis):** penumpang tidak lagi membayar terminal (biaya layanan & tarif toilet dihapus), pendapatan utama terminal kini **kontrak PO** yang dibayar di muka (bagian 6.5), dan tempo dikalibrasi ulang (bagian 14). Keputusan 9–16 di bagian 2.
+> **Pembaruan 0.3.1 (dirilis 9 Oktober 2026):** penumpang tidak lagi membayar terminal (biaya layanan & tarif toilet dihapus), pendapatan utama terminal kini **kontrak PO** yang dibayar di muka (bagian 6.5), dan tempo dikalibrasi ulang (bagian 14). Keputusan 9–16 di bagian 2.
 >
 > Angka di dokumen ini adalah hasil kalibrasi (bagian 14), masih bisa digeser. Angka yang berlaku selalu yang di `EKONOMI.tycoon` (`src/config/economy.config.ts`).
 
@@ -401,7 +401,7 @@ Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.t
    - `tycoon` digabung ke `main` lalu `npm run deploy:web`; `npm run cap:sync` sebelum build APK berikutnya;
    - judul "Bustation: Idle Bus" sengaja belum diubah (nama, `index.html`, manifest PWA, og-image): menunggu keputusan.
 
-7. **Pembaruan ekonomi** (9 Oktober 2026, sesudah 0.3.0; belum dirilis): biaya layanan & toilet dihapus, kontrak PO dibayar di muka (bagian 6.5), slot PO terus bertambah, "+N tiket" di loket, penumpang di terminal di HUD, panel layar penuh, dan kalibrasi ulang (bagian 14). Save skema 3 tetap; PO dari save 0.3.0 dianggap berkontrak 7 hari yang sudah dibayar.
+7. ✓ **Pembaruan ekonomi**, dirilis **0.3.1** (9 Oktober 2026; `versiMinimal` 0.3.1): biaya layanan & toilet dihapus, kontrak PO dibayar di muka (bagian 6.5), slot PO terus bertambah, "+N tiket" di loket, penumpang di terminal di HUD, panel layar penuh, dan kalibrasi ulang (bagian 14). Save skema 3 tetap; PO dari save 0.3.0 dianggap berkontrak 7 hari yang sudah dibayar.
 
 ## 16. Keputusan terbuka
 

@@ -11,14 +11,14 @@ export const RILIS = {
    * Versi di bawah ini wajib diperbarui: popup muncul tanpa tombol "Nanti"
    * (mis. bila format save berubah dan versi lama tidak boleh dipakai lagi).
    */
-  // 0.3.0: format save berubah ke skema 3 (ekonomi tycoon); versi lama tidak bisa membacanya,
-  // dan batas skor papan peringkat di server ikut berubah.
-  versiMinimal: '0.3.0',
+  // 0.3.1: ekonomi kontrak PO. Versi lama yang membuka save baru memungut biaya layanan lagi dan
+  // menyimpan ulang PO tanpa data kontraknya, jadi tidak boleh dipakai lagi.
+  versiMinimal: '0.3.1',
   /** Catatan singkat "Yang baru" di versi ini, ditampilkan di popup (±4 butir). */
   catatan: [
-    'Kini tycoon: bangun jalur, jendela loket, kursi, kios, toilet, & parkir di slot terminal, lalu rekrut petugas bergaji.',
-    'Kejar laba bersih: atur tarif terminal (biaya layanan, sewa loket, retribusi, parkir, toilet, sewa kios) & pantau laporan keuangan.',
-    'Terminal tetap jalan saat game ditutup (paling lama 8 jam) bila ada Manajer Operasional. Ketuk label area di peta untuk langsung membangun.',
-    'Ekonomi dimulai dari awal: progres versi lama tidak dibawa, kecuali nama terminal.',
+    'Penumpang kini hanya membayar tiket PO: biaya layanan & tarif toilet dihapus, toilet & musholla gratis.',
+    'Penghasilan utama terminal: kontrak PO yang dibayar di muka. Panjangnya ditawarkan PO, nilainya naik bersama armada PO & kelas terminal, dan mendaftarkan PO gratis.',
+    'Slot PO terus bertambah seiring level terminal, sampai 20 PO.',
+    'Loket menampilkan jumlah tiket yang terjual, HUD menampilkan penumpang di terminal, dan panel pengaturan bisa dibuka layar penuh.',
   ] as readonly string[],
 } as const;
