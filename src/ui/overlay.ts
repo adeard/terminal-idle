@@ -1,6 +1,6 @@
 /**
  * DOM overlay: area adegan 3D (tempat tombol kamera & suara melayang) dan
- * bilah berisi HUD (kas, laba hari ini, arus, kepuasan, jam) + panel tab
+ * bilah berisi HUD (kas, laba hari ini, penumpang di terminal, kepuasan, jam) + panel tab
  * pengelolaan. Portrait: HUD di atas, panel di bawah; landscape: HUD & panel di
  * bilah samping kanan (lihat gaya.css). Dibangun sekali; setiap perubahan state
  * hanya menyentuh node yang nilainya berubah. Semua angka berasal dari view
@@ -254,7 +254,7 @@ function buatHud(kecepatanAwal: number, saatPilih: (kecepatan: number) => void, 
   const kas = el('div', 'hud-uang');
   const baris = el('div', 'hud-baris');
   const laba = el('span', 'hud-pendapatan');
-  const arus = el('span', 'hud-arus');
+  const diTerminal = el('span', 'hud-arus');
   const kelas = el('span', 'hud-kelas');
   // Kepuasan penumpang: diketuk membuka rinciannya.
   const kepuasan = el('button', 'hud-kepuasan');
@@ -265,7 +265,7 @@ function buatHud(kecepatanAwal: number, saatPilih: (kecepatan: number) => void, 
   const pilEvent = el('span', 'hud-event');
   pilEvent.hidden = true;
   const petunjuk = el('div', 'hud-petunjuk');
-  baris.append(laba, arus, kelas, kepuasan, pilEvent);
+  baris.append(laba, diTerminal, kelas, kepuasan, pilEvent);
   const labaRingkas = el('div', 'hud-pendapatan-ringkas');
   const keuangan = el('div', 'hud-keuangan');
   keuangan.append(kas, baris, labaRingkas);
@@ -335,7 +335,7 @@ function buatHud(kecepatanAwal: number, saatPilih: (kecepatan: number) => void, 
       laba.classList.toggle('rugi', m.labaHariIni < 0);
       setTeks(labaRingkas, TEKS.hudHariIniRingkas(teksLaba));
       labaRingkas.classList.toggle('rugi', m.labaHariIni < 0);
-      setTeks(arus, `${TEKS.arus} ${formatAngka(Math.round(m.arus))} ${TEKS.satuanArus}`);
+      setTeks(diTerminal, TEKS.hudDiTerminal(formatAngka(m.penumpangDiTerminal)));
       setTeks(kelas, TEKS.hudKelas(namaKelas(m.kelas), m.level));
       if (kelas.dataset['kelas'] !== String(Math.min(m.kelas, 3))) kelas.dataset['kelas'] = String(Math.min(m.kelas, 3));
       const puas = m.kepuasan.nilai;

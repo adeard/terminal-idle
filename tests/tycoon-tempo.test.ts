@@ -16,13 +16,15 @@ const simulasi = (): HasilSimulasi => (hasil ??= jalankanSerakah(17.5 * JAM));
 const pertama = (h: HasilSimulasi, awalan: string): number => h.catatan.find((c) => c.aksi.startsWith(awalan))?.detik ?? Number.POSITIVE_INFINITY;
 
 describe('tempo tycoon (pemain serakah)', () => {
-  it('awal: PO kedua & Jalur 2 di menit-menit pertama, perluasan 1 dimulai sebelum menit 45', { timeout: 60_000 }, () => {
+  it('awal: PO kedua di menit-menit pertama, perluasan 1 dimulai sebelum menit 45, Jalur 2 dalam 30 menit', { timeout: 60_000 }, () => {
     const h = simulasi();
     expect(pertama(h, 'po:')).toBeLessThan(3 * MENIT);
-    expect(pertama(h, 'bangun:jalur')).toBeLessThan(12 * MENIT);
     expect(pertama(h, 'perluasan')).toBeLessThan(45 * MENIT);
-    // Keputusan bermakna sering di jam pertama: paling lama 25 menit tanpa membeli apa pun.
-    const jamPertama = h.catatan.filter((c) => c.detik < JAM && c.biaya > 0).map((c) => c.detik);
+    // Kontrak PO kedua dibayar di muka, jadi barang awal terbeli di menit 0; loket (bukan jalur)
+    // yang membatasi sampai perluasan 1 menambah slot jendela.
+    expect(pertama(h, 'bangun:jalur')).toBeLessThan(30 * MENIT);
+    // Keputusan bermakna sering di jam pertama: paling lama 25 menit tanpa membeli apa pun (sampai menit 60).
+    const jamPertama = [...h.catatan.filter((c) => c.detik < JAM && c.biaya > 0).map((c) => c.detik), JAM];
     const jeda = jamPertama.slice(1).map((d, i) => d - jamPertama[i]!);
     expect(Math.max(...jeda)).toBeLessThanOrEqual(25 * MENIT);
   });

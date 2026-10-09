@@ -39,7 +39,7 @@ describe('notifikasi perubahan', () => {
   });
 
   it('kas: peringatan kas menipis, lalu petugas yang berhenti karena gajinya tak terbayar', () => {
-    const s = aturTarif(denganPetugas(stateOtomatis({ jalur: 2 }, 0), ['manajerOperasional', 'kebersihan', 'satpam']), 'layanan', 0);
+    const s = aturTarif(denganPetugas(stateOtomatis({ jalur: 2 }, 0), ['manajerOperasional', 'kebersihan', 'satpam']), 'sewaLoket', 0);
     const aman = { ...s, kas: 1e9 };
     expect(buatModel(s).hud.kasMenipis).toBe(true);
     expect(notif(aman, s)).toBe(TEKS.notifKasMenipis);

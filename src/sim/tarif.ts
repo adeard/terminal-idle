@@ -1,9 +1,9 @@
 /**
- * Tarif terminal (murni). Harga tiket diatur PO sendiri; pemain
- * mengatur tarif terminal, dan tiap tarif menggeser sesuatu:
- * - biaya layanan (% harga tiket): permintaan penumpang (elastisitas jurusan & kelas);
+ * Tarif terminal (murni). Harga tiket diatur & diterima PO sendiri, dan
+ * penumpang tidak membayar apa pun ke terminal (toilet & musholla gratis).
+ * Pemain mengatur tarif terminal, dan tiap tarif menggeser sesuatu:
  * - sewa jendela loket & retribusi bus: kepuasan mitra PO;
- * - parkir & toilet: banyaknya pengantar yang parkir / pemakai toilet, dan kepuasan;
+ * - parkir kendaraan pengantar: banyaknya yang parkir, dan kepuasan;
  * - sewa kios & toko: okupansi penyewa menurut keramaian.
  * Rancangan: bagian 6.4 documents/13-rancangan-tycoon.md.
  */
@@ -33,23 +33,9 @@ export function rasioTarif(id: TarifId, t: NilaiTarif, cfg: KonfigEkonomi = EKON
 }
 
 /**
- * Pengali permintaan penumpang dari biaya layanan: 1 pada tarif bawaan, linear
- * terhadapnya, dikali kepekaan relatif segmen (elastisitas jurusan & kelas
- * dibanding acuan): penumpang ekonomi lebih peka daripada eksekutif. Linear,
- * bukan elastisitas harga total, karena biaya layanan hanya bagian kecil dari
- * harga tiket: dengan elastisitas, tarif maksimum hampir selalu paling untung.
- * Sekarang ada tarif terbaik: lebih tinggi saat terminal sesak, lebih rendah saat sepi.
- */
-export function faktorLayanan(layananPersen: number, elastisitas: number, cfg: KonfigEkonomi = EKONOMI): number {
-  const p = cfg.tycoon.pasar;
-  const bawaan = cfg.tycoon.tarif.layanan.bawaan;
-  return Math.max(0, 1 + p.kepekaanLayanan * (elastisitas / p.elastisitasAcuan) * (1 - layananPersen / bawaan));
-}
-
-/**
- * Bagian penumpang yang memakai layanan berbayar (pengantar yang parkir, pemakai
- * toilet) pada tarif ini: `bagian` pada tarif bawaan, naik bila lebih murah, dan
- * habis pada (1 + 1 ÷ kepekaan) × bawaan.
+ * Bagian penumpang yang memakai layanan berbayar (pengantar yang parkir) pada
+ * tarif ini: `bagian` pada tarif bawaan, naik bila lebih murah, dan habis pada
+ * (1 + 1 ÷ kepekaan) × bawaan.
  */
 export function bagianPemakai(tarif: number, bawaan: number, bagian: number, kepekaan: number): number {
   if (!(bawaan > 0)) return bagian;
@@ -76,15 +62,12 @@ export function skorTarif(rasio: number, k: KonfigSkorTarif): number {
 const rataRata = (x: readonly number[]): number => (x.length > 0 ? x.reduce((a, b) => a + b, 0) / x.length : 1);
 
 /**
- * Komponen harga kepuasan penumpang: biaya layanan, ditambah tarif parkir &
- * toilet yang benar-benar dipungut (fasilitasnya ada). Biaya layanan ikut
- * dinilai supaya menaikkannya tidak gratis saat permintaan jauh di atas kapasitas.
+ * Komponen harga kepuasan penumpang: tarif parkir pengantar bila lahan parkir
+ * ada. Penumpang sendiri tidak membayar terminal, jadi tanpa lahan parkir
+ * komponen ini penuh.
  */
-export function skorHargaPenumpang(t: NilaiTarif, ada: { readonly parkir: boolean; readonly toilet: boolean }, cfg: KonfigEkonomi = EKONOMI): number {
-  const r: number[] = [rasioTarif('layanan', t, cfg)];
-  if (ada.parkir) r.push(rasioTarif('parkir', t, cfg));
-  if (ada.toilet) r.push(rasioTarif('toilet', t, cfg));
-  return skorTarif(rataRata(r), cfg.tycoon.kepuasan.harga);
+export function skorHargaPenumpang(t: NilaiTarif, ada: { readonly parkir: boolean }, cfg: KonfigEkonomi = EKONOMI): number {
+  return ada.parkir ? skorTarif(rasioTarif('parkir', t, cfg), cfg.tycoon.kepuasan.harga) : 1;
 }
 
 /** Skor tarif bagi mitra PO: sewa jendela loket, dan retribusi bus bila dipungut. */

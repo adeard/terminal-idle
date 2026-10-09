@@ -8,8 +8,8 @@
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { PO_IDS, type PoId } from '../sim/fitur';
-import { biayaDaftarPo } from '../sim/mitra';
-import { biayaBangunState, poTujuanJendela, syaratDaftarPoKurang, type GameState } from '../sim/state';
+import { urutanPo } from '../sim/mitra';
+import { biayaBangunState, poTujuanJendela, syaratDaftarPoKurang, tawaranKontrakPo, type GameState } from '../sim/state';
 
 export type IdLangkahTutorial = 'jendela' | 'po' | 'petugas' | 'jalur';
 /**
@@ -54,23 +54,23 @@ export function cocokUntukTutorial(s: GameState, cfg: KonfigEkonomi = EKONOMI): 
 export type SasaranTutorial =
   /** po: PO yang menyewa jendela baru (null bila belum ada PO). */
   | { readonly jenis: 'jendela'; readonly po: PoId | null; readonly biaya: number }
-  | { readonly jenis: 'po'; readonly po: PoId; readonly biaya: number }
+  /** nilai: kontrak yang dibayar PO di muka saat bergabung. */
+  | { readonly jenis: 'po'; readonly po: PoId; readonly biaya: number; readonly nilai: number }
   | { readonly jenis: 'petugas'; readonly biaya: number }
   | { readonly jenis: 'jalur'; readonly biaya: number };
 
-/** PO termurah dari daftar (seri: urutan PO_IDS). */
-const termurah = (daftar: readonly PoId[], cfg: KonfigEkonomi): PoId => daftar.reduce((a, b) => (biayaDaftarPo(b, cfg) < biayaDaftarPo(a, cfg) ? b : a));
-
 /**
- * PO yang disarankan untuk didaftarkan: yang termurah di antara yang syaratnya
- * sudah terpenuhi (tinggal kasnya). Cadangan bila tidak ada (mis. semuanya
- * sedang jeda setelah diputus): PO biasa termurah yang belum terdaftar.
+ * PO yang disarankan untuk didaftarkan: yang pertama (urut katalog PO, sama
+ * dengan daftar di tab PO) di antara yang syaratnya sudah terpenuhi. Cadangan
+ * bila tidak ada (mis. semuanya sedang jeda setelah diputus): PO biasa pertama
+ * yang belum terdaftar.
  */
 function poTutorial(s: GameState, cfg: KonfigEkonomi): PoId {
-  const bisa = PO_IDS.filter((id) => syaratDaftarPoKurang(s, id, cfg) === null);
-  if (bisa.length > 0) return termurah(bisa, cfg);
-  const biasa = PO_IDS.filter((id) => cfg.mitra.po[id].sumber === undefined && !s.mitra.terdaftar.some((p) => p.id === id));
-  return termurah(biasa.length > 0 ? biasa : PO_IDS, cfg);
+  const urut = [...PO_IDS].sort((a, b) => urutanPo(a, cfg) - urutanPo(b, cfg));
+  const bisa = urut.filter((id) => syaratDaftarPoKurang(s, id, cfg) === null);
+  if (bisa.length > 0) return bisa[0]!;
+  const biasa = urut.filter((id) => cfg.mitra.po[id].sumber === undefined && !s.mitra.terdaftar.some((p) => p.id === id));
+  return (biasa.length > 0 ? biasa : urut)[0]!;
 }
 
 export function sasaranLangkah(id: IdLangkahTutorial, s: GameState, cfg: KonfigEkonomi = EKONOMI): SasaranTutorial {
@@ -79,7 +79,7 @@ export function sasaranLangkah(id: IdLangkahTutorial, s: GameState, cfg: KonfigE
       return { jenis: 'jendela', po: poTujuanJendela(s, cfg), biaya: biayaBangunState(s, 'jendela', cfg) ?? 0 };
     case 'po': {
       const po = poTutorial(s, cfg);
-      return { jenis: 'po', po, biaya: biayaDaftarPo(po, cfg) };
+      return { jenis: 'po', po, biaya: 0, nilai: tawaranKontrakPo(s, po, cfg).nilai };
     }
     case 'petugas':
       // Rekrut tanpa biaya sekali bayar: gajinya dibayar per hari.

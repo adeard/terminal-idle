@@ -34,18 +34,17 @@ import {
 import { keuanganPerJam, majukanKas, type KeuanganJam, type RincianBiaya, type RincianPendapatan } from './keuangan';
 import { kelasDariLevel, levelTerminalDariXp, slotPo } from './level-terminal';
 import {
-  biayaDaftarPo,
-  hariKontrakPertama,
   jurusanDilayaniPo,
   kelasAktif,
   kelasBusDioperasikan,
   levelPoDariXp,
   majukanReputasi,
-  sisaSetelahPerpanjang,
   syaratDaftarKurang,
+  tawaranKontrak,
   targetReputasi,
   tingkatPo,
   type SyaratDaftarKurang,
+  type TawaranKontrak,
 } from './mitra';
 import { hitungOperasi, multTeknologi, retribusiDipungut, type AreaId, type HasilOperasi, type KeadaanOperasi, type KepuasanTycoon } from './operasi';
 import { SYARAT_PENCAPAIAN } from './pencapaian';
@@ -132,12 +131,18 @@ export interface PoTerdaftar {
   readonly reputasi: number;
   /** Sisa kontrak (detik main). Hari terminal berhenti saat game ditutup, kontrak juga. */
   readonly kontrakDetik: number;
+  /** Kontrak yang sedang berjalan: panjangnya (hari terminal) & nilai yang dibayar PO di muka (Rp). */
+  readonly kontrakHari: number;
+  readonly nilaiKontrak: number;
+  /** Banyaknya kontrak yang sudah ditandatangani PO ini (menentukan tawaran berikutnya). */
+  readonly kontrakKe: number;
 }
 
 /** PO yang pernah terdaftar lalu keluar: daftar ulang melanjutkan dari sini. */
 export interface RiwayatPo {
   readonly xp: number;
   readonly reputasi: number;
+  readonly kontrakKe: number;
 }
 
 export interface MitraState {
@@ -282,28 +287,40 @@ export function buatTerminalAwal(cfg: KonfigEkonomi = EKONOMI): TerminalState {
   };
 }
 
-/** PO baru terdaftar dengan sekian jendela loket; riwayat (bila pernah terdaftar) dilanjutkan. */
-export function buatPoTerdaftar(id: PoId, loket: number, cfg: KonfigEkonomi = EKONOMI, riwayat?: RiwayatPo): PoTerdaftar {
+/** Kontrak yang ditandatangani: tawaran PO & urutannya (1 = kontrak pertama). */
+export interface KontrakBaru extends TawaranKontrak {
+  readonly ke: number;
+}
+
+/** PO baru terdaftar dengan sekian jendela loket & kontraknya; riwayat (bila pernah terdaftar) dilanjutkan. */
+export function buatPoTerdaftar(id: PoId, loket: number, kontrak: KontrakBaru, cfg: KonfigEkonomi = EKONOMI, riwayat?: RiwayatPo): PoTerdaftar {
   return {
     id,
     xp: riwayat?.xp ?? 0,
     loket,
     reputasi: riwayat?.reputasi ?? tingkatPo(id, cfg).reputasiAwal,
-    kontrakDetik: hariKontrakPertama(id, cfg) * DETIK_SEHARI,
+    kontrakDetik: kontrak.hari * DETIK_SEHARI,
+    kontrakHari: kontrak.hari,
+    nilaiKontrak: kontrak.nilai,
+    kontrakKe: kontrak.ke,
   };
 }
 
-/** Game baru: PO awal (EKONOMI.mitra sumber 'awal') menyewa satu-satunya jendela loket. */
+/**
+ * Game baru: PO awal (EKONOMI.mitra sumber 'awal') menyewa satu-satunya jendela
+ * loket. Kontrak pertamanya sudah termasuk modal awal (tidak dibayar lagi);
+ * perpanjangannya dibayar seperti PO lain.
+ */
 export function buatMitraAwal(cfg: KonfigEkonomi = EKONOMI): MitraState {
   const awal = PO_IDS.filter((id) => cfg.mitra.po[id].sumber === 'awal');
-  return { terdaftar: awal.map((id) => buatPoTerdaftar(id, 1, cfg)), riwayat: {}, jedaSampai: {}, hadiahEvent: [] };
+  return { terdaftar: awal.map((id) => buatPoTerdaftar(id, 1, { hari: tawaranKontrak(id, 0, 1, 0, cfg).hari, nilai: 0, ke: 1 }, cfg)), riwayat: {}, jedaSampai: {}, hadiahEvent: [] };
 }
 
 export function buatBukuHarian(hariKe: number): BukuHarian {
   return {
     hariKe,
-    pendapatan: { layanan: 0, sewaLoket: 0, retribusi: 0, parkir: 0, toilet: 0, sewaKios: 0 },
-    biaya: { gaji: 0, perawatan: 0, listrik: 0, gedung: 0 },
+    pendapatan: { kontrak: 0, sewaLoket: 0, retribusi: 0, parkir: 0, sewaKios: 0 },
+    biaya: { gaji: 0, perawatan: 0, listrik: 0, gedung: 0, kompensasi: 0 },
     penumpang: 0,
   };
 }
@@ -475,11 +492,10 @@ function kaliPendapatan(keu: KeuanganJam, f: number): KeuanganJam {
   if (f === 1) return keu;
   const p = keu.pendapatan;
   const pendapatan: RincianPendapatan = {
-    layanan: p.layanan * f,
+    kontrak: p.kontrak * f,
     sewaLoket: p.sewaLoket * f,
     retribusi: p.retribusi * f,
     parkir: p.parkir * f,
-    toilet: p.toilet * f,
     sewaKios: p.sewaKios * f,
   };
   const totalPendapatan = keu.totalPendapatan * f;
@@ -522,13 +538,24 @@ export interface AcuanHarian {
   readonly pendapatan: number;
   readonly biaya: number;
   readonly laba: number;
+  /**
+   * Nilai kontrak PO yang sedang berjalan, dirata-rata per jam (Rp): bukan arus
+   * kas (dibayar di muka), jadi tidak termasuk pendapatan & laba di atas; dipakai
+   * hadiah, target tantangan, laporan rata-rata, & laba offline.
+   */
+  readonly kontrak: number;
   /** Kepuasan penumpang & kepuasan mitra PO terendah (1 bila tanpa PO). */
   readonly kepuasan: number;
   readonly kepuasanMitraMin: number;
 }
 
-/** Acuan terakhir yang dihitung (beberapa keadaan sekaligus: tarif bawaan, tarif pemain, saran). */
-const cacheAcuan = new Map<string, AcuanHarian>();
+/** Acuan terakhir yang dihitung (beberapa keadaan sekaligus: tarif bawaan, tarif pemain, saran), tanpa kontrak. */
+const cacheAcuan = new Map<string, Omit<AcuanHarian, 'kontrak'>>();
+
+/** Nilai kontrak PO yang berjalan, dirata-rata per jam terminal (Rp). */
+export function kontrakPerJam(state: GameState): number {
+  return state.mitra.terdaftar.reduce((a, p) => a + (p.kontrakHari > 0 ? p.nilaiKontrak / p.kontrakHari : 0), 0) / 24;
+}
 const MAKS_CACHE_ACUAN = 16;
 
 function kunciAcuan(k: KeadaanOperasi): string {
@@ -547,8 +574,9 @@ function kunciAcuan(k: KeadaanOperasi): string {
 export function acuanHarian(state: GameState, cfg: KonfigEkonomi = EKONOMI, tarif: NilaiTarif = tarifBawaan(cfg)): AcuanHarian {
   const k = keadaanOperasi(state, cfg, tarif);
   const kunci = cfg === EKONOMI ? kunciAcuan(k) : null;
+  const kontrak = kontrakPerJam(state);
   const tersimpan = kunci !== null ? cacheAcuan.get(kunci) : undefined;
-  if (tersimpan) return tersimpan;
+  if (tersimpan) return { ...tersimpan, kontrak };
   let arus = 0;
   let pendapatan = 0;
   let biaya = 0;
@@ -565,7 +593,7 @@ export function acuanHarian(state: GameState, cfg: KonfigEkonomi = EKONOMI, tari
     kepuasan = op.kepuasan.nilai;
     for (const p of op.po) kepuasanMitraMin = Math.min(kepuasanMitraMin, p.kepuasanMitra);
   }
-  const hasil: AcuanHarian = {
+  const hasil: Omit<AcuanHarian, 'kontrak'> = {
     arus: arus / 24,
     arusPo: arusPo.map((x) => x / 24),
     pendapatan: pendapatan / 24,
@@ -578,12 +606,17 @@ export function acuanHarian(state: GameState, cfg: KonfigEkonomi = EKONOMI, tari
     if (cacheAcuan.size >= MAKS_CACHE_ACUAN) cacheAcuan.delete(cacheAcuan.keys().next().value!);
     cacheAcuan.set(kunci, hasil);
   }
-  return hasil;
+  return { ...hasil, kontrak };
 }
 
-/** Hadiah "N menit laba" = N jam terminal laba rata-rata (tarif bawaan), paling sedikit N × hadiah.minPerMenit. */
+/** Laba rata-rata per jam termasuk kontrak PO (dirata-rata): dasar hadiah & target tantangan. */
+export function labaDenganKontrak(a: AcuanHarian): number {
+  return a.laba + a.kontrak;
+}
+
+/** Hadiah "N menit laba" = N jam terminal laba rata-rata (tarif bawaan, termasuk kontrak PO), paling sedikit N × hadiah.minPerMenit. */
 export function hadiahMenit(state: GameState, menit: number, cfg: KonfigEkonomi = EKONOMI): number {
-  return Math.floor(Math.max(acuanHarian(state, cfg).laba, cfg.hadiah.minPerMenit) * menit);
+  return Math.floor(Math.max(labaDenganKontrak(acuanHarian(state, cfg)), cfg.hadiah.minPerMenit) * menit);
 }
 
 // ---------------------------------------------------------------------------
@@ -1018,28 +1051,74 @@ export function syaratDaftarPoKurang(state: GameState, id: PoId, cfg: KonfigEkon
 }
 
 export function bisaDaftarPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): boolean {
-  return syaratDaftarPoKurang(state, id, cfg) === null && state.kas >= biayaDaftarPo(id, cfg);
+  return syaratDaftarPoKurang(state, id, cfg) === null;
 }
 
 /**
- * Daftarkan PO: menempati slot dan langsung menyewa jendela loket bawaannya.
- * Jendela kosong dipakai lebih dulu; kekurangannya dibangun PO sendiri di slot
- * kosong (pemain tidak membayar, tapi tetap merawatnya). Riwayat dilanjutkan.
+ * Kontrak yang ditawarkan PO ini sekarang: perpanjangan bila sudah terdaftar,
+ * atau kontrak bergabung (melanjutkan riwayatnya). Panjang & nilainya lihat
+ * tawaranKontrak di mitra.ts; nilainya dibayar PO di muka saat ditandatangani.
+ */
+export function tawaranKontrakPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): TawaranKontrak {
+  const kelas = kelasTerminal(state, cfg);
+  const p = cariPo(state, id);
+  if (p) return tawaranKontrak(id, p.kontrakKe, levelPoDariXp(p.xp, cfg), kelas, cfg);
+  const r = state.mitra.riwayat[id];
+  return tawaranKontrak(id, r?.kontrakKe ?? 0, levelPoDariXp(r?.xp ?? 0, cfg), kelas, cfg);
+}
+
+/** Uang masuk dari kontrak PO (dibayar di muka): kas, buku harian, statistik, & kemajuan laba (target & tantangan). */
+function terimaKontrak(state: GameState, nilai: number): GameState {
+  if (!(nilai > 0)) return state;
+  const k = state.keuangan;
+  return {
+    ...state,
+    kas: state.kas + nilai,
+    keuangan: { ...k, hariIni: { ...k.hariIni, pendapatan: { ...k.hariIni.pendapatan, kontrak: k.hariIni.pendapatan.kontrak + nilai } } },
+    statistik: { ...state.statistik, totalPendapatan: state.statistik.totalPendapatan + nilai },
+    tantangan: state.tantangan.minggu === null ? state.tantangan : tambahProgresTantangan(state.tantangan, 'laba', nilai),
+    harian: state.harian.jenis === 'laba' ? tambahProgres(state.harian, nilai) : state.harian,
+  };
+}
+
+/** Uang keluar untuk kompensasi putus kontrak: kebalikan terimaKontrak. */
+function bayarKompensasi(state: GameState, nilai: number): GameState {
+  if (!(nilai > 0)) return state;
+  const k = state.keuangan;
+  return {
+    ...state,
+    kas: kurangiKas(state.kas, nilai),
+    keuangan: { ...k, hariIni: { ...k.hariIni, biaya: { ...k.hariIni.biaya, kompensasi: k.hariIni.biaya.kompensasi + nilai } } },
+    statistik: { ...state.statistik, totalBiaya: state.statistik.totalBiaya + nilai },
+    tantangan: state.tantangan.minggu === null ? state.tantangan : tambahProgresTantangan(state.tantangan, 'laba', -nilai),
+    harian: state.harian.jenis === 'laba' ? tambahProgres(state.harian, -nilai) : state.harian,
+  };
+}
+
+/**
+ * Daftarkan PO: menempati slot, langsung menyewa jendela loket bawaannya, dan
+ * membayar nilai kontrak pertamanya di muka. Jendela kosong dipakai lebih
+ * dulu; kekurangannya dibangun PO sendiri di slot kosong (pemain tidak
+ * membayar, tapi tetap merawatnya). Riwayat dilanjutkan.
  */
 export function daftarPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): GameState {
   if (!bisaDaftarPo(state, id, cfg)) return state;
+  const tawaran = tawaranKontrakPo(state, id, cfg);
   const j = jendelaPoBaru(state, id, cfg);
   const riwayat = { ...state.mitra.riwayat };
   const lama = riwayat[id];
   delete riwayat[id];
-  const mitra: MitraState = { ...state.mitra, riwayat, terdaftar: [...state.mitra.terdaftar, buatPoTerdaftar(id, j.dariKosong + j.dibangun, cfg, lama)] };
+  const po = buatPoTerdaftar(id, j.dariKosong + j.dibangun, { ...tawaran, ke: (lama?.kontrakKe ?? 0) + 1 }, cfg, lama);
+  const mitra: MitraState = { ...state.mitra, riwayat, terdaftar: [...state.mitra.terdaftar, po] };
   const b = state.terminal.bangunan;
-  return {
-    ...state,
-    kas: kurangiKas(state.kas, biayaDaftarPo(id, cfg)),
-    mitra,
-    terminal: j.dibangun > 0 ? { ...state.terminal, bangunan: { ...b, jendela: b.jendela + j.dibangun } } : state.terminal,
-  };
+  return terimaKontrak(
+    {
+      ...state,
+      mitra,
+      terminal: j.dibangun > 0 ? { ...state.terminal, bangunan: { ...b, jendela: b.jendela + j.dibangun } } : state.terminal,
+    },
+    tawaran.nilai,
+  );
 }
 
 /** PO keluar (putus atau kontrak habis): jendelanya jadi kosong, data PO disimpan di riwayat. */
@@ -1047,31 +1126,42 @@ function keluarkanPo(state: GameState, id: PoId, putus: boolean, cfg: KonfigEkon
   const p = cariPo(state, id);
   if (!p) return state;
   const k = cfg.mitra.kontrak;
-  const riwayat = { ...state.mitra.riwayat, [id]: { xp: p.xp, reputasi: Math.max(0, p.reputasi - (putus ? k.penaltiReputasiPutus : 0)) } };
+  const riwayat = { ...state.mitra.riwayat, [id]: { xp: p.xp, reputasi: Math.max(0, p.reputasi - (putus ? k.penaltiReputasiPutus : 0)), kontrakKe: p.kontrakKe } };
   const jedaSampai = putus ? { ...state.mitra.jedaSampai, [id]: state.statistik.waktuMainDetik + k.jedaPutusHari * DETIK_SEHARI } : state.mitra.jedaSampai;
   return { ...state, mitra: { ...state.mitra, riwayat, jedaSampai, terdaftar: state.mitra.terdaftar.filter((x) => x.id !== id) } };
 }
 
-/** PO terakhir tidak bisa diputus: terminal selalu punya minimal satu PO. */
-export function bisaPutusPo(state: GameState, id: PoId): boolean {
-  return cariPo(state, id) !== undefined && state.mitra.terdaftar.length > 1;
+/** Sisa nilai kontrak PO ini (pro-rata sisa harinya) yang dikembalikan bila diputus sekarang (Rp). */
+export function pengembalianPutus(p: PoTerdaftar): number {
+  if (!(p.nilaiKontrak > 0) || !(p.kontrakHari > 0)) return 0;
+  return Math.round(p.nilaiKontrak * Math.min(1, Math.max(0, p.kontrakDetik) / (p.kontrakHari * DETIK_SEHARI)));
 }
 
-/** Putus kontrak: gratis, PO langsung keluar, reputasinya turun, dan tidak bisa didaftarkan lagi selama masa jeda. */
-export function putusPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): GameState {
-  if (!bisaPutusPo(state, id)) return state;
-  return keluarkanPo(state, id, true, cfg);
+/** PO terakhir tidak bisa diputus (terminal selalu punya minimal satu PO), dan kas harus cukup untuk mengembalikan sisa nilai kontraknya. */
+export function bisaPutusPo(state: GameState, id: PoId): boolean {
+  const p = cariPo(state, id);
+  return p !== undefined && state.mitra.terdaftar.length > 1 && state.kas >= pengembalianPutus(p);
 }
 
 /**
- * Kenapa kontrak PO ini tidak bisa diperpanjang sekarang (null = bisa):
- * sisanya sudah paling panjang, kepuasan mitranya di bawah batas, atau (PO
- * premium) kepuasan penumpang di bawah syaratnya. Perpanjangan gratis.
+ * Putus kontrak: sisa nilai kontraknya dikembalikan ke PO (pro-rata), PO
+ * langsung keluar, reputasinya turun, dan tidak mau didaftarkan lagi selama masa jeda.
  */
-export type KurangPerpanjang = 'penuh' | 'mitra' | 'kepuasan';
+export function putusPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (!bisaPutusPo(state, id)) return state;
+  return keluarkanPo(bayarKompensasi(state, pengembalianPutus(cariPo(state, id)!)), id, true, cfg);
+}
+
+/**
+ * Kenapa kontrak PO ini tidak bisa diperpanjang sekarang (null = bisa): PO
+ * belum menawarkan perpanjangan (sisa kontrak masih di atas hariTawaran),
+ * kepuasan mitranya di bawah batas, atau (PO premium) kepuasan penumpang di
+ * bawah syaratnya. Perpanjangan dibayar PO di muka (lihat tawaranKontrakPo).
+ */
+export type KurangPerpanjang = 'belum' | 'mitra' | 'kepuasan';
 
 function kurangPerpanjang(state: GameState, p: PoTerdaftar, kepuasanMitra: number, cfg: KonfigEkonomi): KurangPerpanjang | null {
-  if (p.kontrakDetik >= cfg.mitra.kontrak.hariMaks * DETIK_SEHARI - 1e-6) return 'penuh';
+  if (p.kontrakDetik > cfg.mitra.kontrak.hariTawaran * DETIK_SEHARI + 1e-6) return 'belum';
   if (kepuasanMitra < cfg.tycoon.mitra.minimal) return 'mitra';
   const min = cfg.mitra.po[p.id].kepuasanMin;
   if (min !== undefined && kepuasanTerminal(state, cfg).nilai < min) return 'kepuasan';
@@ -1080,7 +1170,7 @@ function kurangPerpanjang(state: GameState, p: PoTerdaftar, kepuasanMitra: numbe
 
 export function kurangPerpanjangPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): KurangPerpanjang | null {
   const p = cariPo(state, id);
-  if (!p) return 'penuh';
+  if (!p) return 'belum';
   return kurangPerpanjang(state, p, kepuasanMitraPo(state, id, cfg) ?? 0, cfg);
 }
 
@@ -1088,8 +1178,14 @@ export function bisaPerpanjangPo(state: GameState, id: PoId, cfg: KonfigEkonomi 
   return cariPo(state, id) !== undefined && kurangPerpanjangPo(state, id, cfg) === null;
 }
 
+/** Terima tawaran perpanjangan PO: kontrak baru menyambung sisa kontrak lama, nilainya dibayar di muka. */
 function perpanjang(state: GameState, id: PoId, cfg: KonfigEkonomi): GameState {
-  return { ...state, mitra: gantiPo(state, id, (p) => ({ ...p, kontrakDetik: sisaSetelahPerpanjang(p.kontrakDetik / DETIK_SEHARI, cfg) * DETIK_SEHARI })) };
+  const t = tawaranKontrakPo(state, id, cfg);
+  const s = {
+    ...state,
+    mitra: gantiPo(state, id, (p) => ({ ...p, kontrakDetik: Math.max(0, p.kontrakDetik) + t.hari * DETIK_SEHARI, kontrakHari: t.hari, nilaiKontrak: t.nilai, kontrakKe: p.kontrakKe + 1 })),
+  };
+  return terimaKontrak(s, t.nilai);
 }
 
 export function perpanjangPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EKONOMI): GameState {
@@ -1097,8 +1193,8 @@ export function perpanjangPo(state: GameState, id: PoId, cfg: KonfigEkonomi = EK
 }
 
 /**
- * Kontrak yang habis: PO keluar, kecuali PO terakhir (diperpanjang gratis supaya
- * terminal tidak pernah tanpa PO).
+ * Kontrak yang habis: PO keluar, kecuali PO terakhir (menerima tawaran
+ * perpanjangannya apa pun syaratnya, supaya terminal tidak pernah tanpa PO).
  */
 function urusKontrak(state: GameState, cfg: KonfigEkonomi): GameState {
   if (!state.mitra.terdaftar.some((p) => p.kontrakDetik <= 0)) return state;
@@ -1106,7 +1202,7 @@ function urusKontrak(state: GameState, cfg: KonfigEkonomi): GameState {
   for (const p of state.mitra.terdaftar) {
     if (p.kontrakDetik > 0) continue;
     if (s.mitra.terdaftar.length > 1) s = keluarkanPo(s, p.id, false, cfg);
-    else s = { ...s, mitra: gantiPo(s, p.id, (x) => ({ ...x, kontrakDetik: x.kontrakDetik + cfg.mitra.kontrak.hari * DETIK_SEHARI })) };
+    else s = perpanjang(s, p.id, cfg);
   }
   return s;
 }
@@ -1217,8 +1313,10 @@ interface HasilOffline {
  * terminal berhenti, jadi dihitung dari rata-rata hari biasa: pendapatan ×
  * efisiensi (tidak pernah melebihi hasil tarif bawaan, supaya tarif ekstrem
  * tidak bisa dipakai menimbun uang saat pergi; boost yang tersisa ikut berjalan)
- * dikurangi biaya penuh. Kas tetap tidak minus: bila habis, petugas berhenti
- * satu per satu dan biayanya ikut turun.
+ * ditambah nilai kontrak PO yang dirata-rata × efisiensi (tanpa boost), dikurangi
+ * biaya penuh. Kontrak adalah pendapatan utama terminal, jadi tanpa itu laba
+ * offline bisa nol atau minus. Kas tetap tidak minus: bila habis, petugas
+ * berhenti satu per satu dan biayanya ikut turun.
  */
 function jalankanOffline(state: GameState, detik: number, cfg: KonfigEkonomi): HasilOffline {
   const efisiensi = cfg.tycoon.offline.efisiensi;
@@ -1242,7 +1340,7 @@ function jalankanOffline(state: GameState, detik: number, cfg: KonfigEkonomi): H
   while (jalan < totalJam - 1e-9 && adaManajerOperasional(s)) {
     const a = acuanHarian(s, cfg, s.terminal.tarif);
     const boost = jalan < jamBoost - 1e-9;
-    const pendapatanJam = Math.min(a.pendapatan, acuanHarian(s, cfg).pendapatan) * efisiensi * (boost ? cfg.hadiah.pengaliBoost : 1);
+    const pendapatanJam = (Math.min(a.pendapatan, acuanHarian(s, cfg).pendapatan) * (boost ? cfg.hadiah.pengaliBoost : 1) + a.kontrak) * efisiensi;
     const durasi = (boost ? Math.min(totalJam, jamBoost) : totalJam) - jalan;
     const labaJam = pendapatanJam - a.biaya;
     const k = majukanKas(kas, labaJam, durasi, tunggakan);
@@ -1466,7 +1564,7 @@ function targetTantangan(state: GameState, jenis: JenisTantangan, cfg: KonfigEko
     case 'penumpang':
       return bulatkanTarget((Math.max(10, a.arus) * t.penumpangDetik) / WAKTU.detikPerJam);
     case 'laba':
-      return bulatkanTarget((Math.max(a.laba, cfg.hadiah.minPerMenit) * t.labaDetik) / WAKTU.detikPerJam);
+      return bulatkanTarget((Math.max(labaDenganKontrak(a), cfg.hadiah.minPerMenit) * t.labaDetik) / WAKTU.detikPerJam);
     case 'bangun':
       return t.bangun;
     case 'kepuasan':

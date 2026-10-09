@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { acakBerbenih, DuniaVisual, type JenisTransaksi, type TransaksiVisual } from '../src/game/dunia-visual';
-import { bulatkanPop, JENIS_TRANSAKSI, KasVisual, lajuUangState, LOMPATAN_MAKS_DETIK, POP_MIN, type LajuUang, type PopUang } from '../src/game/kas-visual';
+import { bulatkanPop, JENIS_UANG, KasVisual, lajuUangState, LOMPATAN_MAKS_DETIK, POP_MIN, type JenisPopUang, type LajuUang, type PopUang } from '../src/game/kas-visual';
 import { hitungLajuVisual, terapkanRitme } from '../src/game/laju';
 import { LOKET, PARKIR_SERONG, X_LOKET } from '../src/game/tata-letak';
 import { tick, type GameState } from '../src/sim/state';
 import { denganPo, stateOtomatis } from './helpers';
 
-const laju = (l: Partial<Record<JenisTransaksi, number>>): LajuUang => ({ tiket: l.tiket ?? 0, retribusi: l.retribusi ?? 0, parkir: l.parkir ?? 0, belanja: l.belanja ?? 0 });
+const laju = (l: Partial<Record<JenisPopUang, number>>): LajuUang => ({ retribusi: l.retribusi ?? 0, parkir: l.parkir ?? 0, belanja: l.belanja ?? 0 });
 const tx = (jenis: JenisTransaksi, x = 0, y = 0): TransaksiVisual => ({ jenis, x, y });
 /** Sisa yang belum tampil tidak lebih dari sekian kali "+Rp" rata-rata. */
 const TRANSAKSI_BATAS = 12;
@@ -15,7 +15,7 @@ const jumlah = (pop: readonly PopUang[], jenis?: string): number => pop.filter((
 describe('KasVisual: uang sim dibagikan ke transaksi yang terlihat', () => {
   it('besar "+Rp" stabil mengikuti rata-rata transaksi walau datangnya tak teratur; totalnya = uang yang masuk', () => {
     const kas = new KasVisual();
-    const l = laju({ tiket: 10, retribusi: 4 });
+    const l = laju({ parkir: 10, retribusi: 4 });
     kas.perbarui(0, 0, l, []);
     const pop: PopUang[] = [];
     // Tiket terjual bergantian 0,2 & 0,8 detik (rata-rata 2 per detik); retribusi tak pernah ada transaksinya.
@@ -29,12 +29,12 @@ describe('KasVisual: uang sim dibagikan ke transaksi yang terlihat', () => {
         berikut += selang;
         selang = selang > 0.5 ? 0.2 : 0.8;
       }
-      pop.push(...kas.perbarui(t, 0.1, l, ada ? [tx('tiket', 5, 6)] : []));
+      pop.push(...kas.perbarui(t, 0.1, l, ada ? [tx('parkir', 5, 6)] : []));
     }
-    expect(pop.every((p) => p.jenis === 'tiket' && p.x === 5 && p.y === 6)).toBe(true);
+    expect(pop.every((p) => p.jenis === 'parkir' && p.x === 5 && p.y === 6)).toBe(true);
     const stabil = pop.slice(20).map((p) => p.jumlah);
     for (const x of stabil) expect(Math.abs(x - 5)).toBeLessThan(5 * 0.25);
-    expect(jumlah(pop) + kas.sisa('tiket')).toBeCloseTo(10 * t, 6);
+    expect(jumlah(pop) + kas.sisa('parkir')).toBeCloseTo(10 * t, 6);
     expect(kas.sisa('retribusi')).toBeCloseTo(4 * t, 6);
   });
 
@@ -45,7 +45,7 @@ describe('KasVisual: uang sim dibagikan ke transaksi yang terlihat', () => {
     expect(bulatkanPop(5.04)).toBeCloseTo(5, 9);
     expect(bulatkanPop(0)).toBe(0);
     const kas = new KasVisual();
-    const l = laju({ tiket: 6123.4 });
+    const l = laju({ parkir: 6123.4 });
     kas.perbarui(0, 0, l, []);
     const pop: PopUang[] = [];
     let t = 0;
@@ -53,15 +53,15 @@ describe('KasVisual: uang sim dibagikan ke transaksi yang terlihat', () => {
     for (let i = 1; i <= 1200; i++) {
       t = i / 10;
       const n = i % 10 === 0 ? (i % 70 === 0 ? 2 : 1) : 0;
-      pop.push(...kas.perbarui(t, 0.1, l, Array.from({ length: n }, () => tx('tiket'))));
+      pop.push(...kas.perbarui(t, 0.1, l, Array.from({ length: n }, () => tx('parkir'))));
     }
     const nilai = pop.slice(15).map((p) => p.jumlah);
     for (const x of nilai) expect(bulatkanPop(x)).toBeCloseTo(x, 6);
     // Tidak berganti tiap pembeli: kebanyakan sama dengan "+Rp" sebelumnya.
     const ganti = nilai.filter((x, i) => i > 0 && x !== nilai[i - 1]).length;
     expect(ganti).toBeLessThan(nilai.length / 10);
-    expect(jumlah(pop) + kas.sisa('tiket')).toBeCloseTo(6123.4 * t, 4);
-    expect(Math.abs(kas.sisa('tiket'))).toBeLessThan(TRANSAKSI_BATAS * 6123.4);
+    expect(jumlah(pop) + kas.sisa('parkir')).toBeCloseTo(6123.4 * t, 4);
+    expect(Math.abs(kas.sisa('parkir'))).toBeLessThan(TRANSAKSI_BATAS * 6123.4);
   });
 
   it('beberapa transaksi dalam satu frame mendapat bagian yang sama', () => {
@@ -87,13 +87,23 @@ describe('KasVisual: uang sim dibagikan ke transaksi yang terlihat', () => {
 
   it('lompatan waktu (muat save, tab tertidur) tidak dibagikan: sudah masuk laporan offline', () => {
     const kas = new KasVisual();
-    const l = laju({ tiket: 100 });
+    const l = laju({ parkir: 100 });
     kas.perbarui(0, 0, l, []);
     kas.perbarui(1, 1, l, []);
-    expect(kas.perbarui(1 + LOMPATAN_MAKS_DETIK + 60, 0.1, l, [tx('tiket')])).toEqual([]);
-    expect(kas.sisa('tiket')).toBe(0);
+    expect(kas.perbarui(1 + LOMPATAN_MAKS_DETIK + 60, 0.1, l, [tx('parkir')])).toEqual([]);
+    expect(kas.sisa('parkir')).toBe(0);
     // Mundur (ganti ke save yang lebih muda) juga diabaikan.
-    expect(kas.perbarui(5, 0.1, l, [tx('tiket')])).toEqual([]);
+    expect(kas.perbarui(5, 0.1, l, [tx('parkir')])).toEqual([]);
+  });
+
+  it('tiket di jendela loket bukan uang terminal (dibayar ke PO): tidak memunculkan "+Rp"', () => {
+    const kas = new KasVisual();
+    const l = laju({ retribusi: 50, parkir: 50, belanja: 50 });
+    kas.perbarui(0, 0, l, []);
+    const pop: PopUang[] = [];
+    for (let t = 1; t <= 60; t++) pop.push(...kas.perbarui(t, 1, l, [tx('tiket'), tx('tiket')]));
+    expect(pop).toEqual([]);
+    expect(JENIS_UANG).toEqual(['retribusi', 'parkir', 'belanja']);
   });
 
 });
@@ -126,8 +136,10 @@ describe('DuniaVisual: transaksi di keramaian', () => {
     const lajuVisual = { ...terapkanRitme(hitungLajuVisual(s), 1), jam: 12 };
     dunia.pemanasan(60, lajuVisual);
     kas.perbarui(s.statistik.waktuMainDetik, 0, lajuUangState(s), []);
-    for (const j of JENIS_TRANSAKSI) expect(lajuUangState(s)[j]).toBeGreaterThan(0);
+    for (const j of JENIS_UANG) expect(lajuUangState(s)[j]).toBeGreaterThan(0);
     const pendapatanAwal = s.statistik.totalPendapatan;
+    // Sewa jendela loket (harian dari PO) tidak dimunculkan sebagai "+Rp".
+    const sewaLoketAwal = s.keuangan.hariIni.pendapatan.sewaLoket;
     const pop: PopUang[] = [];
     for (let i = 0; i < 1800; i++) {
       s = tick(s, 0.1);
@@ -137,12 +149,12 @@ describe('DuniaVisual: transaksi di keramaian', () => {
         pop.push(...kas.perbarui(s.statistik.waktuMainDetik, 0.1 / 6, lajuUangState(s), dunia.transaksi));
       }
     }
-    for (const j of JENIS_TRANSAKSI) expect(pop.some((p) => p.jenis === j)).toBe(true);
-    const tampil = JENIS_TRANSAKSI.reduce((a, j) => a + jumlah(pop, j) + kas.sisa(j), 0);
-    const masuk = s.statistik.totalPendapatan - pendapatanAwal;
+    for (const j of JENIS_UANG) expect(pop.some((p) => p.jenis === j)).toBe(true);
+    const tampil = JENIS_UANG.reduce((a, j) => a + jumlah(pop, j) + kas.sisa(j), 0);
+    const masuk = s.statistik.totalPendapatan - pendapatanAwal - (s.keuangan.hariIni.pendapatan.sewaLoket - sewaLoketAwal);
     expect(Math.abs(tampil - masuk)).toBeLessThan(masuk * 0.01);
     // Selisih yang belum tampil (lebih/kurang) tetap kecil: beberapa kali "+Rp" rata-rata.
-    for (const j of JENIS_TRANSAKSI) {
+    for (const j of JENIS_UANG) {
       const semua = pop.filter((p) => p.jenis === j);
       const rata = jumlah(semua) / Math.max(1, semua.length);
       expect(Math.abs(kas.sisa(j))).toBeLessThan(TRANSAKSI_BATAS * rata + 1);

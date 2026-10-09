@@ -113,7 +113,7 @@ export const PETUGAS_IDS = ['peron', 'gerbang', 'kebersihan', 'satpam', 'juruPar
 export type PetugasId = (typeof PETUGAS_IDS)[number];
 
 /** Tarif terminal yang diatur pemain (harga tiket diatur PO sendiri). */
-export const TARIF_IDS = ['layanan', 'sewaLoket', 'retribusiBus', 'parkir', 'toilet', 'sewaKios'] as const;
+export const TARIF_IDS = ['sewaLoket', 'retribusiBus', 'parkir', 'sewaKios'] as const;
 export type TarifId = (typeof TARIF_IDS)[number];
 
 export function isBangunanId(nilai: unknown): nilai is BangunanId {

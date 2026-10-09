@@ -10,22 +10,27 @@ import { retribusiDipungut, type HasilOperasi, type KeadaanOperasi } from './ope
 import { gajiHarian, hitungPetugas } from './petugas';
 import { bagianPemakai, okupansiKios } from './tarif';
 
-/** Rupiah per jam terminal. */
+/**
+ * Rupiah per jam terminal. Penumpang sendiri tidak membayar terminal: semua dari
+ * PO, pengantar yang parkir, & penyewa kios. `kontrak` = nilai kontrak PO yang
+ * dibayar di muka: selalu 0 di keuanganPerJam, dicatat langsung di buku harian
+ * saat diterima (lihat terimaKontrak di state.ts).
+ */
 export interface RincianPendapatan {
-  readonly layanan: number;
+  readonly kontrak: number;
   readonly sewaLoket: number;
   readonly retribusi: number;
   readonly parkir: number;
-  readonly toilet: number;
   readonly sewaKios: number;
 }
 
-/** Rupiah per jam terminal. */
+/** Rupiah per jam terminal. `kompensasi` = sisa nilai kontrak yang dikembalikan saat memutus PO (0 di keuanganPerJam, dicatat di buku). */
 export interface RincianBiaya {
   readonly gaji: number;
   readonly perawatan: number;
   readonly listrik: number;
   readonly gedung: number;
+  readonly kompensasi: number;
 }
 
 export interface KeuanganJam {
@@ -52,7 +57,6 @@ export function keuanganPerJam(k: KeadaanOperasi, op: HasilOperasi, malam: boole
   const tarif = k.tarif;
   const arus = Math.max(0, op.arus);
 
-  const layanan = op.segmen.reduce((a, s) => a + s.arus * s.harga, 0) * (tarif.layanan / 100);
   const sewaLoket = (k.po.reduce((a, p) => a + Math.max(0, p.loket), 0) * tarif.sewaLoket) / JAM_PER_HARI;
   // Tanpa petugasnya, separuh bus lolos dari retribusi dan separuh pengantar tidak membayar parkir.
   const terjaga = (unit: number, petugas: number): number => (unit > 0 ? 0.5 + 0.5 * Math.min(1, petugas / unit) : 0);
@@ -61,8 +65,6 @@ export function keuanganPerJam(k: KeadaanOperasi, op: HasilOperasi, malam: boole
     b.lahanParkir > 0
       ? Math.min(arus * bagianPemakai(tarif.parkir, t.tarif.parkir.bawaan, t.pengantar.bagian, t.pengantar.kepekaan), b.lahanParkir * t.pengantar.perUnit) * tarif.parkir * terjaga(b.lahanParkir, n.juruParkir)
       : 0;
-  const toilet =
-    b.toilet > 0 ? Math.min(arus * bagianPemakai(tarif.toilet, t.tarif.toilet.bawaan, t.pemakaiToilet.bagian, t.pemakaiToilet.kepekaan), b.toilet * t.pemakaiToilet.perUnit) * tarif.toilet : 0;
   const sewaKios = ((b.kios + b.toko) * okupansiKios(tarif.sewaKios, op.arusPuncak, cfg) * tarif.sewaKios) / JAM_PER_HARI;
 
   const pengali = pengaliBiayaKelas(k.kelasTerminal, cfg);
@@ -71,8 +73,9 @@ export function keuanganPerJam(k: KeadaanOperasi, op: HasilOperasi, malam: boole
     perawatan: (perawatanHarian(b, k.teknologi, cfg) * pengali) / JAM_PER_HARI,
     listrik: (b.jalur * t.listrik.perJalur * (malam ? t.listrik.pengaliMalam : 1) * pengali) / JAM_PER_HARI,
     gedung: operasionalGedung(k.perluasan, cfg) / JAM_PER_HARI,
+    kompensasi: 0,
   };
-  const pendapatan: RincianPendapatan = { layanan, sewaLoket, retribusi, parkir, toilet, sewaKios };
+  const pendapatan: RincianPendapatan = { kontrak: 0, sewaLoket, retribusi, parkir, sewaKios };
   const totalPendapatan = jumlah(pendapatan);
   const totalBiaya = jumlah(biaya);
   return { pendapatan, biaya, totalPendapatan, totalBiaya, laba: totalPendapatan - totalBiaya };

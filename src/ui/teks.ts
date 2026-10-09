@@ -29,7 +29,7 @@ export const NAMA_BANGUNAN: Readonly<Record<BangunanId, { readonly nama: string;
   kursi: { nama: 'Blok kursi', deskripsi: '60 kursi ruang tunggu: kenyamanan' },
   kios: { nama: 'Kios', deskripsi: 'Disewakan per hari: fasilitas & sewa kios' },
   toko: { nama: 'Minimarket & apotek', deskripsi: 'Toko di aula, disewakan per hari' },
-  toilet: { nama: 'Toilet & musholla', deskripsi: 'Pemakai membayar tarif toilet: fasilitas' },
+  toilet: { nama: 'Toilet & musholla', deskripsi: 'Gratis untuk penumpang: fasilitas & kebersihan' },
   lahanParkir: { nama: 'Lahan parkir kendaraan', deskripsi: 'Pengantar & penjemput membayar parkir' },
   posRetribusi: { nama: 'Pos retribusi', deskripsi: 'Tiap bus yang berangkat membayar retribusi' },
 };
@@ -49,21 +49,18 @@ export const NAMA_PETUGAS: Readonly<Record<PetugasId, { readonly nama: string; r
 
 /** Tarif terminal (tab Terminal): nama, cara menampilkan nilainya, dan efek bila dinaikkan. */
 export const NAMA_TARIF: Readonly<Record<TarifId, { readonly nama: string; readonly satuan: 'persen' | 'rupiah'; readonly per: string; readonly deskripsi: string }>> = {
-  layanan: { nama: 'Biaya layanan', satuan: 'persen', per: 'harga tiket', deskripsi: 'Lebih tinggi: calon penumpang berkurang' },
   sewaLoket: { nama: 'Sewa jendela loket', satuan: 'rupiah', per: 'hari', deskripsi: 'Lebih tinggi: kepuasan mitra PO turun' },
   retribusiBus: { nama: 'Retribusi bus', satuan: 'rupiah', per: 'bus', deskripsi: 'Butuh pos retribusi. Lebih tinggi: kepuasan mitra PO turun' },
   parkir: { nama: 'Parkir kendaraan', satuan: 'rupiah', per: 'kendaraan', deskripsi: 'Butuh lahan parkir. Lebih tinggi: pengantar yang parkir berkurang' },
-  toilet: { nama: 'Toilet', satuan: 'rupiah', per: 'orang', deskripsi: 'Butuh toilet. Lebih tinggi: pemakai berkurang' },
   sewaKios: { nama: 'Sewa kios & toko', satuan: 'rupiah', per: 'hari', deskripsi: 'Lebih tinggi dari keramaiannya: sebagian kosong' },
 };
 
 /** Sumber pendapatan & pos biaya (laporan keuangan). */
 export const NAMA_PENDAPATAN: Readonly<Record<keyof RincianPendapatan, string>> = {
-  layanan: 'Biaya layanan',
+  kontrak: 'Kontrak PO',
   sewaLoket: 'Sewa jendela loket',
   retribusi: 'Retribusi bus',
   parkir: 'Parkir kendaraan',
-  toilet: 'Toilet',
   sewaKios: 'Sewa kios & toko',
 };
 export const NAMA_BIAYA: Readonly<Record<keyof RincianBiaya, string>> = {
@@ -71,6 +68,7 @@ export const NAMA_BIAYA: Readonly<Record<keyof RincianBiaya, string>> = {
   perawatan: 'Perawatan',
   listrik: 'Listrik',
   gedung: 'Operasional gedung',
+  kompensasi: 'Kompensasi putus kontrak',
 };
 
 /** Mitra PO (semua nama fiktif) dan kota asalnya. */
@@ -221,9 +219,9 @@ export const TEKS = {
   satuanArus: 'pnp/jam',
   hudHariIni: (laba: string, penumpang: string) => `Hari ini ${laba} · ${penumpang} pnp`,
   hudHariIniRingkas: (laba: string) => `Hari ini ${laba}`,
-  arus: 'Arus',
+  hudDiTerminal: (n: string) => `Di terminal ${n} pnp`,
   petunjukManajer: 'Rekrut Manajer Operasional supaya terminal tetap jalan saat kamu pergi.',
-  petunjukKasMenipis: 'Kas menipis: terminal merugi. Kurangi petugas, ubah tarif, atau bongkar unit yang tidak terpakai.',
+  petunjukKasMenipis: 'Kas menipis: operasi terminal merugi sebelum kontrak PO berikutnya masuk. Kurangi petugas, ubah tarif, atau bongkar unit yang tidak terpakai.',
   // Tutorial terpandu (ui/tutorial.ts).
   tutorialSambutanJudul: 'Selamat datang, Kepala Terminal!',
   tutorialSambutan:
@@ -234,9 +232,10 @@ export const TEKS = {
   tutorialNomor: (ke: number, dari: number) => `Langkah ${ke}/${dari}`,
   tutorialJendelaJudul: 'Bangun jendela loket',
   tutorialJendela: (po: string) =>
-    `Terminalmu sudah berjalan dan uang masuk sendiri. Penumpang menumpuk di Loket, area yang paling lambat (lantainya berkedip merah): di tab Bangun, bangun jendela loket baru untuk ${po}.`,
+    `Terminalmu sudah berjalan. Penumpang menumpuk di Loket, area yang paling lambat (lantainya berkedip merah): di tab Bangun, bangun jendela loket baru untuk ${po}.`,
   tutorialPoJudul: 'Daftarkan PO kedua',
-  tutorialPo: (po: string) => `Mitra PO membawa jurusan & busnya sendiri. Di tab PO, daftarkan ${po}: jurusan baru menarik lebih banyak penumpang, dan PO baru langsung menyewa jendela loket.`,
+  tutorialPo: (po: string) => `Mitra PO membawa jurusan & busnya sendiri. Di tab PO, daftarkan ${po}: PO membayar kontraknya di muka, jurusan baru menarik lebih banyak penumpang, dan PO baru langsung menyewa jendela loket.`,
+  tutorialKontrak: (nilai: string) => `PO ini membayar kontrak ${nilai} di muka. Ketuk tombol yang berkedip.`,
   tutorialPetugasJudul: 'Rekrut petugas peron',
   tutorialPetugas: 'Kini Peron yang paling lambat. Di tab Petugas, rekrut petugas peron: halte kedatangan melayani 25% lebih banyak penumpang. Gajinya dibayar tiap hari dari kas.',
   tutorialJalurJudul: 'Bangun Jalur 2',
@@ -320,7 +319,7 @@ export const TEKS = {
   kepuasanSaranKeamanan: (ada: number, perlu: number) => `Satpam ${ada} dari ${perlu} (satu per jalur).`,
   kepuasanSaranFasilitas: (daftar: string) => `Belum ada: ${daftar}. Fasilitas yang ada juga perlu cukup untuk keramaiannya.`,
   kepuasanSaranFasilitasCukup: 'Tambah toilet, kios & toko, atau lahan parkir sesuai keramaian.',
-  kepuasanSaranHarga: 'Turunkan biaya layanan, tarif parkir, atau tarif toilet di tab Terminal.',
+  kepuasanSaranHarga: 'Turunkan tarif parkir di tab Terminal. Penumpang sendiri tidak membayar terminal.',
   kepuasanBaik: 'Sudah baik.',
   kepuasanCatatan:
     'Kepuasan dinilai dari jam sibuk. Makin puas, makin banyak calon penumpang datang dan reputasi semua PO naik. PO premium hanya mau bergabung & memperpanjang kontrak bila penumpangnya puas.',
@@ -378,16 +377,19 @@ export const TEKS = {
   poHargaJudul: 'Harga tiket Ekonomi (ditetapkan PO)',
   poJurusanLevel: (level: number) => `Terbuka di PO Lv ${level}`,
   poKontrak: (hari: string) => `Kontrak tersisa ${hari} hari`,
-  poKontrakPenuh: (hari: number) => `paling lama ${hari} hari`,
+  poTawaranBelum: (hari: number, tawaran: number) => `PO menawarkan perpanjangan ${tawaran} hari saat sisa kontrak ≤ ${hari} hari`,
+  poPerpanjangHari: (hari: number) => `Perpanjang ${hari} hari`,
+  kontrakHari: (hari: number) => `Kontrak ${hari} hari`,
+  uangMasuk: (nilai: string) => `+${nilai}`,
   poMenolak: (persen: number) => `Menolak perpanjang: butuh kepuasan penumpang ${persen}%`,
   poMenolakMitra: (persen: number) => `Menolak perpanjang: kepuasan mitra di bawah ${persen}%. Turunkan sewa loket atau retribusi`,
   perpanjang: 'Perpanjang',
   putus: 'Putus',
   putusYakin: 'Yakin putus?',
-  putusCatatan: (reputasi: number, hari: number) =>
-    `Putus kontrak gratis, tapi jendela loket PO ini jadi kosong, reputasinya −${reputasi}, dan baru bisa didaftarkan lagi ${hari} hari kemudian.`,
+  putusCatatan: (kembali: string, reputasi: number, hari: number) =>
+    `Putus kontrak: sisa nilai kontraknya (${kembali}) dikembalikan ke PO, jendela loketnya jadi kosong, reputasinya −${reputasi}, dan baru mau didaftarkan lagi ${hari} hari kemudian.`,
+  putusKurangKas: (kembali: string) => `Kas belum cukup untuk mengembalikan sisa nilai kontrak (${kembali}).`,
   judulPoTersedia: 'Daftarkan PO',
-  daftar: 'Daftar',
   poJurusanDaftar: (daftar: string) => `Jurusan ${daftar}`,
   poSlotPenuh: 'Slot PO penuh: naikkan level terminal',
   poJendelaPenuh: 'Slot jendela loket penuh: bangun perluasan terminal',
@@ -396,7 +398,7 @@ export const TEKS = {
   poRiwayat: (level: number) => `Pernah bergabung, lanjut dari Lv ${level}`,
   poHadiahKelas: (kelas: string) => `Hadiah Terminal ${kelas}`,
   poCatatan:
-    'Tiap PO punya jendela loket, jurusan, kelas bus, dan reputasinya sendiri, dan menetapkan harga tiketnya sendiri. Terminal memungut biaya layanan, sewa jendela, dan retribusi. Bus yang berangkat menaikkan level PO: jurusan & kelas busnya bertambah. Manajer Kemitraan menyewakan jendela kosong dan memperpanjang kontrak otomatis.',
+    'Tiap PO punya jendela loket, jurusan, kelas bus, dan reputasinya sendiri, dan menjual tiketnya sendiri (uang tiket untuk PO). Terminal menerima kontrak PO (dibayar di muka saat bergabung & tiap perpanjangan; panjangnya ditawarkan PO, nilainya naik dengan tingkat & level PO serta kelas terminal), sewa jendela, dan retribusi bus. Jumlah PO dibatasi slot yang bertambah seiring level terminal. Bus yang berangkat menaikkan level PO: jurusan & kelas busnya bertambah. Manajer Kemitraan menyewakan jendela kosong dan memperpanjang kontrak otomatis.',
   // Tab Terminal: level & kelas, perluasan, tarif, laporan keuangan, kelas bus.
   terminalXp: (ada: string, perlu: string) => `${ada} / ${perlu} penumpang`,
   terminalKelasBerikut: (kelas: string, level: number) => `Naik ke ${kelas} di Lv ${level}`,
@@ -415,9 +417,9 @@ export const TEKS = {
   tarifNaik: (nama: string) => `Naikkan ${nama}`,
   tarifPer: (per: string) => `per ${per}`,
   tarifBawaan: (nilai: string) => `bawaan ${nilai}`,
-  layananPerPenumpang: (rupiah: string, hargaTiket: string) => `≈ ${rupiah} per penumpang (tiket rata-rata ${hargaTiket}, ditetapkan PO)`,
+  popTiket: (n: number) => `+${n} tiket`,
   tarifCatatan:
-    'Harga tiket ditetapkan PO. Tarif lebih tinggi menambah pendapatan per penumpang, tapi menurunkan permintaan, pemakai parkir & toilet, okupansi kios, atau kepuasan mitra PO. Saran = tarif yang paling menguntungkan sehari, dengan mitra PO tetap mau memperpanjang kontrak.',
+    'Penumpang tidak membayar terminal: tiket dibeli dari PO, toilet & musholla gratis. Tarif lebih tinggi menambah pendapatan, tapi menurunkan pengantar yang parkir, okupansi kios, atau kepuasan mitra PO. Saran = tarif yang paling menguntungkan sehari, dengan mitra PO tetap mau memperpanjang kontrak.',
   keuanganJudul: 'Laporan keuangan',
   keuanganHariIni: (hari: string) => `Hari ini · ${hari}`,
   keuanganKemarin: (hari: string) => `Kemarin · ${hari}`,
@@ -431,7 +433,7 @@ export const TEKS = {
   kelasBusBeroperasi: 'Beroperasi',
   /** @param tingkat tingkat PO paling rendah; null bila semua tingkat boleh. */
   kelasBusSyarat: (tingkat: string | null, level: number) => (tingkat ? `Butuh PO ${tingkat} ke atas, Lv ${level}` : `Butuh PO Lv ${level}`),
-  kelasBusCatatan: 'Kelas bus terbuka seiring level PO, sampai batas tingkat PO-nya. Kelas yang lebih tinggi menaikkan harga tiket (dan biaya layanan terminal) serta reputasi PO.',
+  kelasBusCatatan: 'Kelas bus terbuka seiring level PO, sampai batas tingkat PO-nya. Kelas yang lebih tinggi menaikkan harga tiket PO serta reputasinya.',
   // Mode sinema (ui/sinema.ts).
   sinemaTombol: 'Mode sinema: rekam video timelapse',
   sinemaJudul: 'Mode sinema',
@@ -466,14 +468,14 @@ export const TEKS = {
   notifNaikKelas: (kelas: string) => `⭐ Selamat! Terminal naik ke ${kelas}`,
   notifLevelTerminal: (level: number) => `🏢 Terminal naik ke Lv ${level}`,
   notifSlotBaru: (slot: number) => `🅿️ Slot PO ke-${slot} terbuka! Daftarkan PO di tab PO`,
-  notifPo: (nama: string) => `🚌 ${nama} bergabung!`,
+  notifPo: (nama: string) => `🚌 ${nama} bergabung & membayar kontraknya!`,
   notifPoLevel: (nama: string, level: number) => `⬆️ ${nama} naik ke Lv ${level}`,
   notifPoKeluar: (nama: string) => `📄 Kontrak ${nama} habis: PO keluar dan jendela loketnya kosong`,
-  notifKontrakHampir: (nama: string) => `📄 Kontrak ${nama} tinggal sehari. Perpanjang di tab PO`,
+  notifKontrakHampir: (nama: string) => `📄 Kontrak ${nama} tinggal sehari. Terima tawaran perpanjangannya di tab PO`,
   notifKelasBus: (nama: string) => `🚌 Bus ${nama} mulai beroperasi!`,
   notifPerluasan: (nama: string) => `🏗️ ${nama} diresmikan! Slot bangunan bertambah`,
   notifJalur: (n: number) => `🚧 Jalur ${n} dibuka! Lebih banyak bus bisa singgah sekaligus`,
-  notifKasMenipis: '⚠️ Kas menipis: terminal merugi. Kurangi petugas atau ubah tarif',
+  notifKasMenipis: '⚠️ Kas menipis: operasi terminal merugi. Kurangi petugas atau ubah tarif',
   notifPetugasBerhenti: '⚠️ Kas habis: seorang petugas berhenti karena gajinya tak terbayar',
   // Foto terminal.
   fotoTombol: 'Foto terminal',

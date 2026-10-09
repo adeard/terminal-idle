@@ -21,8 +21,6 @@ export interface KonfigJurusan {
   readonly kelasTerminal?: number;
   /** Besar pasar penumpang jurusan ini (lihat KonfigTycoon.pasar): kota besar lebih banyak. */
   readonly peminat: number;
-  /** Kepekaan peminat terhadap biaya layanan terminal (lihat KonfigTycoon.pasar): rute pendek punya banyak pilihan lain. */
-  readonly elastisitas: number;
 }
 
 /** Modernisasi: pembelian sekali yang menambah kapasitas satu area, dengan biaya perawatan. */
@@ -45,8 +43,6 @@ export interface KonfigKelasBus {
   readonly kelasTerminal: number;
   /** Bagian penumpang kelas ini dibanding kelas lain yang dioperasikan PO yang sama. */
   readonly peminat: number;
-  /** Kepekaan peminat terhadap biaya layanan terminal: penumpang ekonomi paling peka. */
-  readonly elastisitas: number;
 }
 
 /** Event musiman (tanggal di sim/event.ts). */
@@ -92,8 +88,6 @@ export interface KonfigMitraPo {
    * begitu syaratnya terpenuhi.
    */
   readonly sumber?: 'awal' | 'hadiahKelas' | 'hadiahEvent';
-  /** Biaya daftar (Rp; 0 = gratis). */
-  readonly biayaDaftar: number;
 }
 
 /** Tahap perluasan terminal (bangunan permanen). */
@@ -111,7 +105,7 @@ export interface KonfigMitra {
   readonly po: Readonly<Record<PoId, KonfigMitraPo>>;
   /** Nilai tiket tiap jurusan (nama → pengali harga tiket dasar): jurusan jauh lebih mahal. */
   readonly nilaiJurusan: Readonly<Record<string, number>>;
-  /** Nilai tiket & level PO minimal tiap kelas bus. Peminat, elastisitas, kelas terminal tetap dari `kelasBus`. */
+  /** Nilai tiket & level PO minimal tiap kelas bus. Peminat & kelas terminal tetap dari `kelasBus`. */
   readonly kelas: Readonly<Record<KelasBusId, { readonly nilai: number; readonly levelPo: number }>>;
   /** Level PO yang membuka jurusan ke-1, ke-2, ke-3. */
   readonly levelJurusan: readonly number[];
@@ -139,14 +133,38 @@ export interface KonfigMitra {
    * Kejenuhan: pasar × 1 ÷ (1 + kejenuhan ÷ peminat jurusan × (jumlah PO − 1)).
    */
   readonly persaingan: { readonly gamma: number; readonly kejenuhan: number };
+  /**
+   * Kontrak PO: PO membayar nilai kontrak di muka saat bergabung & tiap
+   * perpanjangan (pendapatan utama terminal; penumpang tidak membayar terminal).
+   * Panjangnya ditawarkan PO: diundi per PO & per kontrak dari `pilihanHari`
+   * menurut bobot tingkatnya (PO kecil menawarkan kontrak pendek, PO besar
+   * panjang); kontrak pertama PO hadiah = `hariHadiah`. Nilai = nilai sehari ×
+   * panjang × `pengaliPanjang` (kontrak panjang lebih murah per hari); nilai
+   * sehari = nilaiDasar × pengaliTingkat × nilaiLevel^(level PO − 1) ×
+   * pengaliKelas[kelas terminal], jadi tumbuh seiring armada PO & terminal.
+   */
   readonly kontrak: {
-    /** Lama kontrak & tambahan tiap perpanjangan (hari terminal). */
-    readonly hari: number;
-    /** Sisa kontrak paling banyak setelah diperpanjang. */
-    readonly hariMaks: number;
-    /** Kontrak pertama PO hadiah (kelas/event). */
+    /** Panjang kontrak yang bisa ditawarkan (hari terminal), naik. */
+    readonly pilihanHari: readonly number[];
+    /** Bobot tiap pilihan (urut pilihanHari) menurut tingkat PO. */
+    readonly bobotHari: Readonly<Record<TingkatPo, readonly number[]>>;
+    /** Pengali harga per hari tiap pilihan (urut pilihanHari). */
+    readonly pengaliPanjang: readonly number[];
+    /** Nilai kontrak sehari PO lokal Lv 1 di terminal Tipe C (Rp). */
+    readonly nilaiDasar: number;
+    readonly pengaliTingkat: Readonly<Record<TingkatPo, number>>;
+    /** Pengali nilai sehari tiap level PO (armada makin besar). */
+    readonly nilaiLevel: number;
+    /** Pengali nilai sehari menurut kelas terminal (indeks kelas; lebih dari daftar = nilai terakhir). */
+    readonly pengaliKelas: readonly number[];
+    /** PO menawarkan perpanjangan saat sisa kontrak ≤ sekian hari terminal. */
+    readonly hariTawaran: number;
+    /** Kontrak pertama PO hadiah (kelas/event); harus ada di pilihanHari. */
     readonly hariHadiah: number;
-    /** PO yang diputus tidak bisa didaftarkan lagi selama sekian hari terminal, dan reputasinya turun. */
+    /**
+     * PO yang diputus: sisa nilai kontraknya dikembalikan (pro-rata), reputasinya
+     * turun, dan ia tidak mau didaftarkan lagi selama sekian hari terminal.
+     */
     readonly jedaPutusHari: number;
     readonly penaltiReputasiPutus: number;
   };
@@ -294,19 +312,21 @@ export interface KonfigTycoon {
     readonly dayaTarikDasar: number;
     readonly dayaTarikPerKepuasan: number;
     readonly ritmeMin: number;
-    /** Biaya layanan: permintaan × (1 + kepekaanLayanan × elastisitas segmen ÷ elastisitasAcuan × (1 − tarif ÷ bawaan)). */
-    readonly kepekaanLayanan: number;
-    readonly elastisitasAcuan: number;
   };
-  /** Harga tiket normal = hargaTiketDasar × nilai jurusan × nilai kelas bus × nilai level PO (ditetapkan PO). */
+  /**
+   * Harga tiket normal = hargaTiketDasar × nilai jurusan × nilai kelas bus × nilai
+   * level PO. Ditetapkan & diterima PO (informasi di kartu PO); terminal tidak
+   * memungut apa pun dari penumpang.
+   */
   readonly hargaTiketDasar: number;
   /**
-   * Pengantar yang parkir & pemakai toilet: bagian penumpang pada tarif bawaan,
-   * berubah linear dengan tarif (× 1 + kepekaan × (1 − tarif ÷ bawaan)), dibatasi
-   * kapasitas per unit per jam.
+   * Pengantar yang parkir: bagian penumpang pada tarif parkir bawaan, berubah
+   * linear dengan tarif (× 1 + kepekaan × (1 − tarif ÷ bawaan)), dibatasi
+   * kapasitas per lahan per jam.
    */
   readonly pengantar: { readonly bagian: number; readonly kepekaan: number; readonly perUnit: number };
-  readonly pemakaiToilet: { readonly bagian: number; readonly kepekaan: number; readonly perUnit: number };
+  /** Pemakai toilet (gratis): bagian penumpang & kapasitas per unit per jam (komponen fasilitas kepuasan). */
+  readonly pemakaiToilet: { readonly bagian: number; readonly perUnit: number };
   /** Sewa wajar kios/toko per hari = nilaiPerArus × arus puncak; okupansi = jepit(1 + kepekaan × (1 − sewa ÷ wajar)). */
   readonly kios: { readonly nilaiPerArus: number; readonly kepekaan: number };
   readonly kepuasan: {
@@ -327,7 +347,7 @@ export interface KonfigTycoon {
     readonly arusPerPetugasKebersihan: number;
     /** Kios + toko dibutuhkan = arus ÷ arusPerKios. */
     readonly arusPerKios: number;
-    /** Komponen harga: biaya layanan, tarif parkir & toilet. */
+    /** Komponen harga: tarif parkir pengantar (penumpang sendiri tidak membayar terminal). */
     readonly harga: KonfigSkorTarif;
   };
   /** Kepuasan mitra PO: bobot komponen, skor tarif sewa loket & retribusi, dan batas perpanjang kontrak / mau bergabung. */
@@ -367,31 +387,31 @@ export interface KonfigSimulasi {
 
 export const EKONOMI: KonfigEkonomi = {
   jurusan: [
-    { nama: 'JAKARTA', peminat: 3, elastisitas: 1.8 },
-    { nama: 'BANDUNG', peminat: 2, elastisitas: 1.8 },
-    { nama: 'SEMARANG', peminat: 1.5, elastisitas: 1.6 },
-    { nama: 'YOGYAKARTA', peminat: 1.5, elastisitas: 1.5 },
-    { nama: 'SOLO', peminat: 1.2, elastisitas: 1.5 },
-    { nama: 'SURABAYA', peminat: 1.5, elastisitas: 1.4 },
-    { nama: 'MALANG', peminat: 1, elastisitas: 1.4 },
-    { nama: 'DENPASAR', peminat: 1, elastisitas: 1.3 },
+    { nama: 'JAKARTA', peminat: 3 },
+    { nama: 'BANDUNG', peminat: 2 },
+    { nama: 'SEMARANG', peminat: 1.5 },
+    { nama: 'YOGYAKARTA', peminat: 1.5 },
+    { nama: 'SOLO', peminat: 1.2 },
+    { nama: 'SURABAYA', peminat: 1.5 },
+    { nama: 'MALANG', peminat: 1 },
+    { nama: 'DENPASAR', peminat: 1 },
     // Rute antarpulau setelah Denpasar (bus ikut menyeberang dengan kapal feri).
-    { nama: 'LAMPUNG', feri: 'Merak–Bakauheni', kelasTerminal: 1, peminat: 0.8, elastisitas: 1.25 },
-    { nama: 'PALEMBANG', feri: 'Merak–Bakauheni', kelasTerminal: 1, peminat: 0.8, elastisitas: 1.25 },
-    { nama: 'MATARAM', feri: 'Padangbai–Lembar', kelasTerminal: 2, peminat: 0.6, elastisitas: 1.2 },
-    { nama: 'JAMBI', feri: 'Merak–Bakauheni', kelasTerminal: 2, peminat: 0.5, elastisitas: 1.2 },
-    { nama: 'PADANG', feri: 'Merak–Bakauheni', kelasTerminal: 2, peminat: 0.6, elastisitas: 1.2 },
-    { nama: 'BIMA', feri: 'Kayangan–Pototano', kelasTerminal: 3, peminat: 0.4, elastisitas: 1.15 },
-    { nama: 'MEDAN', feri: 'Merak–Bakauheni', kelasTerminal: 3, peminat: 0.7, elastisitas: 1.15 },
-    { nama: 'BANDA ACEH', feri: 'Merak–Bakauheni', kelasTerminal: 3, peminat: 0.4, elastisitas: 1.15 },
+    { nama: 'LAMPUNG', feri: 'Merak–Bakauheni', kelasTerminal: 1, peminat: 0.8 },
+    { nama: 'PALEMBANG', feri: 'Merak–Bakauheni', kelasTerminal: 1, peminat: 0.8 },
+    { nama: 'MATARAM', feri: 'Padangbai–Lembar', kelasTerminal: 2, peminat: 0.6 },
+    { nama: 'JAMBI', feri: 'Merak–Bakauheni', kelasTerminal: 2, peminat: 0.5 },
+    { nama: 'PADANG', feri: 'Merak–Bakauheni', kelasTerminal: 2, peminat: 0.6 },
+    { nama: 'BIMA', feri: 'Kayangan–Pototano', kelasTerminal: 3, peminat: 0.4 },
+    { nama: 'MEDAN', feri: 'Merak–Bakauheni', kelasTerminal: 3, peminat: 0.7 },
+    { nama: 'BANDA ACEH', feri: 'Merak–Bakauheni', kelasTerminal: 3, peminat: 0.4 },
   ],
   // Patas & Eksekutif sejak Tipe C, Sleeper di Tipe B, Double Decker di Tipe A.
   kelasBus: {
-    ekonomi: { kelasTerminal: 0, peminat: 4, elastisitas: 2 },
-    patas: { kelasTerminal: 0, peminat: 3, elastisitas: 1.6 },
-    eksekutif: { kelasTerminal: 0, peminat: 2, elastisitas: 1.35 },
-    sleeper: { kelasTerminal: 1, peminat: 1, elastisitas: 1.2 },
-    tingkat: { kelasTerminal: 2, peminat: 1, elastisitas: 1.15 },
+    ekonomi: { kelasTerminal: 0, peminat: 4 },
+    patas: { kelasTerminal: 0, peminat: 3 },
+    eksekutif: { kelasTerminal: 0, peminat: 2 },
+    sleeper: { kelasTerminal: 1, peminat: 1 },
+    tingkat: { kelasTerminal: 2, peminat: 1 },
   },
   // Perawatan modernisasi ±0,1% harganya per hari.
   teknologi: {
@@ -430,26 +450,26 @@ export const EKONOMI: KonfigEkonomi = {
       premium: { kelasMaks: 5, reputasiAwal: 65, loketBawaan: 4 },
     },
     po: {
-      ondelOndel: { tingkat: 'lokal', jurusan: ['JAKARTA', 'SEMARANG', 'SURABAYA'], kelasTerminal: 0, sumber: 'awal', biayaDaftar: 0 },
-      peuyeumKilat: { tingkat: 'lokal', jurusan: ['BANDUNG', 'YOGYAKARTA', 'SOLO'], kelasTerminal: 0, biayaDaftar: 3_000_000 },
-      lumpiaKilat: { tingkat: 'lokal', jurusan: ['SEMARANG', 'JAKARTA', 'MALANG'], kelasTerminal: 0, biayaDaftar: 12_000_000 },
-      bakpiaRasa: { tingkat: 'regional', jurusan: ['YOGYAKARTA', 'BANDUNG', 'DENPASAR'], kelasTerminal: 0, biayaDaftar: 40_000_000 },
-      wayangLestari: { tingkat: 'regional', jurusan: ['SOLO', 'JAKARTA', 'SURABAYA'], kelasTerminal: 0, biayaDaftar: 80_000_000 },
-      arekEkspres: { tingkat: 'regional', jurusan: ['SURABAYA', 'MALANG', 'DENPASAR'], kelasTerminal: 0, biayaDaftar: 150_000_000 },
-      teloletJaya: { tingkat: 'premium', jurusan: ['SEMARANG', 'JAKARTA', 'DENPASAR'], kelasTerminal: 0, kepuasanMin: 0.65, biayaDaftar: 250_000_000 },
-      apelBatu: { tingkat: 'regional', jurusan: ['MALANG', 'JAKARTA', 'DENPASAR'], kelasTerminal: 1, biayaDaftar: 350_000_000 },
-      kecakLaju: { tingkat: 'nasional', jurusan: ['DENPASAR', 'SURABAYA', 'MATARAM'], kelasTerminal: 1, biayaDaftar: 600_000_000 },
-      sigerSakti: { tingkat: 'regional', jurusan: ['LAMPUNG', 'PALEMBANG', 'JAKARTA'], kelasTerminal: 1, biayaDaftar: 900_000_000 },
-      juaraKelas: { tingkat: 'nasional', jurusan: ['JAKARTA', 'BANDUNG', 'PALEMBANG'], kelasTerminal: 1, sumber: 'hadiahKelas', biayaDaftar: 0 },
-      sultanGarasi: { tingkat: 'premium', jurusan: ['JAKARTA', 'DENPASAR', 'MEDAN'], kelasTerminal: 1, kepuasanMin: 0.8, biayaDaftar: 1_500_000_000 },
-      rinjaniIndah: { tingkat: 'nasional', jurusan: ['MATARAM', 'BIMA', 'DENPASAR'], kelasTerminal: 2, biayaDaftar: 2_500_000_000 },
-      rumahGadang: { tingkat: 'nasional', jurusan: ['PADANG', 'JAMBI', 'JAKARTA'], kelasTerminal: 2, biayaDaftar: 4_000_000_000 },
-      juaraUmum: { tingkat: 'nasional', jurusan: ['PADANG', 'JAMBI', 'MEDAN'], kelasTerminal: 2, sumber: 'hadiahKelas', biayaDaftar: 0 },
-      danauToba: { tingkat: 'nasional', jurusan: ['MEDAN', 'BANDA ACEH', 'PADANG'], kelasTerminal: 3, biayaDaftar: 6_000_000_000 },
-      kopiGayo: { tingkat: 'nasional', jurusan: ['BANDA ACEH', 'MEDAN', 'JAKARTA'], kelasTerminal: 3, biayaDaftar: 10_000_000_000 },
-      mudikCeria: { tingkat: 'regional', jurusan: ['SEMARANG', 'YOGYAKARTA', 'SOLO'], kelasTerminal: 0, sumber: 'hadiahEvent', biayaDaftar: 0 },
-      merahPutih: { tingkat: 'nasional', jurusan: ['JAKARTA', 'SURABAYA', 'DENPASAR'], kelasTerminal: 0, sumber: 'hadiahEvent', biayaDaftar: 0 },
-      kembangApi: { tingkat: 'nasional', jurusan: ['DENPASAR', 'MATARAM', 'BIMA'], kelasTerminal: 0, sumber: 'hadiahEvent', biayaDaftar: 0 },
+      ondelOndel: { tingkat: 'lokal', jurusan: ['JAKARTA', 'SEMARANG', 'SURABAYA'], kelasTerminal: 0, sumber: 'awal' },
+      peuyeumKilat: { tingkat: 'lokal', jurusan: ['BANDUNG', 'YOGYAKARTA', 'SOLO'], kelasTerminal: 0 },
+      lumpiaKilat: { tingkat: 'lokal', jurusan: ['SEMARANG', 'JAKARTA', 'MALANG'], kelasTerminal: 0 },
+      bakpiaRasa: { tingkat: 'regional', jurusan: ['YOGYAKARTA', 'BANDUNG', 'DENPASAR'], kelasTerminal: 0 },
+      wayangLestari: { tingkat: 'regional', jurusan: ['SOLO', 'JAKARTA', 'SURABAYA'], kelasTerminal: 0 },
+      arekEkspres: { tingkat: 'regional', jurusan: ['SURABAYA', 'MALANG', 'DENPASAR'], kelasTerminal: 0 },
+      teloletJaya: { tingkat: 'premium', jurusan: ['SEMARANG', 'JAKARTA', 'DENPASAR'], kelasTerminal: 0, kepuasanMin: 0.65 },
+      apelBatu: { tingkat: 'regional', jurusan: ['MALANG', 'JAKARTA', 'DENPASAR'], kelasTerminal: 1 },
+      kecakLaju: { tingkat: 'nasional', jurusan: ['DENPASAR', 'SURABAYA', 'MATARAM'], kelasTerminal: 1 },
+      sigerSakti: { tingkat: 'regional', jurusan: ['LAMPUNG', 'PALEMBANG', 'JAKARTA'], kelasTerminal: 1 },
+      juaraKelas: { tingkat: 'nasional', jurusan: ['JAKARTA', 'BANDUNG', 'PALEMBANG'], kelasTerminal: 1, sumber: 'hadiahKelas' },
+      sultanGarasi: { tingkat: 'premium', jurusan: ['JAKARTA', 'DENPASAR', 'MEDAN'], kelasTerminal: 1, kepuasanMin: 0.8 },
+      rinjaniIndah: { tingkat: 'nasional', jurusan: ['MATARAM', 'BIMA', 'DENPASAR'], kelasTerminal: 2 },
+      rumahGadang: { tingkat: 'nasional', jurusan: ['PADANG', 'JAMBI', 'JAKARTA'], kelasTerminal: 2 },
+      juaraUmum: { tingkat: 'nasional', jurusan: ['PADANG', 'JAMBI', 'MEDAN'], kelasTerminal: 2, sumber: 'hadiahKelas' },
+      danauToba: { tingkat: 'nasional', jurusan: ['MEDAN', 'BANDA ACEH', 'PADANG'], kelasTerminal: 3 },
+      kopiGayo: { tingkat: 'nasional', jurusan: ['BANDA ACEH', 'MEDAN', 'JAKARTA'], kelasTerminal: 3 },
+      mudikCeria: { tingkat: 'regional', jurusan: ['SEMARANG', 'YOGYAKARTA', 'SOLO'], kelasTerminal: 0, sumber: 'hadiahEvent' },
+      merahPutih: { tingkat: 'nasional', jurusan: ['JAKARTA', 'SURABAYA', 'DENPASAR'], kelasTerminal: 0, sumber: 'hadiahEvent' },
+      kembangApi: { tingkat: 'nasional', jurusan: ['DENPASAR', 'MATARAM', 'BIMA'], kelasTerminal: 0, sumber: 'hadiahEvent' },
     },
     nilaiJurusan: {
       JAKARTA: 1.0,
@@ -489,13 +509,30 @@ export const EKONOMI: KonfigEkonomi = {
       faktorPerPoin: 0.006,
     },
     persaingan: { gamma: 1, kejenuhan: 0.3 },
-    kontrak: { hari: 7, hariMaks: 14, hariHadiah: 14, jedaPutusHari: 3, penaltiReputasiPutus: 10 },
+    kontrak: {
+      pilihanHari: [5, 7, 10, 14, 21, 30],
+      bobotHari: {
+        lokal: [3, 4, 2, 1, 0, 0],
+        regional: [1, 3, 3, 2, 1, 0],
+        nasional: [0, 1, 2, 3, 2, 1],
+        premium: [0, 0, 1, 2, 3, 2],
+      },
+      pengaliPanjang: [1.05, 1, 0.96, 0.92, 0.87, 0.82],
+      nilaiDasar: 7_500_000,
+      pengaliTingkat: { lokal: 1, regional: 1.6, nasional: 2.6, premium: 4 },
+      nilaiLevel: 1.08,
+      pengaliKelas: [1, 1.5, 2.2, 3.2],
+      hariTawaran: 3,
+      hariHadiah: 14,
+      jedaPutusHari: 3,
+      penaltiReputasiPutus: 10,
+    },
     terminal: {
       xpA: 50,
       xpK: 2.75,
       levelKelas: [10, 20, 30],
       levelPerBintang: 10,
-      slot: [[1, 2], [3, 3], [6, 4], [10, 5], [14, 6], [20, 7], [25, 8], [30, 9], [40, 10], [50, 11], [60, 12]],
+      slot: [[1, 2], [3, 3], [6, 4], [10, 5], [14, 6], [20, 7], [25, 8], [30, 9], [40, 10], [50, 11], [60, 12], [70, 13], [80, 14], [90, 15], [100, 16], [110, 17], [120, 18], [130, 19], [140, 20]],
       slotTanpaAulaKedua: 8,
       tahapAulaKedua: 4,
     },
@@ -535,19 +572,17 @@ export const EKONOMI: KonfigEkonomi = {
       manajerKemitraan: 1_200_000,
     },
     tarif: {
-      layanan: { bawaan: 10, min: 0, maks: 25, langkah: 1 },
       sewaLoket: { bawaan: 250_000, min: 0, maks: 1_000_000, langkah: 25_000 },
-      retribusiBus: { bawaan: 20_000, min: 0, maks: 60_000, langkah: 5_000 },
+      retribusiBus: { bawaan: 100_000, min: 0, maks: 300_000, langkah: 5_000 },
       parkir: { bawaan: 5_000, min: 0, maks: 20_000, langkah: 1_000 },
-      toilet: { bawaan: 2_000, min: 0, maks: 5_000, langkah: 500 },
       sewaKios: { bawaan: 300_000, min: 0, maks: 2_000_000, langkah: 50_000 },
     },
     listrik: { perJalur: 600_000, pengaliMalam: 1.5 },
     pengaliBiayaKelas: [1, 1.25, 1.5, 2],
-    pasar: { perPeminat: 45, pengaliKelas: [1, 1.3, 1.6, 2], dayaTarikDasar: 0.6, dayaTarikPerKepuasan: 0.8, ritmeMin: 0.4, kepekaanLayanan: 0.5, elastisitasAcuan: 1.5 },
+    pasar: { perPeminat: 45, pengaliKelas: [1, 1.3, 1.6, 2], dayaTarikDasar: 0.6, dayaTarikPerKepuasan: 0.8, ritmeMin: 0.4 },
     hargaTiketDasar: 60_000,
     pengantar: { bagian: 0.3, kepekaan: 0.5, perUnit: 60 },
-    pemakaiToilet: { bagian: 0.25, kepekaan: 0.5, perUnit: 200 },
+    pemakaiToilet: { bagian: 0.25, perUnit: 200 },
     kios: { nilaiPerArus: 1_500, kepekaan: 0.5 },
     kepuasan: {
       bobot: { kelancaran: 0.3, kenyamanan: 0.2, kebersihan: 0.2, keamanan: 0.1, fasilitas: 0.1, harga: 0.1 },

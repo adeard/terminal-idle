@@ -3,8 +3,9 @@ import { PengendaliGame } from '../src/app/pengendali';
 import { EKONOMI } from '../src/config/economy.config';
 import { terapkanAksi } from '../src/sim/aksi';
 import { slotBangunan } from '../src/sim/bangunan';
-import { aturTarif, buatStateBaru, daftarPo, keuanganSekarang, operasiState, tick, type GameState } from '../src/sim/state';
-import { AREA_IDS, buatModel, hargaTiketRata } from '../src/ui/model';
+import { urutanPo } from '../src/sim/mitra';
+import { aturTarif, buatStateBaru, daftarPo, keuanganSekarang, labaBuku, operasiState, tawaranKontrakPo, tick, type GameState } from '../src/sim/state';
+import { AREA_IDS, buatModel } from '../src/ui/model';
 import { denganBangunan, denganPetugas, denganPo, jalankan, kaya, padaJam, stateOtomatis, T0 } from './helpers';
 
 const T = EKONOMI.tycoon;
@@ -14,7 +15,8 @@ describe('view model UI: HUD', () => {
     const s = buatStateBaru(T0);
     const m = buatModel(s);
     expect(m.hud.kas).toBe(T.modalAwal);
-    expect(m.hud.arus).toBeCloseTo(operasiState(s).arus, 9);
+    // Penumpang di terminal = yang sedang menunggu (arus × lama menunggu), sama dengan kebutuhan kursi.
+    expect(m.hud.penumpangDiTerminal).toBe(Math.round(operasiState(s).arus * EKONOMI.tycoon.kepuasan.jamTunggu));
     expect(m.hud.labaPerJam).toBeCloseTo(keuanganSekarang(s).laba, 9);
     expect(m.hud.labaHariIni).toBe(0);
     expect(m.hud.adaManajer).toBe(false);
@@ -24,14 +26,15 @@ describe('view model UI: HUD', () => {
     expect(m.hud.kepuasan.bottleneck).toBe('loket');
   });
 
-  it('laba & penumpang hari ini dari buku harian; malam lebih sepi', () => {
+  it('laba (termasuk kontrak PO yang diterima) & penumpang hari ini dari buku harian; malam lebih sepi', () => {
     const s = stateOtomatis({ jalur: 2, jendela: 3 });
-    const b = jalankan(s, 60);
+    const b = jalankan(daftarPo(s, 'peuyeumKilat'), 60);
     const m = buatModel(b);
     expect(m.hud.penumpangHariIni).toBe(Math.floor(b.keuangan.hariIni.penumpang + 1e-9));
+    expect(m.hud.labaHariIni).toBeCloseTo(labaBuku(b.keuangan.hariIni), 6);
     expect(m.hud.labaHariIni).toBeGreaterThan(0);
     const isi = denganPo(s, 'ondelOndel', { loket: 3 });
-    expect(buatModel(padaJam(isi, 2)).hud.arus).toBeLessThan(buatModel(padaJam(isi, 8)).hud.arus);
+    expect(buatModel(padaJam(isi, 2)).hud.penumpangDiTerminal).toBeLessThan(buatModel(padaJam(isi, 8)).hud.penumpangDiTerminal);
   });
 
   it('kepuasan: komponen, kebutuhan kursi/petugas kebersihan/satpam, fasilitas yang belum ada', () => {
@@ -46,7 +49,7 @@ describe('view model UI: HUD', () => {
   });
 
   it('kas menipis bila rata-rata sehari merugi dan kas kurang dari sehari kerugian; petunjuk manajer', () => {
-    const rugi = aturTarif(denganPetugas(stateOtomatis({ jalur: 2 }, 1000), ['kebersihan', 'satpam', 'manajerOperasional']), 'layanan', 0);
+    const rugi = aturTarif(denganPetugas(stateOtomatis({ jalur: 2 }, 1000), ['kebersihan', 'satpam', 'manajerOperasional']), 'sewaLoket', 0);
     expect(buatModel(rugi).hud.kasMenipis).toBe(true);
     expect(buatModel({ ...rugi, kas: 1e12 }).hud.kasMenipis).toBe(false);
     expect(buatModel(rugi).hud.adaManajer).toBe(true);
@@ -58,7 +61,7 @@ describe('aksi & pengendali', () => {
     const s: GameState = { ...buatStateBaru(T0), kas: 1e8 };
     expect(terapkanAksi(s, { jenis: 'bangun', bangunan: 'jendela' }).terminal.bangunan.jendela).toBe(2);
     expect(terapkanAksi(s, { jenis: 'rekrut', petugas: 'peron' }).terminal.petugas).toEqual(['peron']);
-    expect(terapkanAksi(s, { jenis: 'aturTarif', tarif: 'layanan', nilai: 15 }).terminal.tarif.layanan).toBe(15);
+    expect(terapkanAksi(s, { jenis: 'aturTarif', tarif: 'retribusiBus', nilai: 30_000 }).terminal.tarif.retribusiBus).toBe(30_000);
   });
 
   it('pelanggan dipanggil saat berlangganan, saat tick, dan saat aksi berlaku saja', () => {
@@ -94,20 +97,6 @@ describe('aksi & pengendali', () => {
 });
 
 describe('view model pengelolaan terminal', () => {
-  it('biaya layanan dalam rupiah per penumpang, dari rata-rata harga tiket yang ditetapkan PO', () => {
-    // PO Ondel-Ondel Lv 1: hanya Jakarta, kelas Ekonomi → harga tiket dasar.
-    const s = stateOtomatis();
-    expect(hargaTiketRata(s)).toBeCloseTo(EKONOMI.tycoon.hargaTiketDasar, 6);
-    const tarif = buatModel(s).terminal.tarif;
-    expect(tarif.filter((t) => t.perPenumpang !== null).map((t) => t.id)).toEqual(['layanan']);
-    const layanan = tarif.find((t) => t.id === 'layanan')!.perPenumpang!;
-    expect(layanan.hargaTiket).toBeCloseTo(EKONOMI.tycoon.hargaTiketDasar, 6);
-    expect(layanan.rupiah).toBeCloseTo((EKONOMI.tycoon.hargaTiketDasar * EKONOMI.tycoon.tarif.layanan.bawaan) / 100, 6);
-    // Tarif naik → rupiah per penumpang naik sebanding; PO yang naik level menaikkan harga tiket.
-    expect(buatModel(aturTarif(s, 'layanan', 20)).terminal.tarif.find((t) => t.id === 'layanan')!.perPenumpang!.rupiah).toBeCloseTo(layanan.rupiah * 2, 6);
-    expect(hargaTiketRata(denganPo(s, 'ondelOndel', { level: 12 }))).toBeGreaterThan(EKONOMI.tycoon.hargaTiketDasar);
-  });
-
   it('tab Bangun: jumlah/slot, biaya, perawatan, bongkar; slot penuh menunjuk perluasan yang menambahnya', () => {
     const s = kaya(stateOtomatis({ toilet: 1 }));
     const b = buatModel(s).bangun;
@@ -131,7 +120,7 @@ describe('view model pengelolaan terminal', () => {
     expect(p.daftar.find((x) => x.id === 'manajerOperasional')).toMatchObject({ jumlah: 1, maks: 1, bisaRekrut: false });
   });
 
-  it('tab PO: kartu tanpa harga per jurusan (harga tiket informasi), jendela, kepuasan mitra; PO tersedia urut termurah', () => {
+  it('tab PO: kartu tanpa harga per jurusan (harga tiket informasi), jendela, kepuasan mitra, kontrak; PO tersedia urut katalog dengan tawaran kontraknya', () => {
     let s = kaya(stateOtomatis());
     let m = buatModel(s);
     expect(m.mitra.terdaftar.map((p) => p.id)).toEqual(['ondelOndel']);
@@ -139,10 +128,14 @@ describe('view model pengelolaan terminal', () => {
     const ondel = m.mitra.terdaftar[0]!;
     expect(ondel).toMatchObject({ loket: 1, kapasitasLoket: T.kapasitas.jendela, bisaIsiKosong: false, biayaJendela: T.bangunan.jendela.biaya[0], bisaTambahJendela: true });
     expect(ondel.kepuasanMitra).toBeGreaterThan(T.mitra.minimal);
+    // Kontrak pertama PO awal termasuk modal awal: tidak ada yang dikembalikan; perpanjangan belum ditawarkan.
+    expect(ondel).toMatchObject({ kurangPerpanjang: 'belum', pengembalianPutus: 0, tawaran: tawaranKontrakPo(s, 'ondelOndel') });
     expect(ondel.jurusan[0]).toMatchObject({ nama: 'JAKARTA', aktif: true, harga: T.hargaTiketDasar });
     expect(ondel.jurusan[1]).toMatchObject({ aktif: false, levelBuka: EKONOMI.mitra.levelJurusan[1] });
     expect(m.mitra.tersedia[0]!.id).toBe('peuyeumKilat');
-    const bisa = m.mitra.tersedia.filter((p) => p.kurang === null).map((p) => p.biaya);
+    expect(m.mitra.tersedia[0]!.tawaran).toEqual(tawaranKontrakPo(s, 'peuyeumKilat'));
+    for (const p of m.mitra.tersedia) expect(p.tawaran.nilai, p.id).toBeGreaterThan(0);
+    const bisa = m.mitra.tersedia.filter((p) => p.kurang === null).map((p) => urutanPo(p.id));
     expect(bisa).toEqual([...bisa].sort((a, b) => a - b));
     expect(m.mitra.tersedia.find((p) => p.id === 'apelBatu')?.kurang).toEqual({ jenis: 'kelas', kelas: 1 });
     s = tick(daftarPo(s, 'peuyeumKilat'), 0.1);
@@ -154,8 +147,8 @@ describe('view model pengelolaan terminal', () => {
   it('tab Terminal: tarif, laporan keuangan hari ini & kemarin, perluasan dengan biaya operasionalnya', () => {
     const s = jalankan(padaJam(stateOtomatis({ jalur: 2, jendela: 3 }), 23.8, 0), 30);
     const t = buatModel(s).terminal;
-    expect(t.tarif.map((x) => x.id)).toEqual(['layanan', 'sewaLoket', 'retribusiBus', 'parkir', 'toilet', 'sewaKios']);
-    expect(t.tarif[0]).toMatchObject({ nilai: T.tarif.layanan.bawaan, bawaan: T.tarif.layanan.bawaan, bisaTurun: true, bisaNaik: true });
+    expect(t.tarif.map((x) => x.id)).toEqual(['sewaLoket', 'retribusiBus', 'parkir', 'sewaKios']);
+    expect(t.tarif[0]).toMatchObject({ nilai: T.tarif.sewaLoket.bawaan, bawaan: T.tarif.sewaLoket.bawaan, bisaTurun: true, bisaNaik: true });
     expect(t.keuangan.kemarin).not.toBeNull();
     expect(t.keuangan.hariIni.laba).toBeCloseTo(t.keuangan.hariIni.totalPendapatan - t.keuangan.hariIni.totalBiaya, 6);
     expect(t.keuangan.kemarin!.hari).toBe('Senin');

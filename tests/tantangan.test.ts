@@ -74,12 +74,14 @@ describe('tantangan mingguan di game', () => {
     });
     const kemajuan = (st: GameState): number => st.tantangan.daftar[0]!.progres;
     expect(kemajuan(jalankan(pakai(s, 'penumpang'), 10))).toBeGreaterThan(0);
-    const laba = jalankan(pakai(s, 'laba'), 10);
+    // Penumpang tidak membayar terminal: laba operasi dari retribusi bus.
+    const laba = jalankan(pakai(denganPetugas(denganBangunan(s, { posRetribusi: 1 }), ['petugasRetribusi']), 'laba'), 10);
+    expect(laba.statistik.totalPendapatan - laba.statistik.totalBiaya).toBeGreaterThan(0);
     expect(kemajuan(laba)).toBeCloseTo(laba.statistik.totalPendapatan - laba.statistik.totalBiaya, 3);
     expect(kemajuan(bangun(pakai(s, 'bangun'), 'kursi'))).toBe(1);
     expect(kemajuan(beliTeknologi(pakai(s, 'bangun'), 'mesinTiket'))).toBe(1);
     // Laba bisa turun lagi saat rugi, tidak di bawah nol.
-    const rugi = aturTarif(denganPetugas(pakai(s, 'laba'), ['manajerOperasional', 'manajerKemitraan', 'satpam']), 'layanan', 0);
+    const rugi = aturTarif(denganPetugas(pakai(s, 'laba'), ['manajerOperasional', 'manajerKemitraan', 'satpam']), 'sewaLoket', 0);
     expect(kemajuan(jalankan(rugi, 10))).toBe(0);
     // Kepuasan: hanya bertambah selama kepuasan di atas batas.
     expect(kepuasanTerminal(s).nilai).toBeLessThan(EKONOMI.tantangan.kepuasanMin);
@@ -148,7 +150,8 @@ describe('tantangan mingguan di game', () => {
 
 describe('rekor pribadi', () => {
   it('hitungan hari ini, rekor harian saat hari berganti, arus tertinggi', () => {
-    let s = jalankan(padaJam(kaya(denganPo(stateOtomatis({ jalur: 3 }), 'ondelOndel', { loket: 4 })), 22, 1), 60);
+    const dasar = stateOtomatis({ jalur: 3, posRetribusi: 1, lahanParkir: 1 }, 0, ['petugasRetribusi', 'juruParkir']);
+    let s = jalankan(padaJam(kaya(denganPo(dasar, 'ondelOndel', { loket: 4 })), 22, 1), 60);
     expect(s.keuangan.hariIni.penumpang).toBeGreaterThan(0);
     expect(s.rekor.penumpangHarian).toBe(0);
     expect(s.rekor.arusTertinggi).toBeGreaterThan(0);

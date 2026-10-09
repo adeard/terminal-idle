@@ -5,10 +5,11 @@
  * Sim menghitung pendapatan sebagai arus (Rp per jam terminal), sedangkan
  * keramaian hanya wakil arus itu (dibatasi & dipadatkan, lihat laju.ts). Jadi
  * uang tiap sumber dikumpulkan, lalu dilepas sebagai "+Rp" pada transaksi yang
- * terlihat dari sumber yang paling dekat: tiket terjual di jendela loket (biaya
- * layanan & sewa jendela loket), bus parkir di petak (retribusi), kendaraan
- * pengantar parkir, dan penumpang selesai belanja di kios & toko (sewa kios &
- * toko, toilet). Besar tiap "+Rp" = pendapatan per detik ÷ rata-rata transaksi
+ * terlihat dari sumber yang paling dekat: bus parkir di petak (retribusi),
+ * kendaraan pengantar parkir, dan penumpang selesai belanja di kios & toko
+ * (sewa kios & toko). Penumpang tidak membayar terminal: di jendela loket yang
+ * tampil jumlah tiket yang dibeli (dari PO), bukan uang, dan sewa jendela loket
+ * (harian dari PO) tidak dimunculkan. Besar tiap "+Rp" = pendapatan per detik ÷ rata-rata transaksi
  * per detik (jadi tidak melonjak-lonjak walau transaksinya datang tak teratur),
  * ditambah sedikit koreksi dari selisih yang terkumpul. Totalnya tetap sama
  * dengan pendapatan, dan angkanya ikut membesar saat terminal berkembang.
@@ -22,7 +23,8 @@ import { WAKTU } from '../config/waktu.config';
 import { keuanganSekarang, type GameState } from '../sim/state';
 import type { JenisTransaksi, TransaksiVisual } from './dunia-visual';
 
-export type JenisPopUang = JenisTransaksi;
+/** Transaksi yang membawa uang ke terminal (tiket di loket dibayar ke PO, lihat atas). */
+export type JenisPopUang = Exclude<JenisTransaksi, 'tiket'>;
 
 export interface PopUang {
   readonly jenis: JenisPopUang;
@@ -33,19 +35,18 @@ export interface PopUang {
 }
 
 /** Pendapatan per detik main tiap sumber (sudah × boost); nol = sumbernya belum ada. */
-export type LajuUang = Readonly<Record<JenisTransaksi, number>>;
+export type LajuUang = Readonly<Record<JenisPopUang, number>>;
 
-export const JENIS_TRANSAKSI: readonly JenisTransaksi[] = ['tiket', 'retribusi', 'parkir', 'belanja'];
+export const JENIS_UANG: readonly JenisPopUang[] = ['retribusi', 'parkir', 'belanja'];
 
 /** Pendapatan per detik main tiap sumber yang terlihat, seperti yang masuk ke kas tiap tick (× boost). */
 export function lajuUangState(state: GameState): LajuUang {
   const p = keuanganSekarang(state).pendapatan;
   const perDetik = (rpPerJam: number): number => rpPerJam / WAKTU.detikPerJam;
   return {
-    tiket: perDetik(p.layanan + p.sewaLoket),
     retribusi: perDetik(p.retribusi),
     parkir: perDetik(p.parkir),
-    belanja: perDetik(p.sewaKios + p.toilet),
+    belanja: perDetik(p.sewaKios),
   };
 }
 
@@ -85,7 +86,7 @@ interface Sumber {
 }
 
 export class KasVisual {
-  private readonly sumber = new Map<JenisTransaksi, Sumber>(JENIS_TRANSAKSI.map((j) => [j, { terkumpul: 0, frek: 0, bobot: 0, tampil: 0 }]));
+  private readonly sumber = new Map<JenisPopUang, Sumber>(JENIS_UANG.map((j) => [j, { terkumpul: 0, frek: 0, bobot: 0, tampil: 0 }]));
   private detikLalu: number | null = null;
 
   /**
@@ -105,7 +106,7 @@ export class KasVisual {
       for (const s of this.sumber.values()) s.terkumpul = 0;
       return pop;
     }
-    for (const j of JENIS_TRANSAKSI) {
+    for (const j of JENIS_UANG) {
       const s = this.sumber.get(j)!;
       const l = laju[j];
       if (l > 0 && dt > 0) s.terkumpul += l * dt;
@@ -131,7 +132,7 @@ export class KasVisual {
   }
 
   /** Uang sumber ini yang masuk tapi belum tampil (untuk tes). */
-  sisa(jenis: JenisTransaksi): number {
+  sisa(jenis: JenisPopUang): number {
     return this.sumber.get(jenis)!.terkumpul;
   }
 }

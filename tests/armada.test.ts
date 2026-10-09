@@ -5,7 +5,7 @@ import { LIVERY_PO } from '../src/config/livery.config';
 import { WAKTU } from '../src/config/waktu.config';
 import { terapkanAksi } from '../src/sim/aksi';
 import { EVENT_IDS, PO_IDS, type PoId } from '../src/sim/fitur';
-import { tingkatPo } from '../src/sim/mitra';
+import { tawaranKontrak, tingkatPo } from '../src/sim/mitra';
 import {
   bisaDaftarPo,
   bisaPutusPo,
@@ -15,9 +15,13 @@ import {
   DETIK_SEHARI,
   jendelaKosong,
   kepuasanTerminal,
+  kurangPerpanjangPo,
   operasiState,
+  pengembalianPutus,
+  perpanjangPo,
   putusPo,
   syaratDaftarPoKurang,
+  tawaranKontrakPo,
   tick,
   type GameState,
 } from '../src/sim/state';
@@ -34,10 +38,19 @@ const sisaKontrak = (s: GameState, id: PoId, detik: number): GameState => ({
 });
 
 describe('mitra PO: game baru', () => {
-  it('PO awal menyewa satu-satunya jendela loket; kontrak & reputasi dari tingkatnya', () => {
+  it('PO awal menyewa satu-satunya jendela loket; kontrak pertamanya termasuk modal awal (nilai 0), reputasi dari tingkatnya', () => {
     const s = buatStateBaru(T0);
+    const t = tawaranKontrak('ondelOndel', 0, 1, 0);
     expect(ids(s)).toEqual(['ondelOndel']);
-    expect(po(s, 'ondelOndel')).toMatchObject({ loket: 1, xp: 0, kontrakDetik: K.hari * DETIK_SEHARI, reputasi: tingkatPo('ondelOndel').reputasiAwal });
+    expect(po(s, 'ondelOndel')).toMatchObject({
+      loket: 1,
+      xp: 0,
+      kontrakDetik: t.hari * DETIK_SEHARI,
+      kontrakHari: t.hari,
+      nilaiKontrak: 0,
+      kontrakKe: 1,
+      reputasi: tingkatPo('ondelOndel').reputasiAwal,
+    });
     expect(jendelaKosong(s)).toBe(0);
   });
 
@@ -50,24 +63,33 @@ describe('mitra PO: game baru', () => {
     for (const e of EVENT_IDS) expect(EKONOMI.mitra.po[EKONOMI.event[e].po].sumber).toBe('hadiahEvent');
   });
 
-  it('biaya daftar dalam Rupiah, makin mahal untuk PO yang lebih jauh; PO hadiah gratis', () => {
-    const biaya = (id: PoId): number => EKONOMI.mitra.po[id].biayaDaftar;
-    expect(biaya('peuyeumKilat')).toBeLessThan(biaya('lumpiaKilat'));
-    expect(biaya('lumpiaKilat')).toBeLessThan(biaya('kopiGayo'));
-    for (const id of PO_IDS) if (EKONOMI.mitra.po[id].sumber !== undefined) expect(biaya(id)).toBe(0);
+  it('tawaran kontrak bergabung: per hari makin mahal untuk PO yang lebih besar & terminal yang lebih tinggi kelasnya', () => {
+    const s = stateOtomatis();
+    const perHari = (x: GameState, id: PoId): number => tawaranKontrakPo(x, id).nilai / tawaranKontrakPo(x, id).hari;
+    expect(perHari(s, 'peuyeumKilat')).toBeLessThan(perHari(s, 'bakpiaRasa'));
+    expect(perHari(s, 'bakpiaRasa')).toBeLessThan(perHari(s, 'teloletJaya'));
+    expect(perHari(denganLevelTerminal(s, 10), 'peuyeumKilat')).toBeGreaterThan(perHari(s, 'peuyeumKilat'));
   });
 });
 
 describe('mitra PO: mendaftarkan', () => {
-  it('butuh kas & slot; langsung menyewa jendela bawaannya', () => {
-    const miskin = { ...stateOtomatis(), kas: 0 };
-    expect(bisaDaftarPo(miskin, 'lumpiaKilat')).toBe(false);
-    expect(daftarPo(miskin, 'lumpiaKilat')).toBe(miskin);
-    const s = kaya(stateOtomatis());
+  it('gratis: PO membayar kontrak pertamanya di muka; butuh slot; langsung menyewa jendela bawaannya', () => {
+    const s = { ...stateOtomatis(), kas: 0 };
+    expect(bisaDaftarPo(s, 'lumpiaKilat')).toBe(true);
+    const tawaran = tawaranKontrakPo(s, 'lumpiaKilat');
+    expect(tawaran.nilai).toBeGreaterThan(0);
     const t = daftarPo(s, 'lumpiaKilat');
     expect(ids(t)).toEqual(['ondelOndel', 'lumpiaKilat']);
-    expect(po(t, 'lumpiaKilat').loket).toBe(tingkatPo('lumpiaKilat').loketBawaan);
-    expect(t.kas).toBe(s.kas - EKONOMI.mitra.po.lumpiaKilat.biayaDaftar);
+    expect(po(t, 'lumpiaKilat')).toMatchObject({
+      loket: tingkatPo('lumpiaKilat').loketBawaan,
+      kontrakDetik: tawaran.hari * DETIK_SEHARI,
+      kontrakHari: tawaran.hari,
+      nilaiKontrak: tawaran.nilai,
+      kontrakKe: 1,
+    });
+    expect(t.kas).toBe(tawaran.nilai);
+    expect(t.keuangan.hariIni.pendapatan.kontrak).toBe(tawaran.nilai);
+    expect(t.statistik.totalPendapatan).toBe(s.statistik.totalPendapatan + tawaran.nilai);
     expect(syaratDaftarPoKurang(t, 'lumpiaKilat')).toEqual({ jenis: 'terdaftar' });
     // Terminal Lv 1 hanya punya dua slot.
     expect(syaratDaftarPoKurang(t, 'peuyeumKilat')).toEqual({ jenis: 'slot' });
@@ -84,8 +106,8 @@ describe('mitra PO: mendaftarkan', () => {
     expect(syaratDaftarPoKurang(s, 'mudikCeria')).toEqual({ jenis: 'event' });
     const hadiah = { ...s, mitra: { ...s.mitra, hadiahEvent: ['mudikCeria' as const] } };
     expect(syaratDaftarPoKurang(hadiah, 'mudikCeria')).toBeNull();
-    // PO hadiah gratis & kontrak pertamanya lebih panjang.
-    const t = daftarPo({ ...hadiah, kas: 0 }, 'mudikCeria');
+    // Kontrak pertama PO hadiah lebih panjang.
+    const t = daftarPo(hadiah, 'mudikCeria');
     expect(po(t, 'mudikCeria').kontrakDetik).toBe(K.hariHadiah * DETIK_SEHARI);
   });
 
@@ -120,6 +142,39 @@ describe('mitra PO: XP & kontrak', () => {
     expect(po(ulang, 'lumpiaKilat').reputasi).toBe(60 - K.penaltiReputasiPutus);
   });
 
+  it('putus: sisa nilai kontrak dikembalikan pro-rata (kompensasi), kas harus cukup', () => {
+    const s = daftarPo(stateOtomatis(), 'lumpiaKilat');
+    const p = po(s, 'lumpiaKilat');
+    expect(pengembalianPutus(p)).toBe(p.nilaiKontrak);
+    const separuh = sisaKontrak(s, 'lumpiaKilat', p.kontrakDetik / 2);
+    const kembali = pengembalianPutus(po(separuh, 'lumpiaKilat'));
+    expect(kembali).toBe(Math.round(p.nilaiKontrak / 2));
+    const t = putusPo(separuh, 'lumpiaKilat');
+    expect(ids(t)).toEqual(['ondelOndel']);
+    expect(t.kas).toBe(separuh.kas - kembali);
+    expect(t.keuangan.hariIni.biaya.kompensasi).toBe(kembali);
+    expect(t.statistik.totalBiaya).toBe(separuh.statistik.totalBiaya + kembali);
+    const kurang = { ...separuh, kas: kembali - 1 };
+    expect(bisaPutusPo(kurang, 'lumpiaKilat')).toBe(false);
+    expect(putusPo(kurang, 'lumpiaKilat')).toBe(kurang);
+  });
+
+  it('perpanjang: tawaran muncul saat sisa kontrak paling lama hariTawaran, dibayar di muka, menyambung sisa lama', () => {
+    const s = stateOtomatis();
+    expect(kurangPerpanjangPo(s, 'ondelOndel')).toBe('belum');
+    expect(perpanjangPo(s, 'ondelOndel')).toBe(s);
+    const sisa = K.hariTawaran * DETIK_SEHARI;
+    const hampir = sisaKontrak(s, 'ondelOndel', sisa);
+    expect(kurangPerpanjangPo(hampir, 'ondelOndel')).toBeNull();
+    const tawaran = tawaranKontrakPo(hampir, 'ondelOndel');
+    expect(tawaran).toEqual(tawaranKontrak('ondelOndel', 1, 1, 0));
+    const t = perpanjangPo(hampir, 'ondelOndel');
+    expect(t.kas).toBe(hampir.kas + tawaran.nilai);
+    expect(t.keuangan.hariIni.pendapatan.kontrak).toBe(tawaran.nilai);
+    expect(po(t, 'ondelOndel')).toMatchObject({ kontrakDetik: sisa + tawaran.hari * DETIK_SEHARI, kontrakHari: tawaran.hari, nilaiKontrak: tawaran.nilai, kontrakKe: 2 });
+    expect(kurangPerpanjangPo(t, 'ondelOndel')).toBe('belum');
+  });
+
   it('kontrak berkurang dengan waktu main; habis → PO keluar tanpa penalti', () => {
     const s = denganPo(stateOtomatis(), 'lumpiaKilat', { loket: 2 });
     const t = tick(s, 10);
@@ -143,9 +198,10 @@ describe('mitra PO: aksi & analitik', () => {
     expect(ids(b)).toEqual(['ondelOndel']);
     expect(peristiwaAksi(putus, a, b)).toEqual([{ nama: 'putus_po', data: { po: 'peuyeumKilat' } }]);
     const perpanjang = { jenis: 'perpanjangPo', po: 'ondelOndel' } as const;
-    const c = terapkanAksi(b, perpanjang);
-    expect(po(c, 'ondelOndel').kontrakDetik).toBeGreaterThan(po(b, 'ondelOndel').kontrakDetik);
-    expect(peristiwaAksi(perpanjang, b, c)).toEqual([{ nama: 'perpanjang_po', data: { po: 'ondelOndel' } }]);
+    const hampir = sisaKontrak(b, 'ondelOndel', DETIK_SEHARI);
+    const c = terapkanAksi(hampir, perpanjang);
+    expect(po(c, 'ondelOndel').kontrakDetik).toBeGreaterThan(po(hampir, 'ondelOndel').kontrakDetik);
+    expect(peristiwaAksi(perpanjang, hampir, c)).toEqual([{ nama: 'perpanjang_po', data: { po: 'ondelOndel' } }]);
     const isi = terapkanAksi(b, { jenis: 'isiJendelaKosong' });
     expect(jendelaKosong(isi)).toBe(0);
     expect(po(isi, 'ondelOndel').loket).toBe(1 + jendelaKosong(b));

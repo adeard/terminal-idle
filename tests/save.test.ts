@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EKONOMI } from '../src/config/economy.config';
 import { slotBangunan } from '../src/sim/bangunan';
 import { deserialisasi, keSaveV3, migrasikan, muatAtauBaru, SaveTidakValidError, serialisasi, VERSI_SKEMA, type FungsiMigrasi } from '../src/sim/save';
-import { aturTarif, bangun, buatStateBaru, putusPo, tandaiWaktu, type GameState } from '../src/sim/state';
+import { aturTarif, bangun, buatStateBaru, DETIK_SEHARI, putusPo, tandaiWaktu, type GameState } from '../src/sim/state';
 import { tarifBawaan } from '../src/sim/tarif';
 import { denganLevelTerminal, denganPerluasan, denganPetugas, denganPo, jalankan, kaya, stateOtomatis, T0 } from './helpers';
 
@@ -16,9 +16,11 @@ function stateTengahGame(): GameState {
   let s = kaya(denganPerluasan(denganLevelTerminal(stateOtomatis({ jalur: 3, kursi: 2, kios: 2, toilet: 1, lahanParkir: 1 }), 12), 2), 5e8);
   s = denganPetugas(s, ['peron', 'kebersihan', 'manajerOperasional', 'juruParkir', 'peron']);
   s = denganPo(denganPo(s, 'peuyeumKilat', { level: 4, loket: 2 }), 'lumpiaKilat', { level: 2, loket: 2 });
+  // Kontrak ketiga peuyeumKilat: 14 hari, dibayar di muka.
+  s = { ...s, mitra: { ...s.mitra, terdaftar: s.mitra.terdaftar.map((p) => (p.id === 'peuyeumKilat' ? { ...p, kontrakHari: 14, nilaiKontrak: 123_400_000, kontrakKe: 3 } : p)) } };
   s = putusPo(s, 'lumpiaKilat');
   s = bangun(s, 'jendela', 'peuyeumKilat');
-  s = aturTarif(aturTarif(s, 'layanan', 12), 'parkir', 4000);
+  s = aturTarif(aturTarif(s, 'retribusiBus', 25_000), 'parkir', 4000);
   s = { ...s, terminal: { ...s.terminal, teknologi: { ...s.terminal.teknologi, mesinTiket: true } }, pencapaian: { tercapai: ['petugasPertama', 'sepekan'], diklaim: ['petugasPertama'] } };
   return tandaiWaktu(jalankan(s, 120), T0 + 7);
 }
@@ -87,15 +89,16 @@ describe('muatAtauBaru', () => {
     ['jalur pecahan', (d) => ubahTerminal(d, { bangunan: { jalur: 1.5 } })],
     ['kios string', (d) => ubahTerminal(d, { bangunan: { kios: '2' } })],
     ['petugas bukan array', (d) => ubahTerminal(d, { petugas: 'peron' })],
-    ['tarif string', (d) => ubahTerminal(d, { tarif: { layanan: '10' } })],
+    ['tarif string', (d) => ubahTerminal(d, { tarif: { parkir: '10' } })],
     ['teknologi bukan boolean', (d) => ubahTerminal(d, { teknologi: { eTiket: 'ya' } })],
     ['mitra salah tipe', (d) => ({ ...d, mitra: [] })],
     ['mitra.terdaftar bukan array', (d) => ({ ...d, mitra: { ...(d['mitra'] as object), terdaftar: {} } })],
     ['loket PO pecahan', (d) => ubahPoPertama(d, { loket: 2.5 })],
     ['xp PO negatif', (d) => ubahPoPertama(d, { xp: -1 })],
+    ['nilai kontrak PO negatif', (d) => ubahPoPertama(d, { nilaiKontrak: -1 })],
     ['perkembangan salah tipe', (d) => ({ ...d, perkembangan: 5 })],
     ['keuangan salah tipe', (d) => ({ ...d, keuangan: 'untung' })],
-    ['buku harian negatif', (d) => ({ ...d, keuangan: { hariIni: { hariKe: 0, pendapatan: { layanan: -1 } } } })],
+    ['buku harian negatif', (d) => ({ ...d, keuangan: { hariIni: { hariKe: 0, pendapatan: { parkir: -1 } } } })],
     ['target harian jenis lama', (d) => ({ ...d, harian: { ...(d['harian'] as object), jenis: 'upgrade' } })],
     ['waktuTerakhirMs string', (d) => ({ ...d, waktuTerakhirMs: 'kemarin' })],
   ];
@@ -161,12 +164,22 @@ describe('kompatibilitas ke depan', () => {
   });
 
   it('petugas: peran tak dikenal dibuang, yang melebihi batas bangunannya keluar; tarif dirapikan', () => {
-    const d = ubahTerminal(saveValid(), { petugas: ['peron', 'kepalaLoket', 'peron', 'peron', 'peron', 'satpam'], tarif: { layanan: 99, parkir: 1234 } });
+    // Tarif 0.3.0 (biaya layanan & toilet) dibuang.
+    const d = ubahTerminal(saveValid(), { petugas: ['peron', 'kepalaLoket', 'peron', 'peron', 'peron', 'satpam'], tarif: { layanan: 10, toilet: 2000, retribusiBus: 999_999, parkir: 1234 } });
     const s = deserialisasi(JSON.stringify(d), T0);
     expect(s.terminal.petugas).toEqual(['peron', 'peron', 'peron', 'satpam']);
-    expect(s.terminal.tarif.layanan).toBe(EKONOMI.tycoon.tarif.layanan.maks);
+    expect(Object.keys(s.terminal.tarif).sort()).toEqual(['parkir', 'retribusiBus', 'sewaKios', 'sewaLoket']);
+    expect(s.terminal.tarif.retribusiBus).toBe(EKONOMI.tycoon.tarif.retribusiBus.maks);
     expect(s.terminal.tarif.parkir).toBe(1000);
     expect(s.terminal.tarif.sewaKios).toBe(tarifBawaan().sewaKios);
+  });
+
+  it('PO dari save 0.3.0 (tanpa panjang & nilai kontrak): kontrak 7 hari yang sudah dibayar, kontrak ke-1; sisa kontrak dibatasi', () => {
+    const d = ubahPoPertama(saveValid(), { kontrakHari: undefined, nilaiKontrak: undefined, kontrakKe: undefined, kontrakDetik: 1e9 });
+    const p = deserialisasi(JSON.stringify(d), T0).mitra.terdaftar[0]!;
+    const K = EKONOMI.mitra.kontrak;
+    expect([p.kontrakHari, p.nilaiKontrak, p.kontrakKe]).toEqual([7, 0, 1]);
+    expect(p.kontrakDetik).toBe((K.pilihanHari[K.pilihanHari.length - 1]! + K.hariTawaran) * DETIK_SEHARI);
   });
 
   it('field tak dikenal diabaikan', () => {

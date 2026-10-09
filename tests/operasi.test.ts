@@ -86,10 +86,9 @@ describe('operasi tycoon: kapasitas & pasar', () => {
     expect(unggul.po[0]!.permintaanPuncak).toBeCloseTo(PASAR_JAKARTA * kejenuhan * (a / ((a + b) / 2)), 6);
   });
 
-  it('biaya layanan lebih mahal menurunkan permintaan, lebih murah menaikkannya', () => {
-    const op = (layanan: number) => hitungOperasi(terminal({ tarif: { ...tarifBawaan(), layanan } }), SIBUK).permintaanPuncak;
-    expect(op(20)).toBeLessThan(op(T.tarif.layanan.bawaan));
-    expect(op(5)).toBeGreaterThan(op(T.tarif.layanan.bawaan));
+  it('tarif terminal tidak mengubah calon penumpang (penumpang tidak membayar terminal)', () => {
+    const op = (tarif: Partial<Record<'sewaLoket' | 'retribusiBus' | 'sewaKios', number>>) => hitungOperasi(terminal({ tarif: { ...tarifBawaan(), ...tarif } }), SIBUK).permintaanPuncak;
+    expect(op({ sewaLoket: T.tarif.sewaLoket.maks, retribusiBus: T.tarif.retribusiBus.maks, sewaKios: 0 })).toBeCloseTo(op({}), 9);
   });
 
   it('permintaan sekarang = jam sibuk × daya tarik kepuasan × ritme × event; kapasitas tetap', () => {

@@ -63,6 +63,7 @@ function teksLangkah(s: SasaranTutorial): string {
 
 /** Kemajuan menuju biaya langkah ("Kas Rp 1,2 jt / Rp 2 jt"); laba terus masuk dengan sendirinya. */
 function teksKemajuan(state: GameState, s: SasaranTutorial): string {
+  if (s.jenis === 'po') return TEKS.tutorialKontrak(formatUang(s.nilai));
   if (s.biaya <= 0) return TEKS.tutorialGaji;
   return state.kas >= s.biaya ? TEKS.tutorialUangCukup : TEKS.tutorialUang(formatUang(Math.floor(state.kas)), formatUang(s.biaya));
 }

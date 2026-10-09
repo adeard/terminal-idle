@@ -67,13 +67,16 @@ import { waktuTerminal } from './waktu';
 
 export const VERSI_SKEMA = 3;
 
-/** PO terdaftar di save. */
+/** PO terdaftar di save (kontrakHari, nilaiKontrak, kontrakKe sejak 0.3.1; save lama memakai nilai bawaan). */
 export interface SimpanPo {
   readonly id: string;
   readonly xp: number;
   readonly loket: number;
   readonly reputasi: number;
   readonly kontrakDetik: number;
+  readonly kontrakHari: number;
+  readonly nilaiKontrak: number;
+  readonly kontrakKe: number;
 }
 
 /** Bentuk JSON save versi 3. Uang dalam Rupiah (number). */
@@ -147,7 +150,7 @@ export type HasilMuat =
 
 export function keSaveV3(state: GameState): SaveV3 {
   const riwayat: Record<string, RiwayatPo> = {};
-  for (const [id, r] of Object.entries(state.mitra.riwayat)) if (r) riwayat[id] = { xp: r.xp, reputasi: r.reputasi };
+  for (const [id, r] of Object.entries(state.mitra.riwayat)) if (r) riwayat[id] = { xp: r.xp, reputasi: r.reputasi, kontrakKe: r.kontrakKe };
   const jedaSampai: Record<string, number> = {};
   for (const [id, detik] of Object.entries(state.mitra.jedaSampai)) if (detik !== undefined) jedaSampai[id] = detik;
   const k = state.keuangan;
@@ -164,7 +167,16 @@ export function keSaveV3(state: GameState): SaveV3 {
       teknologi: { ...state.terminal.teknologi },
     },
     mitra: {
-      terdaftar: state.mitra.terdaftar.map((p) => ({ id: p.id, xp: p.xp, loket: p.loket, reputasi: p.reputasi, kontrakDetik: p.kontrakDetik })),
+      terdaftar: state.mitra.terdaftar.map((p) => ({
+        id: p.id,
+        xp: p.xp,
+        loket: p.loket,
+        reputasi: p.reputasi,
+        kontrakDetik: p.kontrakDetik,
+        kontrakHari: p.kontrakHari,
+        nilaiKontrak: p.nilaiKontrak,
+        kontrakKe: p.kontrakKe,
+      })),
       riwayat,
       jedaSampai,
       hadiahEvent: [...state.mitra.hadiahEvent],
@@ -351,13 +363,21 @@ function bacaPoTerdaftar(nilai: unknown, jalur: string, cfg: KonfigEkonomi): PoT
   const id = o['id'];
   // PO yang tidak dikenal (mis. dari versi lain) diabaikan.
   if (!isPoId(id)) return null;
+  // Kontrak: save 0.3.0 belum menyimpan panjang & nilainya (kontrak lama dianggap 7 hari, sudah dibayar penuh).
+  const k = cfg.mitra.kontrak;
+  const hariMaks = k.pilihanHari[k.pilihanHari.length - 1]!;
+  const kontrakHari = Math.min(hariMaks, Math.max(1, opsional(o['kontrakHari'], 7, wajibAngkaNonNegatif, `${jalur}.kontrakHari`)));
   return {
     id,
     xp: wajibAngkaNonNegatif(o['xp'], `${jalur}.xp`),
     // PO selalu menyewa minimal satu jendela.
     loket: Math.max(1, wajibIntegerNonNegatif(o['loket'], `${jalur}.loket`)),
     reputasi: reputasiAman(opsional(o['reputasi'], tingkatPo(id, cfg).reputasiAwal, wajibAngkaNonNegatif, `${jalur}.reputasi`)),
-    kontrakDetik: Math.min(cfg.mitra.kontrak.hariMaks * DETIK_SEHARI, opsional(o['kontrakDetik'], cfg.mitra.kontrak.hari * DETIK_SEHARI, wajibAngkaNonNegatif, `${jalur}.kontrakDetik`)),
+    // Sisa kontrak tidak lebih dari kontrak terpanjang ditambah sisa sebelum perpanjangan.
+    kontrakDetik: Math.min((hariMaks + k.hariTawaran) * DETIK_SEHARI, opsional(o['kontrakDetik'], kontrakHari * DETIK_SEHARI, wajibAngkaNonNegatif, `${jalur}.kontrakDetik`)),
+    kontrakHari,
+    nilaiKontrak: opsional(o['nilaiKontrak'], 0, wajibAngkaNonNegatif, `${jalur}.nilaiKontrak`),
+    kontrakKe: Math.max(1, opsional(o['kontrakKe'], 1, wajibIntegerNonNegatif, `${jalur}.kontrakKe`)),
   };
 }
 
@@ -381,6 +401,7 @@ function bacaMitra(nilai: unknown, cfg: KonfigEkonomi): MitraState {
     riwayat[id] = {
       xp: wajibAngkaNonNegatif(r['xp'], `mitra.riwayat.${id}.xp`),
       reputasi: reputasiAman(opsional(r['reputasi'], tingkatPo(id, cfg).reputasiAwal, wajibAngkaNonNegatif, `mitra.riwayat.${id}.reputasi`)),
+      kontrakKe: opsional(r['kontrakKe'], 1, wajibIntegerNonNegatif, `mitra.riwayat.${id}.kontrakKe`),
     };
   }
   const jedaMentah = opsionalObjek(o['jedaSampai'], 'mitra.jedaSampai');

@@ -26,14 +26,15 @@ function terminal(ubah: Partial<KeadaanOperasi> = {}): KeadaanOperasi {
 const keu = (k: KeadaanOperasi, malam = false) => keuanganPerJam(k, hitungOperasi(k, SIBUK), malam);
 
 describe('keuangan tycoon', () => {
-  it('biaya layanan = tarif % × harga tiket (ditetapkan PO) × penumpang; sewa jendela per hari', () => {
+  it('penumpang tidak membayar terminal (tiket untuk PO, toilet gratis); sewa jendela per hari; kontrak PO bukan per jam', () => {
     const k = terminal();
     const op = hitungOperasi(k, SIBUK);
     const r = keuanganPerJam(k, op, false);
-    // Ondel-Ondel Lv 1: Jakarta Ekonomi = harga dasar.
-    expect(r.pendapatan.layanan).toBeCloseTo(op.arus * T.hargaTiketDasar * (T.tarif.layanan.bawaan / 100), 4);
+    expect(Object.keys(r.pendapatan).sort()).toEqual(['kontrak', 'parkir', 'retribusi', 'sewaKios', 'sewaLoket']);
     expect(r.pendapatan.sewaLoket).toBeCloseTo((3 * T.tarif.sewaLoket.bawaan) / 24, 6);
-    expect(r.pendapatan.parkir + r.pendapatan.toilet + r.pendapatan.retribusi + r.pendapatan.sewaKios).toBe(0);
+    // Kontrak dibayar di muka (dicatat di buku saat diterima), kompensasi saat diputus.
+    expect(r.pendapatan.kontrak + r.biaya.kompensasi).toBe(0);
+    expect(r.pendapatan.parkir + r.pendapatan.retribusi + r.pendapatan.sewaKios).toBe(0);
   });
 
   it('fasilitas berbayar butuh bangunannya; tanpa juru parkir / petugas retribusi hanya separuh', () => {
@@ -43,7 +44,6 @@ describe('keuangan tycoon', () => {
     expect(tanpa.pendapatan.parkir).toBeGreaterThan(0);
     expect(dengan.pendapatan.parkir).toBeCloseTo(2 * tanpa.pendapatan.parkir, 6);
     expect(dengan.pendapatan.retribusi).toBeCloseTo(2 * tanpa.pendapatan.retribusi, 6);
-    expect(tanpa.pendapatan.toilet).toBeGreaterThan(0);
     // Parkir dibatasi kapasitas lahannya.
     const ramai = keu(terminal({ bangunan: { ...b, jalur: 5, jendela: 4 }, petugas: ['juruParkir'], po: [{ id: 'ondelOndel', level: 1, loket: 4, reputasi: 100 }], kelasTerminal: 3 }));
     expect(ramai.pendapatan.parkir).toBeLessThanOrEqual(T.pengantar.perUnit * T.tarif.parkir.bawaan + 1e-6);
@@ -63,9 +63,11 @@ describe('keuangan tycoon', () => {
   });
 
   it('membangun jauh melebihi permintaan menurunkan laba (perawatan tanpa penumpang tambahan)', () => {
-    const pas = keu(terminal());
-    const lebih = keu(terminal({ perluasan: 1, bangunan: { ...bangunanAwal(), jalur: 4, jendela: 6, kursi: 4 }, po: [{ id: 'ondelOndel', level: 1, loket: 6, reputasi: 50 }] }));
-    expect(lebih.totalPendapatan).toBeLessThan(pas.totalPendapatan * 1.2);
+    const b = { ...bangunanAwal(), jalur: 2, jendela: 3, posRetribusi: 1 };
+    const pas = keu(terminal({ bangunan: b, petugas: ['petugasRetribusi'] }));
+    const lebih = keu(terminal({ perluasan: 1, bangunan: { ...b, jalur: 4, jendela: 6, kursi: 4 }, petugas: ['petugasRetribusi'], po: [{ id: 'ondelOndel', level: 1, loket: 6, reputasi: 50 }] }));
+    // Pasar yang membatasi: bus (dan retribusinya) hampir tidak bertambah; sewa jendela tambahan tidak menutup perawatannya.
+    expect(lebih.pendapatan.retribusi).toBeLessThan(pas.pendapatan.retribusi * 1.2);
     expect(lebih.laba).toBeLessThan(pas.laba);
   });
 

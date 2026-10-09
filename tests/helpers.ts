@@ -45,7 +45,7 @@ export function denganPetugas(state: GameState, petugas: readonly PetugasId[]): 
  */
 export function denganPo(state: GameState, id: PoId, o: { readonly level?: number; readonly loket?: number; readonly reputasi?: number } = {}): GameState {
   const lama = state.mitra.terdaftar.find((p) => p.id === id);
-  const dasar = lama ?? buatPoTerdaftar(id, tingkatPo(id).loketBawaan);
+  const dasar = lama ?? buatPoTerdaftar(id, tingkatPo(id).loketBawaan, { hari: 7, nilai: 0, ke: 1 });
   const p = {
     ...dasar,
     xp: o.level !== undefined ? xpKumulatifPo(o.level) : dasar.xp,
@@ -56,6 +56,11 @@ export function denganPo(state: GameState, id: PoId, o: { readonly level?: numbe
   const disewa = terdaftar.reduce((a, x) => a + x.loket, 0);
   const s = { ...state, mitra: { ...state.mitra, terdaftar } };
   return disewa > s.terminal.bangunan.jendela ? denganBangunan(s, { jendela: disewa }) : s;
+}
+
+/** Kontrak semua PO terdaftar bernilai sekian (Rp, sudah dibayar di muka); panjang & sisanya tetap. */
+export function denganNilaiKontrak(state: GameState, nilai: number): GameState {
+  return { ...state, mitra: { ...state.mitra, terdaftar: state.mitra.terdaftar.map((p) => ({ ...p, nilaiKontrak: nilai })) } };
 }
 
 /** Terminal dengan sekian tahap perluasan sudah selesai dibangun (tanpa proyek berjalan). */

@@ -41,19 +41,19 @@ describe('analitik: aksi pemain → peristiwa', () => {
 
   it('tarif: atur & saran dicatat tanpa nilainya, sekali per sesi per tarif', () => {
     const s = stateOtomatis({ jalur: 2, jendela: 3 });
-    const a = terapkan(s, { jenis: 'aturTarif', tarif: 'layanan', nilai: 12 });
-    expect(peristiwaAksi({ jenis: 'aturTarif', tarif: 'layanan', nilai: 12 }, a.lama, a.baru)).toEqual([{ nama: 'atur_tarif', data: { tarif: 'layanan' } }]);
+    const a = terapkan(s, { jenis: 'aturTarif', tarif: 'parkir', nilai: 6000 });
+    expect(peristiwaAksi({ jenis: 'aturTarif', tarif: 'parkir', nilai: 6000 }, a.lama, a.baru)).toEqual([{ nama: 'atur_tarif', data: { tarif: 'parkir' } }]);
     const { analitik, catatan } = rekam();
     const p = new PencatatAnalitik(analitik);
     let x = s;
-    for (const nilai of [11, 12, 13]) {
-      const baru = terapkanAksi(x, { jenis: 'aturTarif', tarif: 'layanan', nilai });
-      p.catatAksi({ jenis: 'aturTarif', tarif: 'layanan', nilai }, x, baru);
+    for (const nilai of [50_000, 60_000, 80_000]) {
+      const baru = terapkanAksi(x, { jenis: 'aturTarif', tarif: 'retribusiBus', nilai });
+      p.catatAksi({ jenis: 'aturTarif', tarif: 'retribusiBus', nilai }, x, baru);
       x = baru;
     }
     const baru = terapkanAksi(x, { jenis: 'aturTarif', tarif: 'parkir', nilai: 3000 });
     p.catatAksi({ jenis: 'aturTarif', tarif: 'parkir', nilai: 3000 }, x, baru);
-    expect(catatan.map((c) => c.data?.['tarif'])).toEqual(['layanan', 'parkir']);
+    expect(catatan.map((c) => c.data?.['tarif'])).toEqual(['retribusiBus', 'parkir']);
   });
 
   it('pencatat: telolet sekali per sesi, peristiwa lain tidak disaring', () => {

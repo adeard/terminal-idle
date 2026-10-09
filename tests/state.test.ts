@@ -32,12 +32,13 @@ import {
   rekrutPetugas,
   saranTarif,
   syaratDaftarPoKurang,
+  tawaranKontrakPo,
   terapkanOffline,
   tick,
   type GameState,
 } from '../src/sim/state';
 import { tarifBawaan } from '../src/sim/tarif';
-import { denganBangunan, denganLevelTerminal, denganPetugas, denganPo, DT, jalankan, kaya, padaJam, stateOtomatis, T0 } from './helpers';
+import { denganBangunan, denganLevelTerminal, denganNilaiKontrak, denganPetugas, denganPo, DT, jalankan, kaya, padaJam, stateOtomatis, T0 } from './helpers';
 
 const T = EKONOMI.tycoon;
 const JAM_MS = 3600 * 1000;
@@ -71,14 +72,14 @@ describe('tick: uang mengalir dari operasi', () => {
   });
 
   it('kas bertambah sebesar laba × waktu, dicatat di buku hari ini & statistik', () => {
-    const s = stateOtomatis();
+    const s = stateOtomatis({ posRetribusi: 1, lahanParkir: 1 });
     const keu = keuanganSekarang(s);
     const op = operasiState(s);
     const b = tick(s, DT);
     const dtJam = DT / JAM;
     expect(keu.laba).toBeGreaterThan(0);
     expect(b.kas).toBeCloseTo(s.kas + keu.laba * dtJam, 6);
-    expect(b.keuangan.hariIni.pendapatan.layanan).toBeCloseTo(keu.pendapatan.layanan * dtJam, 6);
+    expect(b.keuangan.hariIni.pendapatan.sewaLoket).toBeCloseTo(keu.pendapatan.sewaLoket * dtJam, 6);
     expect(b.keuangan.hariIni.biaya.listrik).toBeCloseTo(keu.biaya.listrik * dtJam, 6);
     expect(b.keuangan.hariIni.penumpang).toBeCloseTo(op.arus * dtJam, 9);
     expect(b.statistik.totalPenumpang).toBeCloseTo(op.arus * dtJam, 9);
@@ -87,10 +88,16 @@ describe('tick: uang mengalir dari operasi', () => {
     expect(labaBuku(b.keuangan.hariIni)).toBeCloseTo(keu.laba * dtJam, 6);
   });
 
-  it('game baru langsung menghasilkan laba; sejam terminal kemudian kas sudah naik', () => {
+  it('game baru: tanpa fasilitas operasi sedikit merugi (penumpang tidak membayar terminal); PO kedua membayar kontraknya di muka, pos retribusi membuat operasi berlaba', () => {
     const s = buatStateBaru(T0);
-    const b = jalankan(s, JAM);
-    expect(b.kas).toBeGreaterThan(s.kas);
+    const rugiSehari = -keuanganSekarang(s).laba * 24;
+    expect(rugiSehari).toBeGreaterThan(0);
+    expect(rugiSehari).toBeLessThan(T.modalAwal / 10);
+    const po = daftarPo(s, 'peuyeumKilat');
+    expect(po.kas).toBe(s.kas + tawaranKontrakPo(s, 'peuyeumKilat').nilai);
+    const pos = bangun(po, 'posRetribusi');
+    const b = jalankan(pos, JAM);
+    expect(b.kas).toBeGreaterThan(pos.kas);
     expect(b.statistik.totalPenumpang).toBeGreaterThan(10);
   });
 
@@ -192,8 +199,8 @@ describe('petugas', () => {
 
   it('kas tidak pernah minus: gaji tertunggak membuat petugas terakhir berhenti tiap jam terminal, manajer paling akhir', () => {
     const awal = denganPetugas(stateOtomatis({}, 0), ['manajerOperasional', 'peron', 'kebersihan', 'satpam']);
-    // Tanpa biaya layanan, pendapatan tidak menutup gaji.
-    const s = aturTarif(awal, 'layanan', 0);
+    // Tanpa sewa jendela loket, pendapatan tidak menutup gaji.
+    const s = aturTarif(awal, 'sewaLoket', 0);
     expect(keuanganSekarang(s).laba).toBeLessThan(0);
     const b = jalankan(s, JAM * 1.05);
     expect(b.kas).toBe(0);
@@ -208,15 +215,15 @@ describe('petugas', () => {
 describe('tarif terminal', () => {
   it('dirapikan ke rentang & langkahnya; nilai sama → state sama', () => {
     const s = stateOtomatis();
-    expect(aturTarif(s, 'layanan', 12.4).terminal.tarif.layanan).toBe(12);
-    expect(aturTarif(s, 'layanan', 99).terminal.tarif.layanan).toBe(T.tarif.layanan.maks);
+    expect(aturTarif(s, 'retribusiBus', 24_400).terminal.tarif.retribusiBus).toBe(25_000);
+    expect(aturTarif(s, 'retribusiBus', 999_999).terminal.tarif.retribusiBus).toBe(T.tarif.retribusiBus.maks);
     expect(aturTarif(s, 'parkir', -5).terminal.tarif.parkir).toBe(0);
-    expect(aturTarif(s, 'layanan', T.tarif.layanan.bawaan)).toBe(s);
+    expect(aturTarif(s, 'retribusiBus', T.tarif.retribusiBus.bawaan)).toBe(s);
   });
 
   it('saran: laba sehari tidak lebih buruk dari tarif sekarang, dan mitra PO tetap mau memperpanjang', () => {
     const s = denganPo(stateOtomatis({ jalur: 2, jendela: 4, posRetribusi: 1 }), 'ondelOndel', { loket: 4 });
-    for (const id of ['layanan', 'sewaLoket', 'retribusiBus'] as const) {
+    for (const id of ['sewaLoket', 'retribusiBus'] as const) {
       const v = saranTarif(s, id);
       const tarif = { ...s.terminal.tarif, [id]: v };
       const saran = acuanHarian(s, EKONOMI, tarif);
@@ -228,9 +235,9 @@ describe('tarif terminal', () => {
     expect(pakaiSaranTarif(s, 'sewaLoket').terminal.tarif.sewaLoket).toBe(saranTarif(s, 'sewaLoket'));
   });
 
-  it('saran tidak mengubah tarif yang tidak berpengaruh (toilet belum dibangun)', () => {
-    const s = aturTarif(stateOtomatis(), 'toilet', 3000);
-    expect(saranTarif(s, 'toilet')).toBe(3000);
+  it('saran tidak mengubah tarif yang tidak berpengaruh (lahan parkir belum dibangun)', () => {
+    const s = aturTarif(stateOtomatis(), 'parkir', 7000);
+    expect(saranTarif(s, 'parkir')).toBe(7000);
   });
 });
 
@@ -248,11 +255,13 @@ describe('buku harian, rekor, target harian', () => {
     expect(b.harian.jenis).toBe('penumpang');
   });
 
-  it('target laba: progres dari laba bersih; selesai → hadiah sekian menit laba', () => {
-    const s = { ...stateOtomatis(), harian: { hariKe: 0, jenis: 'laba' as const, target: 50_000, progres: 0, diklaim: false, jumlahSelesai: 0 } };
+  it('target laba: progres dari laba bersih & kontrak PO yang diterima; selesai → hadiah sekian menit laba', () => {
+    const harian = { hariKe: 0, jenis: 'laba' as const, target: 50_000, progres: 0, diklaim: false, jumlahSelesai: 0 };
+    const s = { ...stateOtomatis({ posRetribusi: 1, lahanParkir: 1 }), harian };
     const b = jalankan(s, JAM);
     expect(b.harian.progres).toBe(50_000);
     expect(b.harian.jumlahSelesai).toBe(1);
+    expect(daftarPo({ ...stateOtomatis(), harian }, 'peuyeumKilat').harian.progres).toBe(50_000);
     const hadiah = hadiahMenit(b, EKONOMI.harian.hadiahMenit);
     expect(klaimTarget(b).kas).toBe(b.kas + hadiah);
     expect(klaimTarget(b, EKONOMI, true).kas).toBe(b.kas + 2 * hadiah);
@@ -263,7 +272,7 @@ describe('buku harian, rekor, target harian', () => {
     const s = stateOtomatis();
     expect(hadiahMenit(s, 10)).toBe(Math.floor(Math.max(acuanHarian(s).laba, EKONOMI.hadiah.minPerMenit) * 10));
     // Tarif ekstrem tidak menggelembungkan hadiah.
-    expect(hadiahMenit(aturTarif(s, 'layanan', 25), 10)).toBe(hadiahMenit(s, 10));
+    expect(hadiahMenit(aturTarif(s, 'sewaLoket', T.tarif.sewaLoket.maks), 10)).toBe(hadiahMenit(s, 10));
     const rugi = denganPetugas(stateOtomatis({ jalur: 3 }), ['manajerOperasional', 'manajerKemitraan', 'satpam', 'satpam', 'kebersihan', 'kebersihan']);
     expect(acuanHarian(rugi).laba).toBeLessThan(EKONOMI.hadiah.minPerMenit);
     expect(hadiahMenit(rugi, 3)).toBe(EKONOMI.hadiah.minPerMenit * 3);
@@ -271,10 +280,10 @@ describe('buku harian, rekor, target harian', () => {
 });
 
 describe('mitra PO', () => {
-  it('daftar: biaya daftar saja; jendela bawaannya dibangun PO sendiri di slot kosong', () => {
+  it('daftar: gratis, PO membayar kontraknya di muka; jendela bawaannya dibangun PO sendiri di slot kosong', () => {
     const s = stateOtomatis();
     const b = daftarPo(s, 'peuyeumKilat');
-    expect(b.kas).toBe(s.kas - EKONOMI.mitra.po.peuyeumKilat.biayaDaftar);
+    expect(b.kas).toBe(s.kas + tawaranKontrakPo(s, 'peuyeumKilat').nilai);
     expect(cariPo(b, 'peuyeumKilat')!.loket).toBe(EKONOMI.mitra.tingkat.lokal.loketBawaan);
     expect(b.terminal.bangunan.jendela).toBe(1 + EKONOMI.mitra.tingkat.lokal.loketBawaan);
   });
@@ -295,7 +304,7 @@ describe('mitra PO', () => {
     expect(daftarPo(s, 'peuyeumKilat')).toBe(s);
   });
 
-  it('kontrak habis: PO keluar dan jendelanya kosong; PO terakhir diperpanjang gratis', () => {
+  it('kontrak habis: PO keluar dan jendelanya kosong; PO terakhir menerima tawaran perpanjangannya', () => {
     const duaPo = denganPo(stateOtomatis(), 'peuyeumKilat', { loket: 2 });
     const habis = { ...duaPo, mitra: { ...duaPo.mitra, terdaftar: duaPo.mitra.terdaftar.map((p) => (p.id === 'peuyeumKilat' ? { ...p, kontrakDetik: 0.05 } : p)) } };
     const b = tick(habis, DT);
@@ -304,18 +313,20 @@ describe('mitra PO', () => {
     expect(jendelaKosong(b)).toBe(2);
     const satu = stateOtomatis();
     const sendiri = { ...satu, mitra: { ...satu.mitra, terdaftar: satu.mitra.terdaftar.map((p) => ({ ...p, kontrakDetik: 0.05 })) } };
+    const tawaran = tawaranKontrakPo(sendiri, 'ondelOndel');
     const c = tick(sendiri, DT);
-    expect(cariPo(c, 'ondelOndel')!.kontrakDetik).toBeGreaterThan(EKONOMI.mitra.kontrak.hari * 1440 - 1);
+    expect(cariPo(c, 'ondelOndel')!.kontrakDetik).toBeGreaterThan(tawaran.hari * 1440 - 1);
+    expect(c.keuangan.hariIni.pendapatan.kontrak).toBe(tawaran.nilai);
   });
 
-  it('perpanjang gratis selama kepuasan mitra cukup; sewa loket terlalu mahal → menolak', () => {
+  it('perpanjang selama kepuasan mitra cukup; sewa loket terlalu mahal → PO tidak menawarkan perpanjangan', () => {
     const s = stateOtomatis();
-    expect(kurangPerpanjangPo(s, 'ondelOndel')).toBeNull();
-    const b = perpanjangPo(s, 'ondelOndel');
-    expect(b.kas).toBe(s.kas);
-    expect(cariPo(b, 'ondelOndel')!.kontrakDetik).toBeGreaterThan(cariPo(s, 'ondelOndel')!.kontrakDetik);
-    expect(kurangPerpanjangPo(b, 'ondelOndel')).toBe('penuh');
-    const mahal = aturTarif(s, 'sewaLoket', T.tarif.sewaLoket.maks);
+    const hampir = { ...s, mitra: { ...s.mitra, terdaftar: s.mitra.terdaftar.map((p) => ({ ...p, kontrakDetik: 1440 })) } };
+    expect(kurangPerpanjangPo(hampir, 'ondelOndel')).toBeNull();
+    const b = perpanjangPo(hampir, 'ondelOndel');
+    expect(b.kas).toBe(hampir.kas + tawaranKontrakPo(hampir, 'ondelOndel').nilai);
+    expect(cariPo(b, 'ondelOndel')!.kontrakDetik).toBeGreaterThan(cariPo(hampir, 'ondelOndel')!.kontrakDetik);
+    const mahal = aturTarif(hampir, 'sewaLoket', T.tarif.sewaLoket.maks);
     expect(kurangPerpanjangPo(mahal, 'ondelOndel')).toBe('mitra');
     expect(perpanjangPo(mahal, 'ondelOndel')).toBe(mahal);
   });
@@ -358,14 +369,16 @@ describe('offline', () => {
     expect(state.waktuTerakhirMs).toBe(s.waktuTerakhirMs + JAM_MS);
   });
 
-  it('dengan Manajer Operasional: pendapatan × efisiensi − biaya penuh dari rata-rata sehari', () => {
-    const s = denganPetugas(stateOtomatis(), ['manajerOperasional']);
+  it('dengan Manajer Operasional: (pendapatan + kontrak PO dirata-rata) × efisiensi − biaya penuh dari rata-rata sehari', () => {
+    const s = denganNilaiKontrak(denganPetugas(stateOtomatis(), ['manajerOperasional']), 70_000_000);
     const { state, laporan } = pergi(s, 1);
     const a = acuanHarian(s, EKONOMI, s.terminal.tarif);
     const jam = 3600 / JAM;
+    expect(a.kontrak).toBeCloseTo(70_000_000 / s.mitra.terdaftar[0]!.kontrakHari / 24, 6);
     expect(laporan.tutup).toBe(false);
     expect(laporan.detik).toBe(3600);
-    expect(laporan.pendapatan).toBeCloseTo(a.pendapatan * T.offline.efisiensi * jam, 3);
+    expect(laporan.laba).toBeGreaterThan(0);
+    expect(laporan.pendapatan).toBeCloseTo((a.pendapatan + a.kontrak) * T.offline.efisiensi * jam, 3);
     expect(laporan.biaya).toBeCloseTo(a.biaya * jam, 3);
     expect(state.kas).toBeCloseTo(s.kas + laporan.laba, 3);
     expect(state.perkembangan.xpTerminal).toBeCloseTo(a.arus * jam * T.offline.efisiensi, 3);
@@ -386,12 +399,12 @@ describe('offline', () => {
 
   it('tarif ekstrem tidak menggelembungkan pendapatan offline', () => {
     const s = denganPetugas(stateOtomatis(), ['manajerOperasional']);
-    const mahal = aturTarif(s, 'layanan', T.tarif.layanan.maks);
+    const mahal = aturTarif(s, 'sewaLoket', T.tarif.sewaLoket.maks);
     expect(pergi(mahal, 1).laporan.pendapatan).toBeLessThanOrEqual(pergi(s, 1).laporan.pendapatan + 1e-6);
   });
 
   it('rugi saat pergi: kas tidak minus, petugas berhenti satu per satu (manajer paling akhir)', () => {
-    const s = aturTarif(denganPetugas(stateOtomatis({ jalur: 2 }, 1_000_000), ['manajerOperasional', 'kebersihan', 'kebersihan', 'satpam', 'satpam']), 'layanan', 0);
+    const s = aturTarif(denganPetugas(stateOtomatis({ jalur: 2 }, 1_000_000), ['manajerOperasional', 'kebersihan', 'kebersihan', 'satpam', 'satpam']), 'sewaLoket', 0);
     const { state, laporan } = pergi(s, 2);
     expect(laporan.laba).toBeLessThan(0);
     expect(state.kas).toBeGreaterThanOrEqual(0);

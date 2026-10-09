@@ -1,20 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { EKONOMI } from '../src/config/economy.config';
-import { PO_IDS } from '../src/sim/fitur';
+import { PO_IDS, type PoId } from '../src/sim/fitur';
 import { kelasDariLevel, levelMinimalKelas, levelTerminalDariXp, slotPo, xpKumulatifTerminal } from '../src/sim/level-terminal';
 import {
   faktorReputasi,
-  hariKontrakPertama,
   indeksJurusan,
   jurusanAktif,
   kelasAktif,
   levelPoDariXp,
   majukanReputasi,
   nilaiJurusan,
+  nilaiKontrakHarian,
   nilaiTiketPo,
-  sisaSetelahPerpanjang,
   syaratDaftarKurang,
   targetReputasi,
+  tawaranKontrak,
   xpKumulatifPo,
   xpLevelPo,
 } from '../src/sim/mitra';
@@ -141,16 +141,44 @@ describe('pendaftaran & kontrak', () => {
     expect(syaratDaftarKurang('juaraKelas', { ...biasa, kelasTerminal: 1 })).toBeNull();
   });
 
-  it('PO hadiah mendapat kontrak pertama 14 hari, lainnya 7', () => {
-    expect(hariKontrakPertama('peuyeumKilat')).toBe(7);
-    expect(hariKontrakPertama('juaraKelas')).toBe(14);
-    expect(hariKontrakPertama('kembangApi')).toBe(14);
+  it('panjang kontrak ditawarkan PO: diundi dari pilihanHari menurut bobot tingkatnya, tetap tiap PO & kontrak ke-berapa; PO hadiah mulai hariHadiah', () => {
+    const K = M.kontrak;
+    expect(tawaranKontrak('juaraKelas', 0, 1, 1).hari).toBe(K.hariHadiah);
+    expect(tawaranKontrak('kembangApi', 0, 1, 0).hari).toBe(K.hariHadiah);
+    for (const id of PO_IDS) {
+      const hadiah = M.po[id].sumber === 'hadiahKelas' || M.po[id].sumber === 'hadiahEvent';
+      for (let ke = hadiah ? 1 : 0; ke < 12; ke++) {
+        const t = tawaranKontrak(id, ke, 1, 0);
+        // Tetap: tawaran tidak berubah saat game dimuat ulang.
+        expect(tawaranKontrak(id, ke, 1, 0)).toEqual(t);
+        const i = K.pilihanHari.indexOf(t.hari);
+        expect(K.bobotHari[M.po[id].tingkat][i], `${id} ke-${ke}`).toBeGreaterThan(0);
+      }
+    }
+    // Bervariasi antar-perpanjangan; PO kecil menawarkan kontrak pendek, PO besar panjang.
+    expect(new Set(Array.from({ length: 12 }, (_, ke) => tawaranKontrak('peuyeumKilat', ke, 1, 0).hari)).size).toBeGreaterThan(2);
+    const rata = (id: PoId): number => Array.from({ length: 40 }, (_, ke) => tawaranKontrak(id, ke + 1, 1, 0).hari).reduce((a, b) => a + b, 0) / 40;
+    expect(rata('peuyeumKilat')).toBeLessThan(rata('bakpiaRasa'));
+    expect(rata('bakpiaRasa')).toBeLessThan(rata('kecakLaju'));
+    expect(rata('kecakLaju')).toBeLessThan(rata('teloletJaya'));
   });
 
-  it('perpanjang menambah 7 hari, sisa maksimal 14 hari', () => {
-    expect(sisaSetelahPerpanjang(2)).toBe(9);
-    expect(sisaSetelahPerpanjang(10)).toBe(14);
-    expect(sisaSetelahPerpanjang(-3)).toBe(7);
+  it('nilai kontrak ikut armada PO (tingkat & level) dan kelas terminal; per hari lebih murah untuk kontrak panjang; dibulatkan 3 angka penting', () => {
+    const K = M.kontrak;
+    const n = (id: PoId, level = 1, kelas = 0): number => nilaiKontrakHarian(id, level, kelas);
+    expect(n('peuyeumKilat')).toBe(K.nilaiDasar);
+    expect(n('peuyeumKilat')).toBeLessThan(n('bakpiaRasa'));
+    expect(n('bakpiaRasa')).toBeLessThan(n('kecakLaju'));
+    expect(n('kecakLaju')).toBeLessThan(n('teloletJaya'));
+    expect(n('peuyeumKilat', 5)).toBeCloseTo(n('peuyeumKilat') * K.nilaiLevel ** 4, 6);
+    expect(n('peuyeumKilat', 1, 3)).toBeCloseTo(n('peuyeumKilat') * K.pengaliKelas[3]!, 6);
+    for (let i = 1; i < K.pengaliPanjang.length; i++) expect(K.pengaliPanjang[i]).toBeLessThan(K.pengaliPanjang[i - 1]!);
+    for (let ke = 0; ke < 12; ke++) {
+      const t = tawaranKontrak('bakpiaRasa', ke, 4, 1);
+      const mentah = n('bakpiaRasa', 4, 1) * t.hari * K.pengaliPanjang[K.pilihanHari.indexOf(t.hari)]!;
+      expect(Math.abs(t.nilai - mentah) / mentah).toBeLessThan(0.006);
+      expect(String(t.nilai).replace(/0+$/, '').length).toBeLessThanOrEqual(3);
+    }
   });
 });
 
@@ -176,7 +204,7 @@ describe('level & kelas terminal', () => {
     }
   });
 
-  it('slot PO naik dengan level; di atas 8 butuh aula kedua (perluasan tahap 4)', () => {
+  it('slot PO terus bertambah seiring level terminal (sampai 20 di Lv 140); di atas 8 butuh aula kedua (perluasan tahap 4)', () => {
     expect(slotPo(1, 0)).toBe(2);
     expect(slotPo(3, 0)).toBe(3);
     expect(slotPo(10, 3)).toBe(5);
@@ -184,6 +212,10 @@ describe('level & kelas terminal', () => {
     expect(slotPo(30, 3)).toBe(8);
     expect(slotPo(30, 4)).toBe(9);
     expect(slotPo(60, 5)).toBe(12);
+    expect(slotPo(139, 5)).toBe(19);
+    expect(slotPo(140, 5)).toBe(20);
+    expect(slotPo(500, 5)).toBe(20);
+    for (let L = 2; L <= 150; L++) expect(slotPo(L, 5), `Lv ${L}`).toBeGreaterThanOrEqual(slotPo(L - 1, 5));
   });
 
 });

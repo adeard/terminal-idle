@@ -21,16 +21,17 @@ import { denganBangunan, denganLevelTerminal, denganPetugas, denganPo, jalankan,
 const T = EKONOMI.tycoon;
 
 describe('fasilitas berbayar', () => {
-  it('game baru tanpa fasilitas: hanya biaya layanan & sewa jendela loket', () => {
+  it('game baru tanpa fasilitas: hanya sewa jendela loket (penumpang tidak membayar terminal; kontrak PO dibayar di muka)', () => {
     const p = keuanganSekarang(stateOtomatis()).pendapatan;
-    expect(p.layanan).toBeGreaterThan(0);
+    expect(Object.keys(p).sort()).toEqual(['kontrak', 'parkir', 'retribusi', 'sewaKios', 'sewaLoket']);
     expect(p.sewaLoket).toBeGreaterThan(0);
-    expect(p.toilet + p.parkir + p.retribusi + p.sewaKios).toBe(0);
+    expect(p.kontrak + p.parkir + p.retribusi + p.sewaKios).toBe(0);
   });
 
-  it('toilet, lahan parkir, pos retribusi: pendapatannya baru ada setelah dibangun', () => {
+  it('lahan parkir & pos retribusi: pendapatannya baru ada setelah dibangun; toilet gratis', () => {
+    const tanpaToilet = keuanganSekarang(stateOtomatis({ lahanParkir: 1, posRetribusi: 1 })).pendapatan;
     const p = keuanganSekarang(stateOtomatis({ toilet: 1, lahanParkir: 1, posRetribusi: 1 })).pendapatan;
-    expect(p.toilet).toBeGreaterThan(0);
+    expect(p).toEqual(tanpaToilet);
     expect(p.parkir).toBeGreaterThan(0);
     expect(p.retribusi).toBeGreaterThan(0);
   });

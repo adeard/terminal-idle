@@ -8,8 +8,8 @@ import { cuacaTerminalState } from '../sim/cuaca';
 import { BANGUNAN_IDS, EVENT_IDS, KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, PO_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type EventId, type JenisTarget, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import { kelasDariLevel, levelMinimalKelas, xpKumulatifTerminal } from '../sim/level-terminal';
-import { biayaDaftarPo, jurusanAktif, kelasAktif, levelPoDariXp, nilaiJurusan, nilaiTiketPo, xpKumulatifPo, xpLevelPo } from '../sim/mitra';
-import { AREA_IDS, dayaTarikTycoon, type AreaId } from '../sim/operasi';
+import { jurusanAktif, kelasAktif, levelPoDariXp, nilaiJurusan, nilaiTiketPo, urutanPo, xpKumulatifPo, xpLevelPo, type TawaranKontrak } from '../sim/mitra';
+import { AREA_IDS, dayaTarikTycoon, penumpangMenunggu, type AreaId } from '../sim/operasi';
 import { maksPetugas } from '../sim/petugas';
 import {
   acuanHarian,
@@ -36,6 +36,7 @@ import {
   kelasTerminal,
   keuanganSekarang,
   kurangPerpanjangPo,
+  labaDenganKontrak,
   labaBuku,
   levelPo,
   levelTerminal,
@@ -43,9 +44,12 @@ import {
   pengaliEvent,
   pengembalianBongkarState,
   slotPoState,
+  pengembalianPutus,
   syaratDaftarPoKurang,
+  tawaranKontrakPo,
   syaratTeknologi,
   targetHarianSelesai,
+  type AcuanHarian,
   type BukuHarian,
   type GameState,
   type KurangDaftarPo,
@@ -68,8 +72,8 @@ export interface ModelHud {
   readonly labaPerJam: number;
   /** Boost pendapatan iklan sedang berjalan. */
   readonly boostAktif: boolean;
-  /** Arus penumpang sekarang (pnp per jam terminal). */
-  readonly arus: number;
+  /** Penumpang yang sedang menunggu di terminal sekarang (dibulatkan; lihat penumpangMenunggu). */
+  readonly penumpangDiTerminal: number;
   readonly waktu: ModelWaktu;
   /** Kelas terminal (lihat namaKelas di teks.ts). */
   readonly kelas: number;
@@ -247,6 +251,10 @@ export interface ModelPoTerdaftar {
   /** Sisa kontrak (hari terminal), dan kenapa belum bisa diperpanjang (null = bisa). */
   readonly kontrakHari: number;
   readonly kurangPerpanjang: KurangPerpanjang | null;
+  /** Tawaran perpanjangan PO: panjang (hari) & nilai yang dibayar di muka. */
+  readonly tawaran: TawaranKontrak;
+  /** Sisa nilai kontrak yang dikembalikan bila diputus sekarang (Rp). */
+  readonly pengembalianPutus: number;
   /** PO premium: kepuasan penumpang minimal untuk memperpanjang (null = tanpa syarat). */
   readonly kepuasanMin: number | null;
   readonly bisaPutus: boolean;
@@ -258,15 +266,16 @@ export interface ModelPoTersedia {
   readonly tingkat: TingkatPo;
   /** Nama jurusan (urut terbuka: Lv 1, Lv 6, Lv 12). */
   readonly jurusan: readonly string[];
-  readonly biaya: number;
+  /** Kontrak yang ditawarkan PO bila bergabung sekarang: panjang & nilai yang dibayar di muka. */
+  readonly tawaran: TawaranKontrak;
   readonly bisa: boolean;
-  /** Syarat yang belum terpenuhi (null = tinggal kasnya). */
+  /** Syarat yang belum terpenuhi (null = bisa didaftarkan). */
   readonly kurang: KurangDaftarPo | null;
   /** Level yang dilanjutkan bila pernah terdaftar (riwayat), null bila belum pernah. */
   readonly levelRiwayat: number | null;
   /** Sisa masa jeda setelah diputus (hari terminal), null bila tidak sedang jeda. */
   readonly jedaHari: number | null;
-  /** PO hadiah (kelas/event): gratis & kontrak pertama lebih panjang. */
+  /** PO hadiah (kelas/event): kontrak pertamanya lebih panjang. */
   readonly hadiah: boolean;
   /** Event musiman yang menghadiahkan PO ini (null = bukan PO event). */
   readonly event: EventId | null;
@@ -279,8 +288,8 @@ export interface ModelMitra {
   /** Slot berikutnya terbuka di level terminal ini (null = sudah paling banyak). */
   readonly slotBerikut: { readonly level: number; readonly slot: number } | null;
   readonly jendelaKosong: number;
-  /** Aturan kontrak untuk keterangan: lama paling panjang, penalti reputasi & jeda bila diputus (hari terminal). */
-  readonly kontrak: { readonly hariMaks: number; readonly penaltiPutus: number; readonly jedaHari: number };
+  /** Aturan kontrak untuk keterangan: tawaran perpanjangan muncul saat sisa ≤ hariTawaran; penalti reputasi & jeda bila diputus (hari terminal). */
+  readonly kontrak: { readonly hariTawaran: number; readonly penaltiPutus: number; readonly jedaHari: number };
   /** Kepuasan mitra minimal untuk memperpanjang kontrak & mau bergabung. */
   readonly minimalMitra: number;
 }
@@ -303,12 +312,6 @@ export interface ModelTarif {
   readonly langkah: number;
   readonly bisaTurun: boolean;
   readonly bisaNaik: boolean;
-  /**
-   * Biaya layanan saja: rupiah yang dipungut terminal per penumpang dengan tarif
-   * ini, dari rata-rata harga tiket (ditetapkan PO; beda tiap jurusan, kelas bus,
-   * & level PO) penumpang yang berangkat sekarang. null untuk tarif lain.
-   */
-  readonly perPenumpang: { readonly rupiah: number; readonly hargaTiket: number } | null;
 }
 
 /** Buku keuangan satu hari terminal. */
@@ -481,7 +484,7 @@ export function buatModel(state: GameState, cfg: KonfigEkonomi = EKONOMI): Model
     harga: k.harga,
     tambahanPenumpang: dayaTarikTycoon(k.nilai, cfg) / dayaTarikTycoon(0, cfg) - 1,
     bottleneck: op.bottleneck,
-    kursi: { ada: b.kursi, perlu: Math.ceil((op.arusPuncak * kp.jamTunggu) / kp.kursiPerBlok - 1e-9) },
+    kursi: { ada: b.kursi, perlu: Math.ceil(penumpangMenunggu(op.arusPuncak, cfg) / kp.kursiPerBlok - 1e-9) },
     papanJadwal: state.terminal.teknologi.jadwalDigital,
     petugasKebersihan: { ada: n.kebersihan, perlu: Math.ceil(op.arusPuncak / kp.arusPerPetugasKebersihan - 1e-9) },
     satpam: { ada: n.satpam, perlu: b.jalur },
@@ -494,7 +497,7 @@ export function buatModel(state: GameState, cfg: KonfigEkonomi = EKONOMI): Model
       penumpangHariIni: Math.floor(hariIni.penumpang + 1e-9),
       labaPerJam: keu.laba,
       boostAktif: state.hadiah.boostDetik > 0,
-      arus: op.arus,
+      penumpangDiTerminal: Math.round(penumpangMenunggu(op.arus, cfg)),
       kelas,
       level: levelTerminal(state, cfg),
       kepuasan,
@@ -642,6 +645,8 @@ function modelMitra(state: GameState, cfg: KonfigEkonomi): ModelMitra {
       kepuasanMitra: h?.kepuasanMitra ?? 0,
       kontrakHari: p.kontrakDetik / DETIK_SEHARI,
       kurangPerpanjang: kurangPerpanjangPo(state, p.id, cfg),
+      tawaran: tawaranKontrakPo(state, p.id, cfg),
+      pengembalianPutus: pengembalianPutus(p),
       kepuasanMin: cfg.mitra.po[p.id].kepuasanMin ?? null,
       bisaPutus: bisaPutusPo(state, p.id),
     };
@@ -656,7 +661,7 @@ function modelMitra(state: GameState, cfg: KonfigEkonomi): ModelMitra {
         id,
         tingkat: po.tingkat,
         jurusan: po.jurusan,
-        biaya: biayaDaftarPo(id, cfg),
+        tawaran: tawaranKontrakPo(state, id, cfg),
         bisa: bisaDaftarPo(state, id, cfg),
         kurang,
         levelRiwayat: riwayat ? levelPoDariXp(riwayat.xp, cfg) : null,
@@ -665,9 +670,9 @@ function modelMitra(state: GameState, cfg: KonfigEkonomi): ModelMitra {
         event: EVENT_IDS.find((e) => cfg.event[e].po === id) ?? null,
       };
     })
-    // Yang bisa didaftarkan (atau tinggal slot/kas) lebih dulu, lalu yang terkunci kelas/event/kepuasan;
-    // di tiap golongan yang termurah dulu (PO kedua yang disarankan tutorial ada di paling atas).
-    .sort((a, b) => urutanTersedia(a) - urutanTersedia(b) || a.biaya - b.biaya);
+    // Yang bisa didaftarkan (atau tinggal slot) lebih dulu, lalu yang terkunci kelas/event/kepuasan;
+    // di tiap golongan urut katalog PO (PO kedua yang disarankan tutorial ada di paling atas).
+    .sort((a, b) => urutanTersedia(a) - urutanTersedia(b) || urutanPo(a.id, cfg) - urutanPo(b.id, cfg));
   const slot = slotPoState(state, cfg);
   const slotBerikut = cfg.mitra.terminal.slot.find(([lv, s]) => lv > level && s > slot);
   return {
@@ -676,7 +681,7 @@ function modelMitra(state: GameState, cfg: KonfigEkonomi): ModelMitra {
     slot,
     slotBerikut: slotBerikut ? { level: slotBerikut[0], slot: slotBerikut[1] } : null,
     jendelaKosong: kosong,
-    kontrak: { hariMaks: cfg.mitra.kontrak.hariMaks, penaltiPutus: cfg.mitra.kontrak.penaltiReputasiPutus, jedaHari: cfg.mitra.kontrak.jedaPutusHari },
+    kontrak: { hariTawaran: cfg.mitra.kontrak.hariTawaran, penaltiPutus: cfg.mitra.kontrak.penaltiReputasiPutus, jedaHari: cfg.mitra.kontrak.jedaPutusHari },
     minimalMitra: cfg.tycoon.mitra.minimal,
   };
 }
@@ -715,19 +720,7 @@ function modelBuku(b: BukuHarian): ModelBuku {
 }
 
 /** Level & kelas terminal, perluasan, tarif, keuangan. */
-/**
- * Rata-rata harga tiket penumpang yang berangkat sekarang (ditimbang arus tiap
- * PO × jurusan × kelas bus); saat sepi, rata-rata segmennya; tanpa PO, harga dasar.
- */
-export function hargaTiketRata(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
-  const segmen = operasiState(state, cfg).segmen;
-  if (segmen.length === 0) return cfg.tycoon.hargaTiketDasar;
-  const arus = segmen.reduce((a, s) => a + s.arus, 0);
-  if (arus > 0) return segmen.reduce((a, s) => a + s.arus * s.harga, 0) / arus;
-  return segmen.reduce((a, s) => a + s.harga, 0) / segmen.length;
-}
-
-function modelTerminal(state: GameState, rata: { readonly pendapatan: number; readonly biaya: number; readonly laba: number }, cfg: KonfigEkonomi): ModelTerminal {
+function modelTerminal(state: GameState, rata: AcuanHarian, cfg: KonfigEkonomi): ModelTerminal {
   const level = levelTerminal(state, cfg);
   const kelas = kelasDariLevel(level, cfg);
   const xp = state.perkembangan.xpTerminal;
@@ -751,12 +744,10 @@ function modelTerminal(state: GameState, rata: { readonly pendapatan: number; re
           }
         : null,
   };
-  const hargaTiket = hargaTiketRata(state, cfg);
   const tarif = TARIF_IDS.map((id): ModelTarif => {
     const t = cfg.tycoon.tarif[id];
     const nilai = state.terminal.tarif[id];
-    const perPenumpang = id === 'layanan' ? { rupiah: (hargaTiket * nilai) / 100, hargaTiket } : null;
-    return { id, nilai, bawaan: t.bawaan, langkah: t.langkah, bisaTurun: nilai > t.min, bisaNaik: nilai < t.maks, perPenumpang };
+    return { id, nilai, bawaan: t.bawaan, langkah: t.langkah, bisaTurun: nilai > t.min, bisaNaik: nilai < t.maks };
   });
   const k = state.keuangan;
   const beroperasi = new Set(kelasBusBeroperasi(state, cfg));
@@ -777,7 +768,8 @@ function modelTerminal(state: GameState, rata: { readonly pendapatan: number; re
       kas: state.kas,
       hariIni: modelBuku(k.hariIni),
       kemarin: k.kemarin ? modelBuku(k.kemarin) : null,
-      rataRata: { pendapatan: rata.pendapatan * 24, biaya: rata.biaya * 24, laba: rata.laba * 24 },
+      // Termasuk kontrak PO yang dirata-rata (dibayar di muka, jadi bukan arus kas harian).
+      rataRata: { pendapatan: (rata.pendapatan + rata.kontrak) * 24, biaya: rata.biaya * 24, laba: labaDenganKontrak(rata) * 24 },
     },
     kelasBus: KELAS_BUS_IDS.map(
       (id, i): ModelKelasBus => ({

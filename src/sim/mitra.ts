@@ -1,11 +1,11 @@
 /**
  * Aturan mitra PO (murni): level & XP, jurusan & kelas bus yang aktif, nilai
- * tiket, reputasi, syarat daftar, dan kontrak. Rancangan:
+ * tiket, reputasi, syarat daftar, dan tawaran kontrak (dibayar PO di muka). Rancangan:
  * documents/12-rancangan-ekonomi-po.md, disesuaikan tycoon (dokumen 13: harga
  * tiket di tangan PO, kepuasan mitra di sim/operasi.ts). Angka di EKONOMI.mitra.
  */
 import { EKONOMI, type KonfigEkonomi, type KonfigMitraPo, type KonfigTingkatPo } from '../config/economy.config';
-import { KELAS_BUS_IDS, type KelasBusId, type PoId } from './fitur';
+import { KELAS_BUS_IDS, PO_IDS, type KelasBusId, type PoId } from './fitur';
 
 const jepit = (x: number, min: number, maks: number): number => Math.min(maks, Math.max(min, x));
 
@@ -164,19 +164,62 @@ export function syaratDaftarKurang(id: PoId, k: KeadaanDaftar, cfg: KonfigEkonom
   return null;
 }
 
-/** Biaya daftar PO (Rp). */
-export function biayaDaftarPo(id: PoId, cfg: KonfigEkonomi = EKONOMI): number {
-  return cfg.mitra.po[id].biayaDaftar;
+/**
+ * Urutan katalog PO = urutan EKONOMI.mitra.po (PO kecil & kelas terminal rendah
+ * lebih dulu), untuk daftar PO tersedia & saran tutorial. Bukan urutan PO_IDS.
+ */
+export function urutanPo(id: PoId, cfg: KonfigEkonomi = EKONOMI): number {
+  return Object.keys(cfg.mitra.po).indexOf(id);
 }
 
-/** Lama kontrak pertama (hari terminal): PO hadiah mendapat kontrak lebih panjang. */
-export function hariKontrakPertama(id: PoId, cfg: KonfigEkonomi = EKONOMI): number {
-  const s = cfg.mitra.po[id].sumber;
-  return s === 'hadiahKelas' || s === 'hadiahEvent' ? cfg.mitra.kontrak.hariHadiah : cfg.mitra.kontrak.hari;
+/** Kontrak yang ditawarkan PO: panjangnya (hari terminal) & nilai yang dibayar PO di muka (Rp). */
+export interface TawaranKontrak {
+  readonly hari: number;
+  readonly nilai: number;
 }
 
-/** Sisa kontrak (hari terminal) setelah diperpanjang sekali. */
-export function sisaSetelahPerpanjang(sisaHari: number, cfg: KonfigEkonomi = EKONOMI): number {
+/** Nilai kontrak sehari PO ini pada level PO & kelas terminal ini (Rp): armada PO & terminal yang besar, kontraknya mahal. */
+export function nilaiKontrakHarian(id: PoId, level: number, kelasTerminal: number, cfg: KonfigEkonomi = EKONOMI): number {
   const k = cfg.mitra.kontrak;
-  return Math.min(k.hariMaks, Math.max(0, sisaHari) + k.hari);
+  const kelas = k.pengaliKelas[Math.min(k.pengaliKelas.length - 1, Math.max(0, Math.floor(kelasTerminal)))] ?? 1;
+  return k.nilaiDasar * k.pengaliTingkat[cfg.mitra.po[id].tingkat] * Math.pow(k.nilaiLevel, Math.max(1, level) - 1) * kelas;
+}
+
+/** Dibulatkan ke tiga angka penting (Rp 21.432.000 → Rp 21.400.000). */
+function bulatkanNilai(x: number): number {
+  if (!(x > 0)) return 0;
+  const langkah = Math.pow(10, Math.floor(Math.log10(x)) - 2);
+  return Math.round(x / langkah) * langkah;
+}
+
+/** Undian tetap 0–1 per PO & kontrak ke-berapa: tawaran tidak berubah saat game dimuat ulang. */
+function undianKontrak(id: PoId, ke: number): number {
+  const i = PO_IDS.indexOf(id) + 1;
+  return (((i * 0.6180339887 + ke * 0.7548776662 + 0.137) % 1) + 1) % 1;
+}
+
+/**
+ * Tawaran kontrak ke-`ke` (0 = kontrak pertama) PO ini. Panjangnya diundi dari
+ * pilihanHari menurut bobot tingkat PO (kontrak pertama PO hadiah: hariHadiah),
+ * berbeda tiap PO & tiap perpanjangan; nilainya mengikuti armada PO (tingkat &
+ * level) dan kelas terminal, lebih murah per hari untuk kontrak panjang.
+ */
+export function tawaranKontrak(id: PoId, ke: number, level: number, kelasTerminal: number, cfg: KonfigEkonomi = EKONOMI): TawaranKontrak {
+  const k = cfg.mitra.kontrak;
+  const po = cfg.mitra.po[id];
+  let i = -1;
+  if (ke === 0 && (po.sumber === 'hadiahKelas' || po.sumber === 'hadiahEvent')) i = k.pilihanHari.indexOf(k.hariHadiah);
+  if (i < 0) {
+    const bobot = k.bobotHari[po.tingkat];
+    const total = bobot.reduce((a, b) => a + b, 0);
+    let u = undianKontrak(id, ke) * total;
+    i = bobot.findIndex((b) => {
+      if (u < b) return true;
+      u -= b;
+      return false;
+    });
+    if (i < 0) i = bobot.reduce((terakhir, b, j) => (b > 0 ? j : terakhir), 0);
+  }
+  const hari = k.pilihanHari[i]!;
+  return { hari, nilai: bulatkanNilai(nilaiKontrakHarian(id, level, kelasTerminal, cfg) * hari * (k.pengaliPanjang[i] ?? 1)) };
 }

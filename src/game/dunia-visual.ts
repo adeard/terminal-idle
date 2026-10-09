@@ -315,6 +315,8 @@ export interface TransaksiVisual {
   readonly jenis: JenisTransaksi;
   readonly x: number;
   readonly y: number;
+  /** Tiket yang dibeli (jenis 'tiket'): pembeli & anggota rombongannya. */
+  readonly tiket?: number;
 }
 
 /** Tempat singgah yang berbelanja (uangnya jadi omzet kios). */
@@ -1268,7 +1270,7 @@ export class DuniaVisual {
           daftar.splice(daftar.indexOf(o.id), 1);
           const xLoket = X_LOKET[o.loket]!;
           o.loket = -1;
-          this.transaksi.push({ jenis: 'tiket', x: xLoket, y: LOKET.yPembeli });
+          this.transaksi.push({ jenis: 'tiket', x: xLoket, y: LOKET.yPembeli, tiket: 1 + anggotaRombongan(o.id).length });
           const kunjungan = this.rencanaMampirAula(o, xLoket);
           if (kunjungan) this.mulaiSinggah(o, kunjungan);
           else {

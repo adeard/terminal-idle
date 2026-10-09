@@ -18,7 +18,7 @@ import {
   tick,
   type GameState,
 } from '../src/sim/state';
-import { denganPetugas, jalankan, stateOtomatis, T0 } from './helpers';
+import { denganNilaiKontrak, denganPetugas, jalankan, stateOtomatis, T0 } from './helpers';
 
 const H = EKONOMI.hadiah;
 const JAM_MS = 3_600_000;
@@ -50,20 +50,22 @@ describe('boost pendapatan', () => {
     expect(dengan.hadiah.boostDetik).toBe(0);
   });
 
-  it('boost ikut berjalan saat offline: jam yang ter-boost pendapatannya 2×', () => {
-    const s = { ...denganBoost(denganManajer(stateOtomatis()), 1800), waktuTerakhirMs: T0 };
+  it('boost ikut berjalan saat offline: jam yang ter-boost pendapatannya 2× (kontrak PO tidak ikut)', () => {
+    const s = { ...denganBoost(denganManajer(denganNilaiKontrak(stateOtomatis(), 70_000_000)), 1800), waktuTerakhirMs: T0 };
     const { state, laporan } = terapkanOffline(s, T0 + JAM_MS);
     const a = acuanHarian(s, EKONOMI, s.terminal.tarif);
-    const perJam = Math.min(a.pendapatan, acuanHarian(s).pendapatan) * EKONOMI.tycoon.offline.efisiensi;
+    const e = EKONOMI.tycoon.offline.efisiensi;
+    const perJam = Math.min(a.pendapatan, acuanHarian(s).pendapatan) * e;
+    expect(a.kontrak).toBeGreaterThan(0);
     expect(laporan.detikBoost).toBe(1800);
-    expect(laporan.pendapatan).toBeCloseTo(perJam * (60 + 30), 3);
+    expect(laporan.pendapatan).toBeCloseTo(perJam * (60 + 30) + a.kontrak * e * 60, 3);
     expect(state.hadiah.boostDetik).toBe(0);
   });
 });
 
 describe('bonus 2× laba offline', () => {
   it('ditawarkan untuk laporan terakhir dan hanya bisa diklaim sekali', () => {
-    const s = { ...denganManajer(stateOtomatis()), waktuTerakhirMs: T0 };
+    const s = { ...denganManajer(denganNilaiKontrak(stateOtomatis(), 70_000_000)), waktuTerakhirMs: T0 };
     const { state, laporan } = terapkanOffline(s, T0 + JAM_MS);
     expect(laporan.laba).toBeGreaterThan(0);
     expect(bisaKlaimBonusOffline(state)).toBe(true);

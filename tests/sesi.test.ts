@@ -3,7 +3,7 @@ import { KUNCI_SAVE, KUNCI_SAVE_KORUP, SesiGame, slotLokal, type AlasanSimpan, t
 import { EKONOMI } from '../src/config/economy.config';
 import { deserialisasi, serialisasi } from '../src/sim/save';
 import { buatStateBaru, tandaiWaktu, terapkanOffline, type GameState } from '../src/sim/state';
-import { jalankan, stateOtomatis } from './helpers';
+import { denganNilaiKontrak, jalankan, stateOtomatis } from './helpers';
 
 /**
  * Hari biasa tanpa event musiman: sesi mencocokkan event dengan jam dinding,
@@ -44,8 +44,12 @@ function siapkan(awal?: { save?: string; sekarang?: number }) {
 }
 
 const MODAL = EKONOMI.tycoon.modalAwal;
-/** Terminal dengan Manajer Operasional (tetap berjalan saat ditutup), kas `kas`, terakhir aktif di `waktuMs`. */
-const stateManajer = (kas: number, waktuMs: number): GameState => tandaiWaktu(stateOtomatis({}, kas, ['manajerOperasional']), waktuMs);
+/**
+ * Terminal berlaba dengan Manajer Operasional (tetap berjalan saat ditutup): pos
+ * retribusi, lahan parkir, & kontrak PO berjalan; kas `kas`, terakhir aktif di `waktuMs`.
+ */
+const stateManajer = (kas: number, waktuMs: number): GameState =>
+  tandaiWaktu(denganNilaiKontrak(stateOtomatis({ posRetribusi: 1, lahanParkir: 1 }, kas, ['manajerOperasional']), 70_000_000), waktuMs);
 const SAVE_OTOMATIS_T0 = serialisasi(stateManajer(MODAL, T0));
 /** Laba offline yang diharapkan bila state ini ditinggal `ms`. */
 const labaOffline = (s: GameState, ms: number): number => terapkanOffline(s, s.waktuTerakhirMs + ms).laporan.laba;

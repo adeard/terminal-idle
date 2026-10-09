@@ -473,9 +473,9 @@ function buatKartuPo(id: PoId, kirim: Kirim): KartuPo {
   const daftarJurusan = el('div', 'po-harga');
   const barisJurusan: ReturnType<typeof buatBarisJurusan>[] = [];
   const kontrak = barisPo();
+  // Perpanjang = terima tawaran PO (panjang & nilainya dari PO, dibayar di muka).
   const tombolPerpanjang = tombolBeli();
   tombolPerpanjang.kecil.textContent = TEKS.perpanjang;
-  tombolPerpanjang.besar.textContent = TEKS.gratis;
   tombolPerpanjang.tombol.addEventListener('click', () => kirim({ jenis: 'perpanjangPo', po: id }));
   // Putus kontrak lewat dua ketukan: ketukan pertama menampilkan akibatnya.
   const putus = tombolYakin('tombol tombol-putus', TEKS.putusYakin, () => kirim({ jenis: 'putusPo', po: id }));
@@ -517,20 +517,28 @@ function buatKartuPo(id: PoId, kirim: Kirim): KartuPo {
       });
       setTeks(kontrak.judul, TEKS.poKontrak(formatAngka(Math.max(0, p.kontrakHari), { desimalKecil: 1 })));
       kontrak.elemen.classList.toggle('hampir', p.kontrakHari <= 1);
+      // Putus: PO terakhir tidak bisa diputus; sisa nilai kontrak dikembalikan, jadi kasnya harus cukup.
+      const bisaDiputus = mi.terdaftar.length > 1;
+      const kembali = formatUang(p.pengembalianPutus);
       const ketKontrak = putus.menunggu()
-        ? TEKS.putusCatatan(mi.kontrak.penaltiPutus, mi.kontrak.jedaHari)
+        ? TEKS.putusCatatan(kembali, mi.kontrak.penaltiPutus, mi.kontrak.jedaHari)
         : p.kurangPerpanjang === 'mitra'
           ? TEKS.poMenolakMitra(persen(mi.minimalMitra))
           : p.kurangPerpanjang === 'kepuasan' && p.kepuasanMin !== null
             ? TEKS.poMenolak(persen(p.kepuasanMin))
-            : p.kurangPerpanjang === 'penuh'
-              ? TEKS.poKontrakPenuh(mi.kontrak.hariMaks)
-              : '';
+            : p.kurangPerpanjang === 'belum'
+              ? TEKS.poTawaranBelum(mi.kontrak.hariTawaran, p.tawaran.hari)
+              : bisaDiputus && !p.bisaPutus
+                ? TEKS.putusKurangKas(kembali)
+                : '';
       setTeks(kontrak.ket, ketKontrak);
       setHidden(kontrak.ket, ketKontrak === '');
-      setHidden(tombolPerpanjang.tombol, p.kurangPerpanjang === 'penuh');
+      setTeks(tombolPerpanjang.kecil, TEKS.poPerpanjangHari(p.tawaran.hari));
+      setTeks(tombolPerpanjang.besar, TEKS.uangMasuk(formatUang(p.tawaran.nilai)));
+      setHidden(tombolPerpanjang.tombol, p.kurangPerpanjang === 'belum');
       setDisabled(tombolPerpanjang.tombol, p.kurangPerpanjang !== null);
-      setHidden(putus.tombol, !p.bisaPutus);
+      setHidden(putus.tombol, !bisaDiputus);
+      setDisabled(putus.tombol, !p.bisaPutus);
     },
   };
 }
@@ -569,7 +577,7 @@ function buatBarisTersedia(id: PoId, kirim: Kirim): BarisTersedia {
   r.elemen.dataset['po'] = id;
   const status = el('div', 'item-keterangan po-status');
   r.keterangan.after(status);
-  r.tombolKecil.textContent = TEKS.daftar;
+  // Daftar = terima kontrak yang ditawarkan PO (dibayar PO di muka).
   r.tombol.addEventListener('click', () => kirim({ jenis: 'daftarPo', po: id }));
   return {
     elemen: r.elemen,
@@ -582,7 +590,8 @@ function buatBarisTersedia(id: PoId, kirim: Kirim): BarisTersedia {
       // Kelas terminal & event: masih jauh, jadi tanpa tombol.
       const terkunci = p.kurang?.jenis === 'kelas' || p.kurang?.jenis === 'event';
       setHidden(r.tombol, terkunci);
-      setTeks(r.tombolBesar, p.biaya <= 0 ? TEKS.gratis : formatUang(p.biaya));
+      setTeks(r.tombolKecil, TEKS.kontrakHari(p.tawaran.hari));
+      setTeks(r.tombolBesar, TEKS.uangMasuk(formatUang(p.tawaran.nilai)));
       setDisabled(r.tombol, !p.bisa);
       r.elemen.classList.toggle('belum', !p.bisa);
       r.elemen.classList.toggle('terkunci', terkunci);
@@ -715,8 +724,6 @@ function buatBarisTarif(id: TarifId, kirim: Kirim): { readonly elemen: HTMLEleme
       setDisabled(p.turun, !t.bisaTurun);
       setDisabled(p.naik, !t.bisaNaik);
       setTeks(bawaan, TEKS.tarifBawaan(teksTarif(id, t.bawaan)));
-      // Biaya layanan dalam rupiah: harga tiket ditetapkan PO, terminal memungut persennya.
-      if (t.perPenumpang) setTeks(ket, TEKS.layananPerPenumpang(formatUang(t.perPenumpang.rupiah), formatUang(t.perPenumpang.hargaTiket)));
     },
   };
 }

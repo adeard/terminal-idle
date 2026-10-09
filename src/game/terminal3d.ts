@@ -679,6 +679,8 @@ export class Terminal3D {
     // "+Rp": uang yang masuk menurut sim dibagikan ke transaksi yang terlihat frame ini.
     const pop = this.kas.perbarui(detikMain, dt, this.lajuUangTersimpan(state), this.transaksi);
     if (pop.length > 0) this.popUang.tambah(pop);
+    // Di loket yang tampil jumlah tiket yang dibeli (dibayar ke PO), bukan uang.
+    for (const x of this.transaksi) if (x.jenis === 'tiket') this.popUang.tambahTiket(x.x, x.y, x.tiket ?? 1);
     this.popUang.perbarui(dtNyata, this.adegan, this.adegan.lebarCss, this.adegan.tinggiCss, pandang.jarak);
     kibarkan(this.bendera, this.waktu);
     this.adegan.render(dtDetik);

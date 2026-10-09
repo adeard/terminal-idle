@@ -12,10 +12,10 @@
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { petakBus, type JumlahBangunan } from './bangunan';
 import { TEKNOLOGI_IDS, type KelasBusId, type PetugasId, type PoId, type TeknologiId } from './fitur';
-import { faktorReputasi, jurusanAktif, kelasAktif, nilaiJurusan, nilaiTiketPo } from './mitra';
+import { faktorReputasi, jurusanAktif, kelasAktif } from './mitra';
 import { hitungPetugas } from './petugas';
 import type { TahapId } from './tahap';
-import { faktorLayanan, skorHargaPenumpang, skorTarifMitra, type NilaiTarif } from './tarif';
+import { skorHargaPenumpang, skorTarifMitra, type NilaiTarif } from './tarif';
 
 /** PO terdaftar sebagaimana dibutuhkan hitungan operasi. */
 export interface PoOperasi {
@@ -73,8 +73,6 @@ export interface SegmenOperasi {
   readonly kelas: KelasBusId;
   /** Penumpang per jam sekarang. */
   readonly arus: number;
-  /** Harga tiket normal (Rp), ditetapkan PO. */
-  readonly harga: number;
 }
 
 export interface PoHasilOperasi {
@@ -137,15 +135,13 @@ interface SegmenDasar {
   readonly kelas: KelasBusId;
   /** Permintaan jam sibuk pada daya tarik 1. */
   readonly puncak: number;
-  readonly harga: number;
 }
 
 /**
  * Permintaan jam sibuk tiap segmen pada daya tarik 1. Pasar tiap jurusan dibagi
  * ke PO yang melayaninya menurut reputasi (persaingan); makin banyak PO di satu
  * jurusan, pasarnya membesar tapi makin jenuh (kejenuhan, seperti 0.2.0). Lalu
- * tiap PO membaginya ke kelas busnya menurut peminat kelas, dan biaya layanan
- * terminal mengurangi peminat menurut elastisitas.
+ * tiap PO membaginya ke kelas busnya menurut peminat kelas.
  */
 function segmenDasar(k: KeadaanOperasi, cfg: KonfigEkonomi): SegmenDasar[] {
   const t = cfg.tycoon;
@@ -180,13 +176,11 @@ function segmenDasar(k: KeadaanOperasi, cfg: KonfigEkonomi): SegmenDasar[] {
       const pasarPo = t.pasar.perPeminat * cj.peminat * pengaliKelas * persaingan * kejenuhan;
       for (const kb of x.kelas) {
         const ck = cfg.kelasBus[kb];
-        const elastisitas = (cj.elastisitas + ck.elastisitas) / 2;
         hasil.push({
           po: i,
           jurusan: j,
           kelas: kb,
-          puncak: pasarPo * (ck.peminat / x.peminatKelas) * faktorLayanan(k.tarif.layanan, elastisitas, cfg),
-          harga: t.hargaTiketDasar * nilaiJurusan(j, cfg) * cfg.mitra.kelas[kb].nilai * nilaiTiketPo(x.p.level, cfg),
+          puncak: pasarPo * (ck.peminat / x.peminatKelas),
         });
       }
     }
@@ -219,7 +213,7 @@ function hitungKepuasan(k: KeadaanOperasi, permintaanPuncak: number, arusPuncak:
   const b = k.bangunan;
   const arus = Math.max(0, arusPuncak);
   const kelancaran = permintaanPuncak > 0 ? jepit01((arus / permintaanPuncak - kp.rasioNol) / (kp.rasioLancar - kp.rasioNol)) : 1;
-  const kenyamanan = jepit01((b.kursi * kp.kursiPerBlok) / Math.max(1, arus * kp.jamTunggu)) * (k.teknologi.jadwalDigital ? 1 : 0.9);
+  const kenyamanan = jepit01((b.kursi * kp.kursiPerBlok) / Math.max(1, penumpangMenunggu(arus, cfg))) * (k.teknologi.jadwalDigital ? 1 : 0.9);
   // Toilet tanpa petugasnya cepat kotor.
   const toiletTerurus = b.toilet > 0 && n.petugasToilet < b.toilet ? 0.85 : 1;
   const kebersihan = jepit01(n.kebersihan / Math.max(1, arus / kp.arusPerPetugasKebersihan)) * toiletTerurus;
@@ -229,12 +223,20 @@ function hitungKepuasan(k: KeadaanOperasi, permintaanPuncak: number, arusPuncak:
       jepit01((b.kios + b.toko) / Math.max(1, arus / kp.arusPerKios)) +
       jepit01((b.lahanParkir * t.pengantar.perUnit) / Math.max(1, arus * t.pengantar.bagian))) /
     3;
-  const harga = skorHargaPenumpang(k.tarif, { parkir: b.lahanParkir > 0, toilet: b.toilet > 0 }, cfg);
+  const harga = skorHargaPenumpang(k.tarif, { parkir: b.lahanParkir > 0 }, cfg);
   const w = kp.bobot;
   const nilai =
     (w.kelancaran * kelancaran + w.kenyamanan * kenyamanan + w.kebersihan * kebersihan + w.keamanan * keamanan + w.fasilitas * fasilitas + w.harga * harga) /
     (w.kelancaran + w.kenyamanan + w.kebersihan + w.keamanan + w.fasilitas + w.harga);
   return { nilai, kelancaran, kenyamanan, kebersihan, keamanan, fasilitas, harga };
+}
+
+/**
+ * Penumpang yang sedang menunggu di terminal pada arus ini (Little: arus × lama
+ * menunggu di ruang tunggu, `kepuasan.jamTunggu`); sama dengan kebutuhan kursi.
+ */
+export function penumpangMenunggu(arus: number, cfg: KonfigEkonomi = EKONOMI): number {
+  return Math.max(0, arus) * cfg.tycoon.kepuasan.jamTunggu;
 }
 
 /** Pengali permintaan dari kepuasan (0–1). */
@@ -264,7 +266,7 @@ export function hitungOperasi(k: KeadaanOperasi, kondisi: KondisiOperasi, cfg: K
   const segmen: SegmenOperasi[] = dasar.map((s) => {
     const d = permintaanPo[s.po]!;
     const bagian = d > 0 ? kini.arusPo[s.po]! / d : 0;
-    return { po: k.po[s.po]!.id, jurusan: s.jurusan, kelas: s.kelas, arus: s.puncak * pengali * bagian, harga: s.harga };
+    return { po: k.po[s.po]!.id, jurusan: s.jurusan, kelas: s.kelas, arus: s.puncak * pengali * bagian };
   });
 
   const m = cfg.tycoon.mitra;

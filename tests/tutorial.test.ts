@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cocokUntukTutorial, langkahBerikut, sasaranLangkah } from '../src/app/tutorial';
 import { EKONOMI } from '../src/config/economy.config';
 import { terapkanAksi, type Aksi } from '../src/sim/aksi';
-import { buatStateBaru, poTujuanJendela, type GameState } from '../src/sim/state';
+import { buatStateBaru, poTujuanJendela, tawaranKontrakPo, type GameState } from '../src/sim/state';
 import { denganPerluasan, jalankan, kaya, stateOtomatis, T0 } from './helpers';
 
 const baru = (): GameState => buatStateBaru(T0);
@@ -53,12 +53,12 @@ describe('tutorial terpandu', () => {
     expect(langkahBerikut(s)).toBeNull();
   });
 
-  it('sasaran: jendela untuk PO yang antreannya paling panjang, PO termurah yang bisa didaftarkan, petugas peron (gratis), Jalur 2', () => {
+  it('sasaran: jendela untuk PO yang antreannya paling panjang, PO pertama yang bisa didaftarkan (gratis, membayar kontraknya), petugas peron (gratis), Jalur 2', () => {
     const s = baru();
     expect(sasaranLangkah('jendela', s)).toEqual({ jenis: 'jendela', po: poTujuanJendela(s), biaya: EKONOMI.tycoon.bangunan.jendela.biaya[0] });
     const po = sasaranLangkah('po', s);
-    expect(po).toMatchObject({ jenis: 'po', po: 'peuyeumKilat', biaya: EKONOMI.mitra.po.peuyeumKilat.biayaDaftar });
-    // PO yang sedang jeda (baru diputus) dilewati: berikutnya yang termurah.
+    expect(po).toEqual({ jenis: 'po', po: 'peuyeumKilat', biaya: 0, nilai: tawaranKontrakPo(s, 'peuyeumKilat').nilai });
+    // PO yang sedang jeda (baru diputus) dilewati: berikutnya menurut urutan daftar PO.
     const jeda: GameState = { ...s, mitra: { ...s.mitra, jedaSampai: { peuyeumKilat: s.statistik.waktuMainDetik + 1000 } } };
     expect(sasaranLangkah('po', jeda)).toMatchObject({ jenis: 'po', po: 'lumpiaKilat' });
     expect(sasaranLangkah('petugas', s)).toEqual({ jenis: 'petugas', biaya: 0 });
