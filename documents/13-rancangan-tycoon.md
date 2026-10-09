@@ -1,6 +1,6 @@
 # 13 · Rancangan Tycoon: dari idle ke tycoon
 
-> **Status: langkah 1–5 selesai (9 Oktober 2026)** di cabang `tycoon` (bagian 15): modul murni & kalibrasi, lalu `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik memakai ekonomi tycoon, dan adegan 3D mengikuti bangunan & petugas (bagian 12). Sisa: rilis 0.3.0. Produksi masih rilis 0.2.0 (ekonomi mitra PO, dokumen 12, konsep idle). Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
+> **Status: dirilis sebagai 0.3.0 (9 Oktober 2026)** di `main` & bustation.games. Langkah 1–6 selesai (bagian 15): modul murni & kalibrasi, `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik memakai ekonomi tycoon, dan adegan 3D mengikuti bangunan & petugas (bagian 12). Belum: bentuk adegan bangunan bertingkat tahap 3–5, judul game (masih "Idle Bus"), dan keputusan terbuka bagian 16. Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
 >
 > Angka di dokumen ini adalah hasil kalibrasi pertama (bagian 14), masih bisa digeser. Angka yang berlaku selalu yang di `EKONOMI.tycoon` (`src/config/economy.config.ts`).
 
@@ -352,10 +352,10 @@ Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.t
    - daftarkan PO kedua;
    - rekrut petugas peron;
    - bangun Jalur 2.
-6. **README & dokumen** (✓ README & dokumen ini), lalu **rilis 0.3.0**:
+6. ✓ **README & dokumen**, lalu **rilis 0.3.0** (9 Oktober 2026):
    - `version` 0.3.0 di `package.json`, `catatan` baru dan `versiMinimal` 0.3.0 di `src/config/rilis.config.ts`;
-   - judul "Bustation: Idle Bus" masih menyebut idle: diputuskan sebelum rilis (nama, `index.html`, manifest PWA, og-image);
-   - gabung `tycoon` ke `main`, `npm run deploy:web`, dan `npm run cap:sync` sebelum build APK.
+   - `tycoon` digabung ke `main` lalu `npm run deploy:web`; `npm run cap:sync` sebelum build APK berikutnya;
+   - judul "Bustation: Idle Bus" sengaja belum diubah (nama, `index.html`, manifest PWA, og-image): menunggu keputusan.
 
 ## 16. Keputusan terbuka
 

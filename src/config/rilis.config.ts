@@ -11,13 +11,14 @@ export const RILIS = {
    * Versi di bawah ini wajib diperbarui: popup muncul tanpa tombol "Nanti"
    * (mis. bila format save berubah dan versi lama tidak boleh dipakai lagi).
    */
-  // 0.2.0: format save berubah ke skema 2 (ekonomi mitra PO); versi lama tidak bisa membacanya.
-  versiMinimal: '0.2.0',
+  // 0.3.0: format save berubah ke skema 3 (ekonomi tycoon); versi lama tidak bisa membacanya,
+  // dan batas skor papan peringkat di server ikut berubah.
+  versiMinimal: '0.3.0',
   /** Catatan singkat "Yang baru" di versi ini, ditampilkan di popup (±4 butir). */
   catatan: [
-    'Mitra PO: daftarkan PO dengan jurusan & busnya sendiri, bangun loket untuk mereka, dan atur harga tiketnya.',
-    'Level & kelas terminal, plus 5 tahap perluasan yang dibangun sebagai proyek (tetap berjalan saat game ditutup).',
-    'Renovasi menggantikan prestige: mulai ulang kapasitas tahap demi bonus pendapatan permanen.',
-    'Terminal makin hidup: jendela loket & bus milik PO, parkir tambahan, crane proyek, dan kembang api peresmian.',
+    'Kini tycoon: bangun jalur, jendela loket, kursi, kios, toilet, & parkir di slot terminal, lalu rekrut petugas bergaji.',
+    'Kejar laba bersih: atur tarif terminal (biaya layanan, sewa loket, retribusi, parkir, toilet, sewa kios) & pantau laporan keuangan.',
+    'Terminal tetap jalan saat game ditutup (paling lama 8 jam) bila ada Manajer Operasional. Ketuk label area di peta untuk langsung membangun.',
+    'Ekonomi dimulai dari awal: progres versi lama tidak dibawa, kecuali nama terminal.',
   ] as readonly string[],
 } as const;
