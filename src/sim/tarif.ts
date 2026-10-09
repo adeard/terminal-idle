@@ -1,11 +1,11 @@
 /**
- * Tycoon, tarif terminal (murni). Harga tiket diatur PO sendiri; pemain
+ * Tarif terminal (murni). Harga tiket diatur PO sendiri; pemain
  * mengatur tarif terminal, dan tiap tarif menggeser sesuatu:
  * - biaya layanan (% harga tiket): permintaan penumpang (elastisitas jurusan & kelas);
  * - sewa jendela loket & retribusi bus: kepuasan mitra PO;
  * - parkir & toilet: banyaknya pengantar yang parkir / pemakai toilet, dan kepuasan;
  * - sewa kios & toko: okupansi penyewa menurut keramaian.
- * Rancangan: bagian 6.4 documents/13-rancangan-tycoon.md. Belum dipakai game.
+ * Rancangan: bagian 6.4 documents/13-rancangan-tycoon.md.
  */
 import { EKONOMI, type KonfigEkonomi, type KonfigSkorTarif } from '../config/economy.config';
 import { TARIF_IDS, type TarifId } from './fitur';

@@ -23,8 +23,7 @@ import { mingguWib } from '../src/sim/tantangan';
 import { terapkanAksi } from '../src/sim/aksi';
 import { tengahMalamWib } from '../src/sim/event';
 import { deserialisasi, serialisasi } from '../src/sim/save';
-import { aturIkutPeringkat, aturNamaTerminal, perbaruiTantangan, renovasi, type GameState } from '../src/sim/state';
-import Decimal from 'break_infinity.js';
+import { aturIkutPeringkat, aturNamaTerminal, perbaruiTantangan, type GameState } from '../src/sim/state';
 import { jalankan, stateOtomatis } from './helpers';
 
 const wib = (tahun: number, bulan: number, tanggal: number, jam = 12): number => tengahMalamWib(tahun, bulan, tanggal) + jam * 3_600_000;
@@ -67,9 +66,13 @@ describe('papan peringkat: aturan bersama', () => {
     }
   });
 
-  it('skor wajar maksimal tumbuh dengan waktu', () => {
+  it('skor wajar maksimal tumbuh dengan waktu, cukup longgar untuk terminal terbesar di kecepatan 3×', () => {
     expect(skorMaksWajar(100, 0, 0)).toBe(1100);
-    expect(skorMaksWajar(0, 0, 10_000)).toBeGreaterThan(1_000_000);
+    // Seminggu penuh: terminal terbesar (±1.600 pnp per jam terminal) tetap jauh di bawah batas.
+    const seminggu = 7 * 86_400_000;
+    expect(skorMaksWajar(0, 0, seminggu)).toBeGreaterThan((1_600 / 60) * 3 * (seminggu / 1000));
+    // Lompatan tak masuk akal (sejuta penumpang dalam semenit) ditolak.
+    expect(skorMaksWajar(0, 0, 60_000)).toBeLessThan(1_000_000);
   });
 
   it('jawaban server dibaca & diperiksa bentuknya; peringkat tampilan untuk skor sama', () => {
@@ -84,15 +87,12 @@ describe('papan peringkat: aturan bersama', () => {
 });
 
 describe('papan peringkat di game', () => {
-  const siap = (): GameState => perbaruiTantangan({ ...stateOtomatis({ peron: 20, loket: 20, keberangkatan: 20 }), uang: new Decimal(1e6) }, RABU);
+  const siap = (): GameState => perbaruiTantangan(stateOtomatis({ jalur: 3, jendela: 4 }), RABU);
 
-  it('penumpang minggu ini dihitung dari main aktif, tetap walau Renovasi, mulai dari nol di minggu baru', () => {
+  it('penumpang minggu ini dihitung dari main aktif, mulai dari nol di minggu baru', () => {
     let s = jalankan(siap(), 30);
     expect(s.tantangan.penumpang).toBeGreaterThan(0);
     expect(s.tantangan.penumpang).toBeCloseTo(s.statistik.totalPenumpang, 6);
-    const naik = renovasi({ ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e9) } });
-    expect(naik.renovasi.jumlah).toBe(1);
-    expect(naik.tantangan.penumpang).toBe(s.tantangan.penumpang);
     s = perbaruiTantangan(s, RABU + 7 * 86_400_000);
     expect(s.tantangan.penumpang).toBe(0);
   });

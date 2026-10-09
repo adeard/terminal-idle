@@ -1,5 +1,5 @@
 /**
- * Tycoon, operasi terminal (murni): kapasitas tiap area dari bangunan &
+ * Operasi terminal (murni): kapasitas tiap area dari bangunan &
  * petugas, pasar penumpang mutlak per jurusan yang dibagi ke PO, arus yang
  * dibatasi jendela loket tiap PO dan area bersama (peron, keberangkatan,
  * pangkalan), kepuasan penumpang, dan kepuasan mitra PO.
@@ -7,7 +7,7 @@
  * Kepuasan dihitung dari keadaan jam sibuk pada daya tarik 1 (bukan arus
  * sekarang), supaya tidak naik-turun mengikuti jam dan tidak berputar balik
  * lewat permintaan. Satuan arus: penumpang per jam terminal.
- * Rancangan: bagian 4 & 7 documents/13-rancangan-tycoon.md. Belum dipakai game.
+ * Rancangan: bagian 4 & 7 documents/13-rancangan-tycoon.md.
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { petakBus, type JumlahBangunan } from './bangunan';
@@ -105,8 +105,8 @@ export interface HasilOperasi {
 
 const jepit01 = (x: number): number => Math.min(1, Math.max(0, x));
 
-/** Pengali kapasitas modernisasi yang terpasang untuk satu area tahap. */
-function multTeknologi(teknologi: Readonly<Record<TeknologiId, boolean>>, tahap: TahapId, cfg: KonfigEkonomi): number {
+/** Pengali kapasitas modernisasi yang terpasang untuk satu area. */
+export function multTeknologi(teknologi: Readonly<Record<TeknologiId, boolean>>, tahap: TahapId, cfg: KonfigEkonomi = EKONOMI): number {
   let m = 1;
   for (const id of TEKNOLOGI_IDS) if (teknologi[id] && cfg.teknologi[id].tahap === tahap) m *= cfg.teknologi[id].multKapasitas;
   return m;

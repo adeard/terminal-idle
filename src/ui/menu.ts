@@ -1,16 +1,38 @@
 /**
- * Isi tab pengelolaan terminal di panel bawah: Fasilitas, PO (mitra PO),
- * Terminal (level, perluasan, Renovasi), Modernisasi, dan Target (target
- * harian + penghargaan). Elemen dibuat sekali (kartu PO saat PO bergabung);
+ * Isi tab pengelolaan terminal di panel bawah: Bangun (kapasitas tiap area,
+ * bangunan di slot, modernisasi), Petugas, PO (mitra PO), Terminal (level,
+ * perluasan, tarif, laporan keuangan, kelas bus), dan Target (target harian,
+ * tantangan, penghargaan). Elemen dibuat sekali (kartu PO saat PO bergabung);
  * tiap pembaruan state hanya mengubah teks/kelas yang berubah.
  */
 import type { Aksi } from '../sim/aksi';
+import { EKONOMI } from '../config/economy.config';
 import { LIVERY_PO, type Livery } from '../config/livery.config';
-import { FASILITAS_IDS, KELAS_BUS_IDS, PENCAPAIAN_IDS, TEKNOLOGI_IDS, type FasilitasId, type KelasBusId, type PencapaianId, type PoId, type TeknologiId } from '../sim/fitur';
+import { KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
+import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
+import type { AreaId } from '../sim/operasi';
 import { keHexCss, WARNA_TAHAP } from '../config/tema';
-import { formatAngka, formatDurasi, formatUang } from './format';
-import type { ModelFasilitas, ModelHargaPo, ModelMingguan, ModelMitra, ModelPoTerdaftar, ModelPoTersedia, ModelRenovasi, ModelTampilan, ModelTantangan } from './model';
-import { namaKelas, NAMA_EVENT, NAMA_FASILITAS, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, NAMA_TEKNOLOGI, NAMA_TINGKAT_PO, sisaWaktuEvent, TEKS } from './teks';
+import { formatAngka, formatDurasi, formatUang, formatUangBertanda } from './format';
+import type { ModelBuku, ModelMingguan, ModelMitra, ModelPoTerdaftar, ModelPoTersedia, ModelTampilan, ModelTantangan, ModelTarif } from './model';
+import {
+  namaKelas,
+  NAMA_AREA,
+  NAMA_BANGUNAN,
+  NAMA_BIAYA,
+  NAMA_EVENT,
+  NAMA_KELAS_BUS,
+  NAMA_PENCAPAIAN,
+  NAMA_PENDAPATAN,
+  NAMA_PERLUASAN,
+  NAMA_PETUGAS,
+  NAMA_PO,
+  NAMA_TAHAP,
+  NAMA_TARIF,
+  NAMA_TEKNOLOGI,
+  NAMA_TINGKAT_PO,
+  sisaWaktuEvent,
+  TEKS,
+} from './teks';
 
 export interface IsiTab {
   readonly elemen: HTMLElement;
@@ -48,176 +70,276 @@ function tombolBeli(): { tombol: HTMLButtonElement; kecil: HTMLSpanElement; besa
   return { tombol, kecil, besar };
 }
 
-/** Ikon fasilitas (viewBox 24). */
-const IKON_FASILITAS: Readonly<Record<FasilitasId, string>> = {
-  kios: '<path d="M3 9l1.5-5h15L21 9a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z" fill="currentColor"/><path d="M5 12v8h14v-8" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10" y="15" width="4" height="5" fill="currentColor"/>',
-  parkir: '<rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor"/><path d="M9.5 17V7h3.2a3 3 0 0 1 0 6H9.5" fill="none" stroke="#0b1117" stroke-width="2.2" stroke-linejoin="round"/>',
-  toilet: '<circle cx="8" cy="5" r="2" fill="currentColor"/><circle cx="16" cy="5" r="2" fill="currentColor"/><path d="M6 9h4l.5 6H10v5H6v-5h-.5zM14 9h4l2 7h-2v4h-4v-4h-2z" fill="currentColor"/>',
-  retribusi: '<rect x="2" y="6" width="20" height="12" rx="2" fill="currentColor"/><circle cx="12" cy="12" r="3" fill="none" stroke="#0b1117" stroke-width="2"/><path d="M5 9v6M19 9v6" stroke="#0b1117" stroke-width="1.6"/>',
-};
-/** Jalur bus: kanopi dengan dua lajur halte (viewBox 24). */
+/** Lama tombol berakibat besar (bongkar, putus kontrak) menunggu ketukan kedua. */
+const MS_YAKIN = 3000;
+
+/**
+ * Tombol dua ketukan: ketukan pertama menampilkan `teksYakin` (dan, lewat
+ * `menunggu()`, keterangan akibatnya), ketukan kedua dalam MS_YAKIN menjalankan `aksi`.
+ */
+function tombolYakin(kelas: string, teksYakin: string, aksi: () => void): { readonly tombol: HTMLButtonElement; menunggu(): boolean; aturTeks(teks: string): void } {
+  const tombol = el('button', kelas);
+  tombol.type = 'button';
+  let teks = '';
+  let sampai = 0;
+  let timer = 0;
+  const batal = (): void => {
+    sampai = 0;
+    tombol.textContent = teks;
+    tombol.classList.remove('yakin');
+  };
+  tombol.addEventListener('click', () => {
+    window.clearTimeout(timer);
+    if (performance.now() < sampai) {
+      batal();
+      aksi();
+      return;
+    }
+    sampai = performance.now() + MS_YAKIN;
+    tombol.textContent = teksYakin;
+    tombol.classList.add('yakin');
+    timer = window.setTimeout(batal, MS_YAKIN);
+  });
+  return {
+    tombol,
+    menunggu: () => performance.now() < sampai,
+    aturTeks(t) {
+      teks = t;
+      if (!(performance.now() < sampai)) setTeks(tombol, t);
+    },
+  };
+}
+
+/** Pengatur − nilai + (petugas, tarif). */
+function pengatur(labelTurun: string, labelNaik: string, saatTurun: () => void, saatNaik: () => void): { readonly elemen: HTMLElement; readonly turun: HTMLButtonElement; readonly nilai: HTMLElement; readonly naik: HTMLButtonElement } {
+  const elemen = el('div', 'pengatur-harga');
+  const turun = el('button', 'harga-tombol tombol-kurang', '−');
+  const nilai = el('span', 'harga-nilai');
+  const naik = el('button', 'harga-tombol tombol-tambah', '+');
+  turun.type = 'button';
+  naik.type = 'button';
+  turun.setAttribute('aria-label', labelTurun);
+  naik.setAttribute('aria-label', labelNaik);
+  turun.addEventListener('click', saatTurun);
+  naik.addEventListener('click', saatNaik);
+  elemen.append(turun, nilai, naik);
+  return { elemen, turun, nilai, naik };
+}
+
+// ---------------------------------------------------------------------------
+// Ikon (viewBox 24)
+
 const IKON_JALUR =
   '<path d="M2 8.5 12 4l10 4.5V10H2z" fill="currentColor"/><path d="M4.5 10v10M12 10v10M19.5 10v10" stroke="currentColor" stroke-width="1.8"/><rect x="6" y="13" width="4.5" height="5.5" rx="1" fill="currentColor"/><rect x="13.5" y="13" width="4.5" height="5.5" rx="1" fill="currentColor" opacity="0.4"/>';
-/** Tiket loket (viewBox 24), sama dengan ikon tahap Loket. */
 const IKON_LOKET =
   '<path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2.5a2.5 2.5 0 0 0 0 5V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2.5a2.5 2.5 0 0 0 0-5z" fill="currentColor"/><path d="M14.5 6.5v11" stroke="#0b1117" stroke-width="1.4" stroke-dasharray="1.6 1.6" opacity="0.5"/>';
-const IKON_PIALA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0z" fill="currentColor"/><path d="M7 5H4a3 3 0 0 0 3 4M17 5h3a3 3 0 0 1-3 4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 13h4v4h3v3H7v-3h3z" fill="currentColor"/></svg>';
+const IKON_BANGUNAN: Readonly<Record<BangunanId, string>> = {
+  jalur: IKON_JALUR,
+  jendela: IKON_LOKET,
+  kursi: '<rect x="4" y="5" width="16" height="7" rx="2" fill="currentColor"/><rect x="3" y="12" width="18" height="3.2" rx="1" fill="currentColor"/><path d="M6 15v5M18 15v5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
+  kios: '<path d="M3 9l1.5-5h15L21 9a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z" fill="currentColor"/><path d="M5 12v8h14v-8" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10" y="15" width="4" height="5" fill="currentColor"/>',
+  toko: '<path d="M4.5 8h15l-1.3 12.5H5.8z" fill="currentColor"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 12.5h6" stroke="#0b1117" stroke-width="1.6" opacity="0.5"/>',
+  toilet: '<circle cx="8" cy="5" r="2" fill="currentColor"/><circle cx="16" cy="5" r="2" fill="currentColor"/><path d="M6 9h4l.5 6H10v5H6v-5h-.5zM14 9h4l2 7h-2v4h-4v-4h-2z" fill="currentColor"/>',
+  lahanParkir: '<rect x="3" y="3" width="18" height="18" rx="4" fill="currentColor"/><path d="M9.5 17V7h3.2a3 3 0 0 1 0 6H9.5" fill="none" stroke="#0b1117" stroke-width="2.2" stroke-linejoin="round"/>',
+  posRetribusi: '<rect x="2" y="6" width="20" height="12" rx="2" fill="currentColor"/><circle cx="12" cy="12" r="3" fill="none" stroke="#0b1117" stroke-width="2"/><path d="M5 9v6M19 9v6" stroke="#0b1117" stroke-width="1.6"/>',
+};
+const IKON_MODERN = '<path d="M12 2l2.4 6.3L21 9l-5 4.5L17.5 21 12 17.3 6.5 21 8 13.5 3 9l6.6-.7z" fill="currentColor"/>';
+const IKON_PANGKALAN =
+  '<rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 4v16M16 4v16" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2"/><rect x="3.8" y="7" width="2.6" height="10" rx="1" fill="currentColor"/><rect x="17.6" y="7" width="2.6" height="10" rx="1" fill="currentColor"/>';
+const IKON_PETUGAS = '<circle cx="12" cy="7" r="3.6" fill="currentColor"/><path d="M4.5 21v-1.5a7.5 7.5 0 0 1 15 0V21z" fill="currentColor"/><path d="M8.5 4.6h7l-.8-2H9.3z" fill="currentColor"/>';
+const IKON_MANAJER = '<circle cx="12" cy="7" r="3.6" fill="currentColor"/><path d="M4.5 21v-1.5a7.5 7.5 0 0 1 15 0V21z" fill="currentColor"/><path d="M12 13.2l1.4 1.6-1.4 5-1.4-5z" fill="#0b1117" opacity="0.6"/>';
+const IKON_TARIF = '<circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M8.5 15.5l7-7" stroke="#0b1117" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="9" r="1.6" fill="#0b1117"/><circle cx="15" cy="15" r="1.6" fill="#0b1117"/>';
+const IKON_PIALA = '<path d="M7 3h10v5a5 5 0 0 1-10 0z" fill="currentColor"/><path d="M7 5H4a3 3 0 0 0 3 4M17 5h3a3 3 0 0 1-3 4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 13h4v4h3v3H7v-3h3z" fill="currentColor"/>';
 const IKON_PENSIL =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="2"/></svg>';
 
+/** Warna area (kapasitas & bangunan): tiga area rantai penumpang mengikuti warna zonanya di adegan. */
+const WARNA_AREA: Readonly<Record<AreaId, string>> = {
+  peron: keHexCss(WARNA_TAHAP.peron),
+  loket: keHexCss(WARNA_TAHAP.loket),
+  keberangkatan: keHexCss(WARNA_TAHAP.keberangkatan),
+  pangkalan: '#a78bfa',
+};
+
 const persen = (x: number): number => Math.round(x * 100);
-const rupiahKecil = (x: number): string => formatAngka(x, { desimalKecil: 2 });
+const arus = (x: number): string => formatAngka(Math.round(x));
 
 // ---------------------------------------------------------------------------
-// Fasilitas
+// Bangun
 
-/** Efek fasilitas sekarang: sewa kios per hari, parkir per penumpang, bonus belanja toilet, retribusi per bus. */
-function efekFasilitas(f: ModelFasilitas): string {
-  switch (f.id) {
-    case 'kios':
-      return TEKS.sewaKios(formatUang(f.sewaPerHari), formatUang(f.terkumpul));
-    case 'parkir':
-      return TEKS.perPenumpang(rupiahKecil(f.nilaiSekarang));
-    case 'toilet':
-      return TEKS.bonusBelanjaKios(persen(f.nilaiSekarang));
-    case 'retribusi':
-      return TEKS.perBus(rupiahKecil(f.nilaiSekarang));
-  }
+/** Kelompok bangunan di tab Bangun (per area), urut alur penumpang. */
+const GRUP_BANGUN: readonly { readonly judul: string; readonly warna: string; readonly bangunan: readonly BangunanId[] }[] = [
+  { judul: TEKS.grupPeron, warna: WARNA_AREA.peron, bangunan: ['jalur'] },
+  { judul: TEKS.grupLoket, warna: WARNA_AREA.loket, bangunan: ['jendela'] },
+  { judul: TEKS.grupRuangTunggu, warna: WARNA_AREA.keberangkatan, bangunan: ['kursi', 'kios', 'toko'] },
+  { judul: TEKS.grupFasilitas, warna: '#14b8a6', bangunan: ['toilet', 'lahanParkir', 'posRetribusi'] },
+];
+
+interface BarisBangunan {
+  readonly elemen: HTMLElement;
+  perbarui(m: ModelTampilan): void;
 }
 
-/** Tambahan efek per level berikutnya (label tombol upgrade). */
-function tambahanFasilitas(f: ModelFasilitas): string {
-  switch (f.id) {
-    case 'kios':
-      return TEKS.tambahBelanja(rupiahKecil(f.nilaiPerLevel));
-    case 'parkir':
-      return `+Rp ${rupiahKecil(f.nilaiPerLevel)}`;
-    case 'toilet':
-      return `+${persen(f.nilaiPerLevel)}%`;
-    case 'retribusi':
-      return TEKS.tambahPerBus(rupiahKecil(f.nilaiPerLevel));
-  }
+function buatBarisBangunan(id: BangunanId, warna: string, kirim: Kirim): BarisBangunan {
+  const r = baris3(IKON_BANGUNAN[id], NAMA_BANGUNAN[id].nama, 'bangun');
+  r.elemen.dataset['bangunan'] = id;
+  r.elemen.style.setProperty('--warna', warna);
+  setTeks(r.keterangan, NAMA_BANGUNAN[id].deskripsi);
+  const status = el('div', 'item-keterangan bangun-status');
+  const bongkar = tombolYakin('tombol-bongkar', TEKS.bongkarYakin, () => kirim({ jenis: 'bongkar', bangunan: id }));
+  const bawah = el('div', 'bangun-bawah');
+  bawah.append(status, bongkar.tombol);
+  r.keterangan.after(bawah);
+  r.tombolKecil.textContent = TEKS.bangun;
+  r.tombol.addEventListener('click', () => kirim({ jenis: 'bangun', bangunan: id }));
+  return {
+    elemen: r.elemen,
+    perbarui(m) {
+      const b = m.bangun.bangunan[id];
+      setTeks(r.level, TEKS.bangunanJumlah(b.jumlah, b.slot));
+      const kosong = id === 'jendela' && m.bangun.jendelaKosong > 0 ? ` · ${TEKS.jendelaKosong(m.bangun.jendelaKosong)}` : '';
+      const teksStatus =
+        b.biaya === null ? (b.slotBerikut !== null ? TEKS.slotPenuhPerluasan(b.slotBerikut) : TEKS.slotPenuh) : `${TEKS.perawatanPerHari(formatUang(b.perawatan))}${kosong}`;
+      setTeks(status, teksStatus);
+      status.classList.toggle('penuh', b.biaya === null);
+      setHidden(r.tombol, b.biaya === null);
+      if (b.biaya !== null) {
+        setTeks(r.tombolBesar, formatUang(b.biaya));
+        setDisabled(r.tombol, !b.bisa);
+      }
+      setHidden(bongkar.tombol, b.bongkar === null);
+      if (b.bongkar !== null) bongkar.aturTeks(TEKS.bongkar(formatUang(b.bongkar)));
+      r.elemen.classList.toggle('belum', b.jumlah === 0);
+    },
+  };
 }
 
-export function buatTabFasilitas(kirim: Kirim): IsiTab {
+export function buatTabBangun(kirim: Kirim): IsiTab {
   const elemen = el('div', 'isi-tab daftar-item');
-  // Jalur bus paling atas: pembangunan terminal yang langsung terlihat di adegan.
-  const jalur = baris3(IKON_JALUR, TEKS.jalurNama, 'jalur');
-  jalur.elemen.dataset['jalur'] = '1';
-  jalur.tombol.addEventListener('click', () => kirim({ jenis: 'bukaJalur' }));
-  elemen.append(jalur.elemen);
-  const baris = FASILITAS_IDS.map((id) => {
-    const r = baris3(IKON_FASILITAS[id], NAMA_FASILITAS[id].nama, 'fasilitas');
-    r.elemen.dataset['fasilitas'] = id;
-    r.tombol.addEventListener('click', () => kirim({ jenis: 'bangunFasilitas', fasilitas: id }));
+  // Kapasitas jam sibuk tiap area: yang paling lambat ditandai.
+  const kartu = el('div', 'kapasitas-kartu');
+  const judul = el('div', 'po-subjudul', TEKS.kapasitasJudul);
+  const daftarArea = el('div', 'kapasitas-area');
+  const area = (['peron', 'loket', 'keberangkatan', 'pangkalan'] as const).map((id) => {
+    const e = el('div', 'area-chip');
+    e.dataset['area'] = id;
+    e.style.setProperty('--warna', WARNA_AREA[id]);
+    const nilai = el('span', 'area-nilai');
+    e.append(el('span', 'area-nama', NAMA_AREA[id]), nilai);
+    daftarArea.append(e);
+    return { id, e, nilai };
+  });
+  const ringkas = el('div', 'kapasitas-ringkas');
+  kartu.append(judul, daftarArea, ringkas);
+  elemen.append(kartu);
+
+  const baris: BarisBangunan[] = [];
+  for (const g of GRUP_BANGUN) {
+    elemen.append(el('div', 'judul-bagian', g.judul));
+    for (const id of g.bangunan) {
+      const b = buatBarisBangunan(id, g.warna, kirim);
+      baris.push(b);
+      elemen.append(b.elemen);
+    }
+  }
+  // Pangkalan bus: petak dari perluasan (tidak dibeli satu-satu).
+  elemen.append(el('div', 'judul-bagian', TEKS.grupPangkalan));
+  const pangkalan = baris3(IKON_PANGKALAN, NAMA_AREA.pangkalan, 'bangun');
+  pangkalan.elemen.style.setProperty('--warna', WARNA_AREA.pangkalan);
+  setTeks(pangkalan.keterangan, TEKS.petakBusKet);
+  pangkalan.tombol.hidden = true;
+  elemen.append(pangkalan.elemen);
+
+  elemen.append(el('div', 'judul-bagian', TEKS.grupModern));
+  const modern = TEKNOLOGI_IDS.map((id: TeknologiId) => {
+    const r = baris3(IKON_MODERN, NAMA_TEKNOLOGI[id], 'modern');
+    r.tombolKecil.textContent = TEKS.pasang;
+    r.tombol.addEventListener('click', () => kirim({ jenis: 'beliTeknologi', teknologi: id }));
     elemen.append(r.elemen);
     return { id, ...r };
   });
+  const catatan = el('div', 'harga-catatan');
+  elemen.append(catatan);
   return {
     elemen,
     perbarui(m) {
-      const j = m.jalur;
-      const kali = (x: number): string => formatAngka(x, { desimalKecil: 2 });
-      setTeks(jalur.level, `${j.jumlah}/${j.maks}`);
-      setTeks(jalur.keterangan, j.biaya ? TEKS.jalurKeterangan(kali(j.mult), kali(j.multBerikut)) : TEKS.jalurLengkap(kali(j.mult)));
-      setHidden(jalur.tombol, j.biaya === null);
-      if (j.biaya) {
-        setTeks(jalur.tombolKecil, TEKS.bangunJalur(j.jumlah + 1));
-        setTeks(jalur.tombolBesar, formatUang(j.biaya));
-        setDisabled(jalur.tombol, !j.bisa);
+      const bg = m.bangun;
+      for (const a of area) {
+        const x = bg.area.find((y) => y.id === a.id)!;
+        setTeks(a.nilai, arus(x.kapasitas));
+        a.e.classList.toggle('lambat', x.bottleneck);
       }
-      for (const b of baris) {
-        const f = m.fasilitas.find((x) => x.id === b.id)!;
-        setTeks(b.level, f.level > 0 ? TEKS.level(f.level) : '');
-        setHidden(b.level, f.level === 0);
-        const efek = f.level > 0 ? `${efekFasilitas(f)} · ${NAMA_FASILITAS[b.id].deskripsi}` : NAMA_FASILITAS[b.id].deskripsi;
-        setTeks(b.keterangan, efek);
-        setTeks(b.tombolKecil, f.level > 0 ? `${TEKS.upgrade} ${tambahanFasilitas(f)}` : TEKS.bangun);
-        setTeks(b.tombolBesar, formatUang(f.biaya));
-        setDisabled(b.tombol, !f.bisa);
-        b.elemen.classList.toggle('belum', f.level === 0);
+      const dilayani = bg.area.every((x) => !x.bottleneck);
+      setTeks(ringkas, dilayani ? TEKS.kapasitasPasar : `${TEKS.kapasitasRingkas(arus(bg.arusPuncak), arus(bg.permintaanPuncak))}`);
+      for (const b of baris) b.perbarui(m);
+      const kapPangkalan = bg.area.find((x) => x.id === 'pangkalan')!.kapasitas;
+      setHidden(pangkalan.level, true);
+      setTeks(pangkalan.keterangan, `${TEKS.petakBus(bg.petakBus, arus(kapPangkalan))} · ${TEKS.petakBusKet}`);
+      for (const b of modern) {
+        const t = bg.teknologi.find((x) => x.id === b.id)!;
+        b.elemen.style.setProperty('--warna', keHexCss(WARNA_TAHAP[t.tahap]));
+        setTeks(
+          b.keterangan,
+          t.syaratKurang
+            ? TEKS.butuh(NAMA_TEKNOLOGI[t.syaratKurang])
+            : `${TEKS.kapasitasPersen(persen(t.multKapasitas - 1), NAMA_TAHAP[t.tahap])} · ${TEKS.perawatanPerHari(formatUang(t.perawatan))}`,
+        );
+        setHidden(b.level, !t.dimiliki);
+        setTeks(b.level, '✓');
+        setHidden(b.tombol, t.dimiliki);
+        setTeks(b.tombolBesar, formatUang(t.biaya));
+        setDisabled(b.tombol, !t.bisa);
+        b.elemen.classList.toggle('belum', !t.dimiliki);
+        b.elemen.classList.toggle('terkunci', t.syaratKurang !== null);
       }
+      setTeks(catatan, `${TEKS.perawatanTotal(formatUang(bg.perawatanHarian))}. ${TEKS.bangunanCatatan(persen(EKONOMI.tycoon.bongkar))}`);
     },
   };
 }
 
 // ---------------------------------------------------------------------------
-// Harga tiket per jurusan PO
+// Petugas
 
-interface PengaturHarga {
-  readonly elemen: HTMLElement;
-  /** Saran harga (ketuk = pakai); diletakkan pemanggil di kolom info. */
-  readonly saran: HTMLElement;
-  perbarui(h: ModelHargaPo): void;
-}
-
-/**
- * Tombol − / + dengan harga tiket Ekonomi (Rupiah) di tengahnya, dan tombol
- * saran. `kirimHarga` menerima nilai baru dalam persen harga normal (dirapikan sim).
- */
-function pengaturHarga(nama: string, kirimHarga: (persen: number) => void): PengaturHarga {
-  const elemen = el('div', 'pengatur-harga');
-  const turun = el('button', 'harga-tombol', '−');
-  const nilai = el('span', 'harga-nilai');
-  const naik = el('button', 'harga-tombol', '+');
-  turun.type = 'button';
-  naik.type = 'button';
-  turun.setAttribute('aria-label', TEKS.hargaTurun(nama));
-  naik.setAttribute('aria-label', TEKS.hargaNaik(nama));
-  elemen.append(turun, nilai, naik);
-  const saran = el('button', 'harga-saran');
-  saran.type = 'button';
-  let sekarang: ModelHargaPo | null = null;
-  turun.addEventListener('click', () => sekarang && kirimHarga(sekarang.persen - sekarang.langkah));
-  naik.addEventListener('click', () => sekarang && kirimHarga(sekarang.persen + sekarang.langkah));
-  saran.addEventListener('click', () => sekarang && kirimHarga(sekarang.saranPersen));
+export function buatTabPetugas(kirim: Kirim): IsiTab {
+  const elemen = el('div', 'isi-tab daftar-item');
+  const ringkasan = el('div', 'jurusan-ringkasan');
+  elemen.append(ringkasan);
+  const baris = PETUGAS_IDS.map((id: PetugasId) => {
+    const manajer = id === 'manajerOperasional' || id === 'manajerKemitraan';
+    const r = baris3(manajer ? IKON_MANAJER : IKON_PETUGAS, NAMA_PETUGAS[id].nama, 'petugas');
+    r.elemen.dataset['petugas'] = id;
+    if (manajer) r.elemen.classList.add('manajer');
+    setTeks(r.keterangan, NAMA_PETUGAS[id].deskripsi);
+    const gaji = el('div', 'item-keterangan petugas-gaji');
+    r.keterangan.after(gaji);
+    const p = pengatur(
+      TEKS.berhentikan(NAMA_PETUGAS[id].nama),
+      TEKS.rekrut(NAMA_PETUGAS[id].nama),
+      () => kirim({ jenis: 'berhentikan', petugas: id }),
+      () => kirim({ jenis: 'rekrut', petugas: id }),
+    );
+    r.tombol.replaceWith(p.elemen);
+    elemen.append(r.elemen);
+    return { id, ...r, gaji, p };
+  });
+  elemen.append(el('div', 'harga-catatan', TEKS.petugasCatatan));
   return {
     elemen,
-    saran,
-    perbarui(h) {
-      sekarang = h;
-      setTeks(nilai, `Rp ${rupiahKecil(h.rupiah)}`);
-      nilai.classList.toggle('murah', h.persen < 100);
-      nilai.classList.toggle('mahal', h.persen > 100);
-      setDisabled(turun, !h.bisaTurun);
-      setDisabled(naik, !h.bisaNaik);
-      const pas = h.persen === h.saranPersen;
-      setTeks(saran, pas ? TEKS.hargaSesuaiSaran : TEKS.hargaSaran(`Rp ${rupiahKecil(h.saranRupiah)}`));
-      setDisabled(saran, pas);
-    },
-  };
-}
-
-interface BarisHargaPo {
-  readonly elemen: HTMLElement;
-  perbarui(h: ModelHargaPo): void;
-}
-
-/** Satu jurusan PO: nama, harga normal (atau syarat bukanya), pengatur harga & saran. */
-function buatBarisHargaPo(po: PoId, awal: ModelHargaPo, kirim: Kirim): BarisHargaPo {
-  const elemen = el('div', 'po-jurusan');
-  elemen.dataset['jurusan'] = String(awal.jurusan);
-  elemen.classList.toggle('antarpulau', awal.feri !== null);
-  const info = el('div', 'item-info');
-  const ket = el('div', 'item-keterangan');
-  const pengatur = pengaturHarga(awal.nama, (p) => kirim({ jenis: 'aturHargaPo', po, jurusan: awal.jurusan, persen: p }));
-  info.append(el('span', 'item-nama', awal.nama), ket, pengatur.saran);
-  elemen.append(info, pengatur.elemen);
-  return {
-    elemen,
-    perbarui(h) {
-      const feri = h.feri ? `${TEKS.lewatFeri(h.feri)} · ` : '';
-      // Terkunci: kelas terminal (jangka panjang) lebih dulu, lalu level PO.
-      const status = h.aktif
-        ? TEKS.poHargaNormal(rupiahKecil(h.normalRupiah))
-        : h.kurangKelas !== null
-          ? TEKS.poSyaratTerminal(namaKelas(h.kurangKelas))
-          : TEKS.poJurusanLevel(h.levelBuka);
-      setTeks(ket, `${feri}${status}`);
-      elemen.classList.toggle('terkunci', !h.aktif);
-      setHidden(pengatur.elemen, !h.aktif);
-      setHidden(pengatur.saran, !h.aktif);
-      if (h.aktif) pengatur.perbarui(h);
+    perbarui(m) {
+      const t = m.petugas;
+      setTeks(ringkasan, TEKS.petugasRingkas(t.jumlah, formatUang(t.gajiHarian)));
+      for (const b of baris) {
+        const x = t.daftar.find((y) => y.id === b.id)!;
+        setTeks(b.level, `${x.jumlah}/${x.maks}`);
+        const perlu = x.perlu !== null && x.perlu > 0 && x.jumlah < Math.min(x.perlu, x.maks) ? ` · ${TEKS.petugasPerlu(Math.min(x.perlu, x.maks))}` : '';
+        setTeks(b.gaji, `${TEKS.petugasGaji(formatUang(x.gaji))}${perlu}`);
+        b.gaji.classList.toggle('kurang', perlu !== '');
+        setTeks(b.p.nilai, String(x.jumlah));
+        setDisabled(b.p.turun, !x.bisaBerhentikan);
+        setDisabled(b.p.naik, !x.bisaRekrut);
+        b.elemen.classList.toggle('belum', x.jumlah === 0);
+        b.elemen.classList.toggle('terkunci', x.maks === 0);
+      }
     },
   };
 }
@@ -266,15 +388,38 @@ function barisPo(): { readonly elemen: HTMLElement; readonly judul: HTMLElement;
   return { elemen, judul, ket };
 }
 
-/** Lama tombol Putus menunggu ketukan kedua. */
-const MS_YAKIN_PUTUS = 3000;
-
 interface KartuPo {
   readonly elemen: HTMLElement;
   perbarui(p: ModelPoTerdaftar, mi: ModelMitra): void;
 }
 
-/** Kartu mitra PO terdaftar: level & XP, loket, kelas bus, harga tiap jurusan, kontrak. */
+/** Satu jurusan PO: nama, harga tiket Ekonomi (ditetapkan PO) atau syarat bukanya. */
+function buatBarisJurusan(): { readonly elemen: HTMLElement; perbarui(j: ModelPoTerdaftar['jurusan'][number]): void } {
+  const elemen = el('div', 'po-jurusan');
+  const info = el('div', 'item-info');
+  const nama = el('span', 'item-nama');
+  const ket = el('div', 'item-keterangan');
+  info.append(nama, ket);
+  const harga = el('span', 'harga-nilai');
+  elemen.append(info, harga);
+  return {
+    elemen,
+    perbarui(j) {
+      elemen.dataset['jurusan'] = String(j.jurusan);
+      elemen.classList.toggle('antarpulau', j.feri !== null);
+      setTeks(nama, j.nama);
+      const status = j.aktif ? '' : j.kurangKelas !== null ? TEKS.poSyaratTerminal(namaKelas(j.kurangKelas)) : TEKS.poJurusanLevel(j.levelBuka);
+      const teks = [j.feri ? TEKS.lewatFeri(j.feri) : '', status].filter(Boolean).join(' · ');
+      setTeks(ket, teks);
+      setHidden(ket, teks === '');
+      setTeks(harga, formatUang(j.harga));
+      setHidden(harga, !j.aktif);
+      elemen.classList.toggle('terkunci', !j.aktif);
+    },
+  };
+}
+
+/** Kartu mitra PO terdaftar: level & XP, jendela loket, kepuasan mitra, kelas bus, harga tiap jurusan, kontrak. */
 function buatKartuPo(id: PoId, kirim: Kirim): KartuPo {
   const elemen = el('article', 'kartu-po');
   elemen.dataset['po'] = id;
@@ -295,43 +440,27 @@ function buatKartuPo(id: PoId, kirim: Kirim): KartuPo {
   bar.append(barIsi);
   const xpAngka = el('span', 'po-angka');
   xp.append(bar, xpAngka);
-  const loket = barisPo();
-  const tombolLoket = tombolBeli();
-  tombolLoket.kecil.textContent = TEKS.tambahLoket;
-  tombolLoket.tombol.addEventListener('click', () => kirim({ jenis: 'bangunLoket', po: id }));
-  loket.elemen.append(tombolLoket.tombol);
+  // Jendela loket: dari jendela kosong (gratis) atau dibangun.
+  const jendela = barisPo();
+  const tombolJendela = tombolBeli();
+  tombolJendela.kecil.textContent = TEKS.tambahJendela;
+  let kosong = false;
+  tombolJendela.tombol.addEventListener('click', () => kirim(kosong ? { jenis: 'isiJendelaKosong', po: id } : { jenis: 'bangun', bangunan: 'jendela', po: id }));
+  jendela.elemen.append(tombolJendela.tombol);
+  const mitra = el('div', 'po-teks po-mitra');
   const kelas = el('div', 'po-teks');
-  // Baris harga tiap jurusan dibuat saat pembaruan pertama (jurusan PO tetap).
-  const daftarHarga = el('div', 'po-harga');
-  const barisHarga: BarisHargaPo[] = [];
+  const daftarJurusan = el('div', 'po-harga');
+  const barisJurusan: ReturnType<typeof buatBarisJurusan>[] = [];
   const kontrak = barisPo();
   const tombolPerpanjang = tombolBeli();
   tombolPerpanjang.kecil.textContent = TEKS.perpanjang;
+  tombolPerpanjang.besar.textContent = TEKS.gratis;
   tombolPerpanjang.tombol.addEventListener('click', () => kirim({ jenis: 'perpanjangPo', po: id }));
   // Putus kontrak lewat dua ketukan: ketukan pertama menampilkan akibatnya.
-  const tombolPutus = el('button', 'tombol tombol-putus', TEKS.putus);
-  tombolPutus.type = 'button';
-  let yakinSampai = 0;
-  let timerYakin = 0;
-  const batalYakin = (): void => {
-    yakinSampai = 0;
-    tombolPutus.textContent = TEKS.putus;
-    tombolPutus.classList.remove('yakin');
-  };
-  tombolPutus.addEventListener('click', () => {
-    window.clearTimeout(timerYakin);
-    if (performance.now() < yakinSampai) {
-      batalYakin();
-      kirim({ jenis: 'putusPo', po: id });
-      return;
-    }
-    yakinSampai = performance.now() + MS_YAKIN_PUTUS;
-    tombolPutus.textContent = TEKS.putusYakin;
-    tombolPutus.classList.add('yakin');
-    timerYakin = window.setTimeout(batalYakin, MS_YAKIN_PUTUS);
-  });
-  kontrak.elemen.append(tombolPerpanjang.tombol, tombolPutus);
-  elemen.append(kepala, xp, loket.elemen, kelas, el('div', 'po-subjudul', TEKS.poHargaJudul), daftarHarga, kontrak.elemen);
+  const putus = tombolYakin('tombol tombol-putus', TEKS.putusYakin, () => kirim({ jenis: 'putusPo', po: id }));
+  putus.aturTeks(TEKS.putus);
+  kontrak.elemen.append(tombolPerpanjang.tombol, putus.tombol);
+  elemen.append(kepala, xp, jendela.elemen, mitra, kelas, el('div', 'po-subjudul', TEKS.poHargaJudul), daftarJurusan, kontrak.elemen);
   return {
     elemen,
     perbarui(p, mi) {
@@ -339,12 +468,14 @@ function buatKartuPo(id: PoId, kirim: Kirim): KartuPo {
       setTeks(ket, `${TEKS.poTingkatAsal(NAMA_TINGKAT_PO[p.tingkat], NAMA_PO[id].asal)} · ${TEKS.poReputasi(Math.round(p.reputasi))}`);
       setStyle(barIsi, 'width', `${(p.rasioXp * 100).toFixed(1)}%`);
       setTeks(xpAngka, TEKS.poXp(formatAngka(Math.floor(Math.max(0, p.xpDalamLevel))), formatAngka(Math.ceil(p.xpLevel)), p.level + 1));
-      const penuh = p.loket >= p.jatah;
-      setTeks(loket.judul, TEKS.poLoket(p.loket, p.jatah));
-      setTeks(loket.ket, penuh ? TEKS.poJatahPenuh : TEKS.poBagian(persen(p.bagian), persen(p.terisi)));
-      setHidden(tombolLoket.tombol, penuh);
-      setTeks(tombolLoket.besar, formatUang(p.biayaLoket));
-      setDisabled(tombolLoket.tombol, !p.bisaTambahLoket);
+      setTeks(jendela.judul, TEKS.poJendela(p.loket));
+      setTeks(jendela.ket, `${TEKS.poJendelaKet(arus(p.kapasitasLoket), arus(p.permintaanPuncak))} · ${TEKS.poBagian(persen(p.bagian), arus(p.arus))}`);
+      kosong = p.bisaIsiKosong;
+      setHidden(tombolJendela.tombol, !kosong && p.biayaJendela === null);
+      setTeks(tombolJendela.besar, kosong ? TEKS.gratis : formatUang(p.biayaJendela ?? 0));
+      setDisabled(tombolJendela.tombol, !kosong && !p.bisaTambahJendela);
+      setTeks(mitra, TEKS.poKepuasanMitra(persen(p.kepuasanMitra)));
+      mitra.classList.toggle('kurang', p.kepuasanMitra < mi.minimalMitra);
       const b = p.kelasBerikut;
       const berikut = !b
         ? ''
@@ -354,31 +485,31 @@ function buatKartuPo(id: PoId, kirim: Kirim): KartuPo {
             ? ` · ${TEKS.poKelasButuhTerminal(NAMA_KELAS_BUS[b.kelas].nama, namaKelas(b.kurangKelas))}`
             : '';
       setTeks(kelas, `${TEKS.poKelas(p.kelas.map((k) => NAMA_KELAS_BUS[k].nama).join(', '))}${berikut}`);
-      p.jurusan.forEach((h, i) => {
-        let r = barisHarga[i];
+      p.jurusan.forEach((j, i) => {
+        let r = barisJurusan[i];
         if (!r) {
-          r = buatBarisHargaPo(id, h, kirim);
-          barisHarga[i] = r;
-          daftarHarga.append(r.elemen);
+          r = buatBarisJurusan();
+          barisJurusan[i] = r;
+          daftarJurusan.append(r.elemen);
         }
-        r.perbarui(h);
+        r.perbarui(j);
       });
       setTeks(kontrak.judul, TEKS.poKontrak(formatAngka(Math.max(0, p.kontrakHari), { desimalKecil: 1 })));
       kontrak.elemen.classList.toggle('hampir', p.kontrakHari <= 1);
-      const ketKontrak =
-        performance.now() < yakinSampai
-          ? TEKS.putusCatatan(mi.kontrak.penaltiPutus, mi.kontrak.jedaHari)
-          : p.menolakPerpanjang && p.kepuasanMin !== null
+      const ketKontrak = putus.menunggu()
+        ? TEKS.putusCatatan(mi.kontrak.penaltiPutus, mi.kontrak.jedaHari)
+        : p.kurangPerpanjang === 'mitra'
+          ? TEKS.poMenolakMitra(persen(mi.minimalMitra))
+          : p.kurangPerpanjang === 'kepuasan' && p.kepuasanMin !== null
             ? TEKS.poMenolak(persen(p.kepuasanMin))
-            : p.kontrakPenuh
+            : p.kurangPerpanjang === 'penuh'
               ? TEKS.poKontrakPenuh(mi.kontrak.hariMaks)
               : '';
       setTeks(kontrak.ket, ketKontrak);
       setHidden(kontrak.ket, ketKontrak === '');
-      setHidden(tombolPerpanjang.tombol, p.kontrakPenuh);
-      setTeks(tombolPerpanjang.besar, formatUang(p.biayaPerpanjang));
-      setDisabled(tombolPerpanjang.tombol, !p.bisaPerpanjang);
-      setHidden(tombolPutus, !p.bisaPutus);
+      setHidden(tombolPerpanjang.tombol, p.kurangPerpanjang === 'penuh');
+      setDisabled(tombolPerpanjang.tombol, p.kurangPerpanjang !== null);
+      setHidden(putus.tombol, !p.bisaPutus);
     },
   };
 }
@@ -390,6 +521,10 @@ function statusTersedia(p: ModelPoTersedia): string {
   switch (k.jenis) {
     case 'slot':
       return TEKS.poSlotPenuh;
+    case 'jendela':
+      return TEKS.poJendelaPenuh;
+    case 'mitra':
+      return TEKS.poMenolakBergabung(persen(k.perkiraan));
     case 'jeda':
       return TEKS.poJeda(formatAngka(Math.max(0.1, p.jedaHari ?? 0), { desimalKecil: 1 }));
     case 'kepuasan':
@@ -426,7 +561,7 @@ function buatBarisTersedia(id: PoId, kirim: Kirim): BarisTersedia {
       // Kelas terminal & event: masih jauh, jadi tanpa tombol.
       const terkunci = p.kurang?.jenis === 'kelas' || p.kurang?.jenis === 'event';
       setHidden(r.tombol, terkunci);
-      setTeks(r.tombolBesar, p.biaya.lte(0) ? TEKS.gratis : formatUang(p.biaya));
+      setTeks(r.tombolBesar, p.biaya <= 0 ? TEKS.gratis : formatUang(p.biaya));
       setDisabled(r.tombol, !p.bisa);
       r.elemen.classList.toggle('belum', !p.bisa);
       r.elemen.classList.toggle('terkunci', terkunci);
@@ -443,17 +578,15 @@ function susunUrut(wadah: HTMLElement, elemen: readonly HTMLElement[]): void {
 export function buatTabPo(kirim: Kirim): IsiTab {
   const elemen = el('div', 'isi-tab daftar-item');
   const ringkasan = el('div', 'jurusan-ringkasan');
-  const nilai = el('div', 'harga-catatan');
-  // Loket kosong (milik terminal, belum disewa PO): diisi gratis ke PO yang paling menguntungkan.
+  // Jendela kosong (milik terminal, tidak disewa PO): disewakan gratis ke PO yang antreannya paling panjang.
   const kosong = baris3(IKON_LOKET, '', 'loket-kosong');
-  kosong.tombolKecil.textContent = TEKS.isiLoket;
+  kosong.tombolKecil.textContent = TEKS.sewakan;
   kosong.tombolBesar.textContent = TEKS.gratis;
-  setTeks(kosong.keterangan, TEKS.poLoketKosongKet);
-  kosong.tombol.addEventListener('click', () => kirim({ jenis: 'isiLoketKosong' }));
+  setTeks(kosong.keterangan, TEKS.jendelaKosongKet);
+  kosong.tombol.addEventListener('click', () => kirim({ jenis: 'isiJendelaKosong' }));
   const daftarTerdaftar = el('div', 'po-daftar');
   const daftarTersedia = el('div', 'po-daftar');
-  const catatan = el('div', 'harga-catatan', `${TEKS.poCatatan} ${TEKS.hargaCatatanPo}`);
-  elemen.append(ringkasan, nilai, kosong.elemen, daftarTerdaftar, el('div', 'judul-bagian', TEKS.judulPoTersedia), daftarTersedia, catatan);
+  elemen.append(ringkasan, kosong.elemen, daftarTerdaftar, el('div', 'judul-bagian', TEKS.judulPoTersedia), daftarTersedia, el('div', 'harga-catatan', TEKS.poCatatan));
   const kartu = new Map<PoId, KartuPo>();
   const tersedia = new Map<PoId, BarisTersedia>();
   return {
@@ -462,10 +595,8 @@ export function buatTabPo(kirim: Kirim): IsiTab {
       const mi = m.mitra;
       const slot = mi.slotBerikut ? ` · ${TEKS.poSlotBerikut(mi.slotBerikut.slot, mi.slotBerikut.level)}` : '';
       setTeks(ringkasan, `${TEKS.poRingkas(mi.terdaftar.length, mi.slot)}${slot}`);
-      setTeks(nilai, TEKS.poNilaiTiket(rupiahKecil(mi.nilaiDibayar), rupiahKecil(mi.nilaiPerPenumpang), persen(mi.terisi)));
-      setHidden(kosong.elemen, mi.loketKosong === 0);
-      setTeks(kosong.nama, TEKS.poLoketKosong(mi.loketKosong));
-      setDisabled(kosong.tombol, !mi.bisaIsiLoket);
+      setHidden(kosong.elemen, mi.jendelaKosong === 0);
+      setTeks(kosong.nama, TEKS.jendelaKosongJudul(mi.jendelaKosong));
       // Kartu dibuat saat PO bergabung dan dibuang saat PO keluar.
       for (const p of mi.terdaftar) {
         let k = kartu.get(p.id);
@@ -491,11 +622,9 @@ export function buatTabPo(kirim: Kirim): IsiTab {
 }
 
 // ---------------------------------------------------------------------------
-// Terminal: level & kelas, perluasan, Renovasi, kelas bus
+// Terminal: level & kelas, perluasan, tarif, laporan keuangan, kelas bus
 
 export interface OpsiTabTerminal {
-  /** Membuka konfirmasi Renovasi (mengulang kapasitas terminal, jadi tidak langsung dikirim dari tombol). */
-  readonly konfirmasiRenovasi?: (m: ModelRenovasi) => void;
   /** Membuka popup nama terminal (lihat popup-nama.ts). */
   readonly ubahNama?: () => void;
 }
@@ -525,6 +654,111 @@ function kartuBilah(kelas: string): {
   return { elemen, kiri, judul, tugas, ket, bar, isi, angka };
 }
 
+/** Nilai tarif untuk dibaca: persen atau Rupiah. */
+function teksTarif(id: TarifId, nilai: number): string {
+  return NAMA_TARIF[id].satuan === 'persen' ? `${formatAngka(nilai, { desimalKecil: 0 })}%` : formatUang(nilai);
+}
+
+function buatBarisTarif(id: TarifId, kirim: Kirim): { readonly elemen: HTMLElement; perbarui(t: ModelTarif): void } {
+  const elemen = el('div', 'item item-tarif');
+  elemen.dataset['tarif'] = id;
+  const ikon = el('div', 'item-ikon');
+  ikon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${IKON_TARIF}</svg>`;
+  const info = el('div', 'item-info');
+  const atas = el('div', 'item-atas');
+  const per = el('span', 'tarif-per', TEKS.tarifPer(NAMA_TARIF[id].per));
+  atas.append(el('span', 'item-nama', NAMA_TARIF[id].nama), per);
+  const ket = el('div', 'item-keterangan', NAMA_TARIF[id].deskripsi);
+  const saran = el('button', 'harga-saran', TEKS.tarifSaran);
+  saran.type = 'button';
+  saran.addEventListener('click', () => kirim({ jenis: 'saranTarif', tarif: id }));
+  const bawah = el('div', 'tarif-bawah');
+  const bawaan = el('span', 'tarif-bawaan');
+  bawah.append(saran, bawaan);
+  info.append(atas, ket, bawah);
+  let sekarang: ModelTarif | null = null;
+  const p = pengatur(
+    TEKS.tarifTurun(NAMA_TARIF[id].nama),
+    TEKS.tarifNaik(NAMA_TARIF[id].nama),
+    () => sekarang && kirim({ jenis: 'aturTarif', tarif: id, nilai: sekarang.nilai - sekarang.langkah }),
+    () => sekarang && kirim({ jenis: 'aturTarif', tarif: id, nilai: sekarang.nilai + sekarang.langkah }),
+  );
+  elemen.append(ikon, info, p.elemen);
+  return {
+    elemen,
+    perbarui(t) {
+      sekarang = t;
+      setTeks(p.nilai, teksTarif(id, t.nilai));
+      p.nilai.classList.toggle('murah', t.nilai < t.bawaan);
+      p.nilai.classList.toggle('mahal', t.nilai > t.bawaan);
+      setDisabled(p.turun, !t.bisaTurun);
+      setDisabled(p.naik, !t.bisaNaik);
+      setTeks(bawaan, TEKS.tarifBawaan(teksTarif(id, t.bawaan)));
+    },
+  };
+}
+
+const KUNCI_PENDAPATAN = Object.keys(NAMA_PENDAPATAN) as (keyof RincianPendapatan)[];
+const KUNCI_BIAYA = Object.keys(NAMA_BIAYA) as (keyof RincianBiaya)[];
+
+/** Laporan keuangan: pendapatan per sumber & biaya per pos, hari ini & kemarin. */
+function buatKartuKeuangan(): { readonly elemen: HTMLElement; perbarui(m: ModelTampilan): void } {
+  const elemen = el('div', 'target-kartu kartu-kolom keuangan-kartu');
+  const judul = el('div', 'target-judul', TEKS.keuanganJudul);
+  const tabel = el('div', 'keuangan-tabel');
+  const sel = (kelas: string, teks = ''): HTMLElement => {
+    const e = el('span', kelas, teks);
+    tabel.append(e);
+    return e;
+  };
+  sel('keu-label');
+  const kepalaHariIni = sel('keu-kepala');
+  const kepalaKemarin = sel('keu-kepala');
+  const baris = (label: string, kelas = ''): { readonly a: HTMLElement; readonly b: HTMLElement } => {
+    sel(`keu-label ${kelas}`, label);
+    return { a: sel(`keu-nilai ${kelas}`), b: sel(`keu-nilai ${kelas}`) };
+  };
+  const pendapatan = KUNCI_PENDAPATAN.map((k) => ({ k, ...baris(NAMA_PENDAPATAN[k]) }));
+  const totalPendapatan = baris(TEKS.keuanganPendapatan, 'keu-total');
+  const biaya = KUNCI_BIAYA.map((k) => ({ k, ...baris(NAMA_BIAYA[k]) }));
+  const totalBiaya = baris(TEKS.keuanganBiaya, 'keu-total');
+  const laba = baris(TEKS.keuanganLaba, 'keu-laba');
+  const penumpang = baris('', 'keu-kecil');
+  const rata = el('div', 'kelas-berikut');
+  elemen.append(judul, tabel, rata);
+  const isi = (e: HTMLElement, v: number | null, bertanda = false): void => setTeks(e, v === null ? TEKS.rekorBelum : bertanda ? formatUangBertanda(v) : formatUang(Math.floor(v)));
+  return {
+    elemen,
+    perbarui(m) {
+      const k = m.terminal.keuangan;
+      setTeks(judul, `${TEKS.keuanganJudul} · ${TEKS.keuanganKas(formatUang(Math.floor(k.kas)))}`);
+      const h: ModelBuku = k.hariIni;
+      const y: ModelBuku | null = k.kemarin;
+      setTeks(kepalaHariIni, TEKS.keuanganHariIni(h.hari));
+      setTeks(kepalaKemarin, y ? TEKS.keuanganKemarin(y.hari) : TEKS.rekorBelum);
+      for (const r of pendapatan) {
+        isi(r.a, h.pendapatan[r.k]);
+        isi(r.b, y ? y.pendapatan[r.k] : null);
+      }
+      isi(totalPendapatan.a, h.totalPendapatan);
+      isi(totalPendapatan.b, y?.totalPendapatan ?? null);
+      for (const r of biaya) {
+        isi(r.a, h.biaya[r.k]);
+        isi(r.b, y ? y.biaya[r.k] : null);
+      }
+      isi(totalBiaya.a, h.totalBiaya);
+      isi(totalBiaya.b, y?.totalBiaya ?? null);
+      isi(laba.a, h.laba, true);
+      isi(laba.b, y?.laba ?? null, true);
+      laba.a.classList.toggle('rugi', h.laba < 0);
+      laba.b.classList.toggle('rugi', (y?.laba ?? 0) < 0);
+      setTeks(penumpang.a, TEKS.keuanganPenumpang(formatAngka(Math.floor(h.penumpang))));
+      setTeks(penumpang.b, y ? TEKS.keuanganPenumpang(formatAngka(Math.floor(y.penumpang))) : '');
+      setTeks(rata, TEKS.keuanganRata(formatUangBertanda(k.rataRata.laba)));
+    },
+  };
+}
+
 export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
   const elemen = el('div', 'isi-tab daftar-item');
   // Level & kelas terminal; nama terminal diubah lewat tombol ✎ di samping judul.
@@ -542,27 +776,16 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
   // Perluasan: tahap berikutnya & tombol bangun, atau proyek yang sedang berjalan.
   const perluasan = kartuBilah('perluasan-kartu');
   perluasan.judul.textContent = TEKS.perluasanJudul;
-  const bonusPerluasan = el('div', 'kelas-berikut');
-  perluasan.kiri.append(bonusPerluasan);
+  const catatanPerluasan = el('div', 'kelas-berikut', TEKS.perluasanCatatan);
+  perluasan.kiri.append(catatanPerluasan);
   const tombolPerluasan = tombolBeli();
   tombolPerluasan.kecil.textContent = TEKS.bangun;
   tombolPerluasan.tombol.addEventListener('click', () => kirim({ jenis: 'mulaiPerluasan' }));
   const kananPerluasan = el('div', 'target-tombol');
   kananPerluasan.append(tombolPerluasan.tombol);
   perluasan.elemen.append(kananPerluasan);
-  // Renovasi (pengganti prestige): selalu lewat popup konfirmasi.
-  const renov = kartuBilah('renovasi-kartu');
-  renov.judul.textContent = TEKS.renovasiJudul;
-  const tombolRenov = tombolBeli();
-  tombolRenov.tombol.classList.add('tombol-kelas');
-  tombolRenov.kecil.textContent = TEKS.renovasi;
-  let modelRenov: ModelRenovasi | null = null;
-  tombolRenov.tombol.addEventListener('click', () => {
-    if (modelRenov?.bisa) o.konfirmasiRenovasi?.(modelRenov);
-  });
-  const kananRenov = el('div', 'target-tombol');
-  kananRenov.append(tombolRenov.tombol);
-  renov.elemen.append(kananRenov);
+  const keuangan = buatKartuKeuangan();
+  const tarif = TARIF_IDS.map((id) => ({ id, ...buatBarisTarif(id, kirim) }));
   // Kelas bus yang dioperasikan PO terdaftar.
   const barisKelas = KELAS_BUS_IDS.map((id) => {
     const r = baris3(IKON_KELAS_BUS[id], NAMA_KELAS_BUS[id].nama, 'kelas-bus');
@@ -572,8 +795,11 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
   });
   elemen.append(
     level.elemen,
+    keuangan.elemen,
+    el('div', 'judul-bagian', TEKS.tarifJudul),
+    ...tarif.map((t) => t.elemen),
+    el('div', 'harga-catatan', TEKS.tarifCatatan),
     perluasan.elemen,
-    renov.elemen,
     el('div', 'judul-bagian', TEKS.judulKelasBus),
     ...barisKelas.map((b) => b.elemen),
     el('div', 'harga-catatan', `${TEKS.terminalCatatan} ${TEKS.kelasBusCatatan}`),
@@ -584,9 +810,11 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
       const t = m.terminal;
       setTeks(level.judul, TEKS.kelasJudul(namaKelas(t.kelas), t.nama));
       setTeks(level.tugas, TEKS.level(t.level));
-      setTeks(level.ket, `${TEKS.terminalKelasBerikut(namaKelas(t.kelas + 1), t.levelKelasBerikut)} · ${TEKS.terminalBonus(persen(t.bonusLevel), t.slot)}`);
+      setTeks(level.ket, `${TEKS.terminalKelasBerikut(namaKelas(t.kelas + 1), t.levelKelasBerikut)} · ${TEKS.terminalSlot(t.slot)}`);
       setStyle(level.isi, 'width', `${(t.rasio * 100).toFixed(1)}%`);
       setTeks(level.angka, TEKS.terminalXp(formatAngka(Math.floor(t.xp)), formatAngka(Math.ceil(t.xpBerikut))));
+      keuangan.perbarui(m);
+      for (const r of tarif) r.perbarui(t.tarif.find((x) => x.id === r.id)!);
 
       const p = t.perluasan;
       const tahap = p.proyek?.tahap ?? p.berikut?.tahap ?? null;
@@ -595,30 +823,19 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
       const efek = p.proyek
         ? TEKS.perluasanProyek(formatDurasi(p.proyek.sisaDetik))
         : p.berikut
-          ? `${nama ? `${nama.deskripsi} · ` : ''}${TEKS.perluasanEfek(p.berikut.jatah)}${p.berikut.levelKurang ? ` · ${TEKS.perluasanSyarat(p.berikut.level)}` : ''}`
+          ? [nama?.deskripsi ?? '', TEKS.perluasanOperasional(formatUang(p.berikut.operasional)), p.berikut.levelKurang ? TEKS.perluasanSyarat(p.berikut.level) : ''].filter(Boolean).join(' · ')
           : '';
       setTeks(perluasan.ket, efek);
       setHidden(perluasan.ket, efek === '');
       setHidden(perluasan.bar, p.proyek === null);
       setStyle(perluasan.isi, 'width', `${((p.proyek?.rasio ?? 0) * 100).toFixed(1)}%`);
       setHidden(perluasan.angka, true);
-      setTeks(bonusPerluasan, p.bonusJatah > 0 ? TEKS.perluasanBonus(p.bonusJatah) : TEKS.perluasanCatatan);
       setHidden(kananPerluasan, p.berikut === null);
       if (p.berikut) {
         setTeks(tombolPerluasan.besar, formatUang(p.berikut.biaya));
         setDisabled(tombolPerluasan.tombol, !p.berikut.bisa);
       }
       perluasan.elemen.classList.toggle('siap', p.berikut?.bisa === true);
-
-      const r = t.renovasi;
-      modelRenov = r;
-      setTeks(renov.tugas, TEKS.renovasiBonus(persen(r.bonus), r.jumlah));
-      setTeks(renov.ket, r.bisa ? TEKS.renovasiBerikut(r.poinTersedia, persen(r.bonusSetelah)) : TEKS.renovasiSyarat(r.poinMin));
-      setStyle(renov.isi, 'width', `${(r.rasio * 100).toFixed(1)}%`);
-      setTeks(renov.angka, TEKS.kelasKemajuan(formatUang(r.pendapatanRun), formatUang(r.pendapatanPerlu)));
-      setTeks(tombolRenov.besar, r.bisa ? TEKS.poin(r.poinTersedia) : TEKS.poinDari(r.poinTersedia, r.poinMin));
-      setDisabled(tombolRenov.tombol, !r.bisa);
-      renov.elemen.classList.toggle('siap', r.bisa);
 
       for (const b of barisKelas) {
         const k = t.kelasBus.find((x) => x.id === b.id)!;
@@ -635,37 +852,6 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
 }
 
 // ---------------------------------------------------------------------------
-// Modernisasi
-
-export function buatTabModern(kirim: Kirim): IsiTab {
-  const elemen = el('div', 'isi-tab daftar-item');
-  const baris = TEKNOLOGI_IDS.map((id: TeknologiId) => {
-    const r = baris3('<path d="M12 2l2.4 6.3L21 9l-5 4.5L17.5 21 12 17.3 6.5 21 8 13.5 3 9l6.6-.7z" fill="currentColor"/>', NAMA_TEKNOLOGI[id], 'modern');
-    r.tombol.addEventListener('click', () => kirim({ jenis: 'beliTeknologi', teknologi: id }));
-    elemen.append(r.elemen);
-    return { id, ...r };
-  });
-  return {
-    elemen,
-    perbarui(m) {
-      for (const b of baris) {
-        const t = m.teknologi.find((x) => x.id === b.id)!;
-        b.elemen.style.setProperty('--warna', keHexCss(WARNA_TAHAP[t.tahap]));
-        setTeks(b.keterangan, t.syaratKurang ? TEKS.butuh(NAMA_TEKNOLOGI[t.syaratKurang]) : TEKS.kapasitasPersen(persen(t.multKapasitas - 1), t.namaTahap));
-        setHidden(b.level, !t.dimiliki);
-        setTeks(b.level, '✓');
-        setHidden(b.tombol, t.dimiliki);
-        setTeks(b.tombolKecil, TEKS.pasang);
-        setTeks(b.tombolBesar, formatUang(t.biaya));
-        setDisabled(b.tombol, !t.bisa);
-        b.elemen.classList.toggle('belum', !t.dimiliki);
-        b.elemen.classList.toggle('terkunci', t.syaratKurang !== null);
-      }
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Tantangan mingguan & rekor
 
 /** Tugas satu tantangan mingguan. */
@@ -673,14 +859,12 @@ function teksTantangan(t: ModelTantangan, m: ModelMingguan): string {
   switch (t.jenis) {
     case 'penumpang':
       return TEKS.tantanganPenumpang(formatAngka(t.target));
-    case 'pendapatan':
-      return TEKS.tantanganPendapatan(formatUang(t.target));
-    case 'upgrade':
-      return TEKS.tantanganUpgrade(t.target);
+    case 'laba':
+      return TEKS.tantanganLaba(formatUang(t.target));
+    case 'bangun':
+      return TEKS.tantanganBangun(t.target);
     case 'kepuasan':
       return TEKS.tantanganKepuasan(persen(m.kepuasanMin), Math.round(t.target / 60));
-    case 'fasilitas':
-      return TEKS.tantanganFasilitas(t.target);
   }
 }
 
@@ -688,7 +872,7 @@ function teksTantangan(t: ModelTantangan, m: ModelMingguan): string {
 function angkaTantangan(t: ModelTantangan): string {
   const ada = Math.min(t.progres, t.target);
   switch (t.jenis) {
-    case 'pendapatan':
+    case 'laba':
       return `${formatUang(Math.floor(ada))} / ${formatUang(t.target)}`;
     case 'kepuasan':
       return TEKS.tantanganMenit(Math.floor(ada / 60), Math.round(t.target / 60));
@@ -751,7 +935,7 @@ function buatKartuRekor(): { readonly elemen: HTMLElement; perbarui(m: ModelTamp
   const judul = el('div', 'target-judul', TEKS.rekorJudul);
   const hariIni = el('div', 'kelas-berikut');
   const daftar = el('div', 'rekor-daftar');
-  const nilai = [TEKS.rekorPenumpang, TEKS.rekorPendapatan, TEKS.rekorArus].map((label) => {
+  const nilai = [TEKS.rekorPenumpang, TEKS.rekorLaba, TEKS.rekorArus].map((label) => {
     const v = el('span', 'rekor-nilai');
     daftar.append(el('span', 'rekor-label', label), v);
     return v;
@@ -761,11 +945,11 @@ function buatKartuRekor(): { readonly elemen: HTMLElement; perbarui(m: ModelTamp
     elemen,
     perbarui(m) {
       const r = m.rekor;
-      setTeks(hariIni, TEKS.rekorHariIni(formatAngka(Math.floor(r.penumpangHariIni)), formatUang(Math.floor(r.pendapatanHariIni))));
-      const [p, rp, arus] = nilai as [HTMLElement, HTMLElement, HTMLElement];
+      setTeks(hariIni, TEKS.rekorHariIni(formatAngka(Math.floor(r.penumpangHariIni)), formatUangBertanda(r.labaHariIni)));
+      const [p, rp, a] = nilai as [HTMLElement, HTMLElement, HTMLElement];
       setTeks(p, r.penumpangHarian > 0 ? formatAngka(Math.floor(r.penumpangHarian)) : TEKS.rekorBelum);
-      setTeks(rp, r.pendapatanHarian > 0 ? formatUang(Math.floor(r.pendapatanHarian)) : TEKS.rekorBelum);
-      setTeks(arus, `${formatAngka(r.arusTertinggi)} ${TEKS.satuanArus}`);
+      setTeks(rp, r.labaHarian > 0 ? formatUang(Math.floor(r.labaHarian)) : TEKS.rekorBelum);
+      setTeks(a, `${arus(r.arusTertinggi)} ${TEKS.satuanArus}`);
     },
   };
 }
@@ -793,7 +977,7 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
       .finally(() => (menonton = false));
   };
   const elemen = el('div', 'isi-tab daftar-item');
-  // Event musiman: sisa waktu, pengali pendapatan, tahap target & klaim hadiahnya.
+  // Event musiman: sisa waktu, pengali pasar, tahap target & klaim hadiahnya.
   const kartuEvent = el('div', 'target-kartu event-kartu');
   const eventJudul = el('div', 'target-judul event-judul');
   const eventTugas = el('div', 'target-tugas');
@@ -839,7 +1023,7 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
   const kartuRekor = buatKartuRekor();
   elemen.append(kartuEvent, kartu, kartuTantangan.elemen, ...(kartuPeringkat ? [kartuPeringkat.elemen] : []), kartuRekor.elemen, judulPenghargaan);
   const baris = PENCAPAIAN_IDS.map((id: PencapaianId) => {
-    const r = baris3(IKON_PIALA.replace(/^<svg[^>]*>|<\/svg>$/g, ''), NAMA_PENCAPAIAN[id].nama, 'penghargaan');
+    const r = baris3(IKON_PIALA, NAMA_PENCAPAIAN[id].nama, 'penghargaan');
     setTeks(r.keterangan, NAMA_PENCAPAIAN[id].deskripsi);
     r.tombol.addEventListener('click', () => kirim({ jenis: 'klaimPencapaian', pencapaian: id }));
     const ganda = tombolGanda();
@@ -873,15 +1057,15 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
       }
       const t = m.target;
       setTeks(judul, TEKS.targetHari(t.hari));
-      setTeks(tugas, t.jenis === 'upgrade' ? TEKS.targetUpgrade(formatAngka(t.target)) : TEKS.targetPenumpang(formatAngka(t.target)));
+      setTeks(tugas, t.jenis === 'laba' ? TEKS.targetLaba(formatUang(t.target)) : TEKS.targetPenumpang(formatAngka(t.target)));
       setStyle(barIsi, 'width', `${(t.rasio * 100).toFixed(1)}%`);
-      setTeks(angka, `${formatAngka(Math.floor(t.progres))} / ${formatAngka(t.target)}`);
+      setTeks(angka, t.jenis === 'laba' ? `${formatUang(Math.floor(t.progres))} / ${formatUang(t.target)}` : `${formatAngka(Math.floor(t.progres))} / ${formatAngka(t.target)}`);
       setTeks(targetKecil, t.diklaim ? '' : TEKS.klaim);
       setTeks(targetBesar, t.diklaim ? TEKS.diklaim : `+${formatUang(t.hadiah)}`);
       setDisabled(tombolTarget, !t.selesai || t.diklaim);
       const bisaIklan = iklan?.siap() ?? false;
       setHidden(gandaTarget.tombol, !bisaIklan || !t.selesai || t.diklaim);
-      setTeks(gandaTarget.besar, `+${formatUang(t.hadiah.times(2))}`);
+      setTeks(gandaTarget.besar, `+${formatUang(t.hadiah * 2)}`);
       kartu.classList.toggle('siap', t.selesai && !t.diklaim);
       for (const b of baris) {
         const p = m.pencapaian.find((x) => x.id === b.id)!;
@@ -894,7 +1078,7 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
         setTeks(b.tombolKecil, TEKS.klaim);
         setTeks(b.tombolBesar, `+${formatUang(m.hadiahPencapaian)}`);
         setHidden(b.ganda.tombol, !bisaIklan || !p.tercapai || p.diklaim);
-        setTeks(b.ganda.besar, `+${formatUang(m.hadiahPencapaian.times(2))}`);
+        setTeks(b.ganda.besar, `+${formatUang(m.hadiahPencapaian * 2)}`);
       }
     },
   };

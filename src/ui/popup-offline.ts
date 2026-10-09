@@ -1,12 +1,12 @@
 /**
- * Popup "Selama kamu pergi…". Penghasilan offline SUDAH ditambahkan ke state
- * sebelum popup muncul, jadi menutup popup (atau app mati saat popup terbuka)
- * tidak menghilangkan uang. Ditutup lewat tombol "Ambil", mengetuk area gelap
- * di luar kotak, atau tombol Esc.
+ * Popup "Selama kamu pergi…". Laba offline SUDAH diterapkan ke state sebelum
+ * popup muncul, jadi menutup popup (atau app mati saat popup terbuka) tidak
+ * menghilangkan uang. Ditutup lewat tombol "Ambil", mengetuk area gelap di luar
+ * kotak, atau tombol Esc.
  */
 import { EKONOMI } from '../config/economy.config';
 import type { LaporanOffline } from '../sim/state';
-import { formatDurasi, formatUang } from './format';
+import { formatDurasi, formatUang, formatUangBertanda } from './format';
 import { IKON_PUTAR } from './popup-hadiah';
 import { TEKS } from './teks';
 
@@ -14,7 +14,7 @@ import { TEKS } from './teks';
  * @param ganda kalau ada: tombol "Ambil 2×" lewat iklan berhadiah; true = iklan
  *   selesai & bonus sudah diberikan pemanggil.
  */
-export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline, semuaOtomatis: boolean, ganda?: () => Promise<boolean>): Promise<void> {
+export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline, ganda?: () => Promise<boolean>): Promise<void> {
   akar.querySelector('.popup-latar.latar-offline')?.remove();
 
   const latar = document.createElement('div');
@@ -36,13 +36,21 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
 
   const jumlah = document.createElement('div');
   jumlah.className = 'popup-jumlah';
-  jumlah.textContent = `+${formatUang(laporan.pendapatan)}`;
+  jumlah.classList.toggle('rugi', laporan.laba < 0);
+  jumlah.textContent = formatUangBertanda(laporan.laba);
+
+  const rincian = document.createElement('p');
+  rincian.className = 'popup-catatan';
+  rincian.textContent = TEKS.offlineRincian(formatUang(Math.floor(laporan.pendapatan)), formatUang(Math.floor(laporan.biaya)));
 
   const catatan = document.createElement('p');
   catatan.className = 'popup-catatan';
-  catatan.textContent = semuaOtomatis
-    ? TEKS.offlineCatatan(Math.round(EKONOMI.efisiensiOffline * 100), formatDurasi(EKONOMI.batasOfflineDetik))
-    : TEKS.offlineButuhKepala;
+  const o = EKONOMI.tycoon.offline;
+  catatan.textContent = laporan.tutup ? TEKS.offlineTutup : TEKS.offlineCatatan(Math.round(o.efisiensi * 100), formatDurasi(o.batasDetik));
+
+  const berhenti = document.createElement('p');
+  berhenti.className = 'popup-catatan offline-berhenti';
+  berhenti.textContent = laporan.berhenti > 0 ? TEKS.offlineBerhenti(laporan.berhenti) : '';
 
   const tombol = document.createElement('button');
   tombol.type = 'button';
@@ -57,13 +65,15 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
   tombolGanda.className = 'tombol tombol-iklan popup-tombol';
   tombolGanda.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${IKON_PUTAR}</svg>`;
   const teksGanda = document.createElement('span');
-  teksGanda.textContent = TEKS.offlineAmbilGanda(formatUang(laporan.pendapatan.times(2)));
+  teksGanda.textContent = TEKS.offlineAmbilGanda(formatUang(Math.floor(laporan.laba * 2)));
   tombolGanda.append(teksGanda);
   const pesan = document.createElement('p');
   pesan.className = 'hadiah-pesan';
 
-  kotak.append(judul, durasi, jumlah);
+  kotak.append(judul, durasi);
+  if (!laporan.tutup) kotak.append(jumlah, rincian);
   if (laporan.detikBoost > 0) kotak.append(boost);
+  if (laporan.berhenti > 0) kotak.append(berhenti);
   kotak.append(catatan);
   if (ganda) kotak.append(tombolGanda, pesan);
   kotak.append(tombol);
@@ -92,7 +102,7 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
       void ganda().then(
         (ok) => {
           if (ok) {
-            jumlah.textContent = `+${formatUang(laporan.pendapatan.times(2))}`;
+            jumlah.textContent = formatUangBertanda(laporan.laba * 2);
             jumlah.classList.add('ganda');
             setTimeout(tutup, 900);
             return;

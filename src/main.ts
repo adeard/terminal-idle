@@ -25,7 +25,7 @@ import { pasangSiklusHidup } from './platform/siklus-hidup';
 import { MesinSuara } from './platform/suara';
 import type { Aksi } from './sim/aksi';
 import { isEventId } from './sim/fitur';
-import { bisaAktifkanBoost, bisaKlaimBonusOffline, hadiahBusEmas, semuaOtomatis, type LaporanOffline } from './sim/state';
+import { bisaAktifkanBoost, bisaKlaimBonusOffline, hadiahBusEmas, type LaporanOffline } from './sim/state';
 import { pasangBingkai } from './ui/bingkai';
 import { pasangOverlay } from './ui/overlay';
 import { tampilkanPopupAkun } from './ui/popup-akun';
@@ -206,9 +206,9 @@ async function mulai(): Promise<void> {
       bisa: true,
       tonton: async () => {
         if (!(await tontonIklan('busEmas'))) return false;
-        const sebelum = sesi.pengendali.state.uang;
+        const sebelum = sesi.pengendali.state.kas;
         kirim({ jenis: 'klaimBusEmas' });
-        overlay.notif(TEKS.notifBusEmas(formatUang(sesi.pengendali.state.uang.sub(sebelum))));
+        overlay.notif(TEKS.notifBusEmas(formatUang(sesi.pengendali.state.kas - sebelum)));
         return true;
       },
     }).then((diterima) => diterima || kirim({ jenis: 'lepasBusEmas' }));
@@ -351,7 +351,7 @@ async function mulai(): Promise<void> {
             return true;
           }
         : undefined;
-    void tampilkanPopupOffline(ui, l, semuaOtomatis(s), ganda);
+    void tampilkanPopupOffline(ui, l, ganda);
   };
   tampilkanLaporan(laporan);
   saatSaveDiganti = (l) => {

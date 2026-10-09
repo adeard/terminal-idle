@@ -1,125 +1,56 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { EKONOMI } from '../src/config/economy.config';
-import { kelasDariLevel, levelMinimalKelas, slotPo, xpKumulatifTerminal } from '../src/sim/level-terminal';
-import { jatahLoket } from '../src/sim/mitra';
-import { bonusJatahPerluasan } from '../src/sim/perluasan';
-import {
-  decimalKeString,
-  deserialisasi,
-  migrasikan,
-  migrasiV1keV2,
-  muatAtauBaru,
-  SaveTidakValidError,
-  serialisasi,
-  stringKeDecimal,
-  VERSI_SKEMA,
-  type FungsiMigrasi,
-} from '../src/sim/save';
-import {
-  buatPoTerdaftar,
-  buatStateBaru,
-  DETIK_SEHARI,
-  kelasBusBeroperasi,
-  kelasTerminal,
-  levelPo,
-  levelTerminal,
-  loketTerisi,
-  tandaiWaktu,
-  type GameState,
-} from '../src/sim/state';
-import { TAHAP_IDS } from '../src/sim/tahap';
-import { jalankan, stateOtomatis, T0 } from './helpers';
+import { slotBangunan } from '../src/sim/bangunan';
+import { deserialisasi, keSaveV3, migrasikan, muatAtauBaru, SaveTidakValidError, serialisasi, VERSI_SKEMA, type FungsiMigrasi } from '../src/sim/save';
+import { aturTarif, bangun, buatStateBaru, putusPo, tandaiWaktu, type GameState } from '../src/sim/state';
+import { tarifBawaan } from '../src/sim/tarif';
+import { denganLevelTerminal, denganPerluasan, denganPetugas, denganPo, jalankan, kaya, stateOtomatis, T0 } from './helpers';
 
+/** Dua state sama persis menurut bentuk save-nya (bonus 2× offline memang tidak disimpan). */
 function expectStateSama(a: GameState, b: GameState): void {
-  expect(a.uang.eq(b.uang), `uang ${a.uang.toString()} vs ${b.uang.toString()}`).toBe(true);
-  expect(a.terminal.id).toBe(b.terminal.id);
-  for (const id of TAHAP_IDS) {
-    expect(a.terminal.tahap[id].level).toBe(b.terminal.tahap[id].level);
-    expect(a.terminal.tahap[id].kepala).toEqual(b.terminal.tahap[id].kepala);
-  }
-  expect(a.terminal.loketKosong).toBe(b.terminal.loketKosong);
-  expect(a.mitra).toEqual(b.mitra);
-  expect(a.perkembangan).toEqual(b.perkembangan);
-  expect(a.renovasi.poin.eq(b.renovasi.poin)).toBe(true);
-  expect(a.renovasi.jumlah).toBe(b.renovasi.jumlah);
-  expect(a.statistik.totalPendapatanRun.eq(b.statistik.totalPendapatanRun)).toBe(true);
-  expect(a.statistik.totalPendapatanSepanjangMasa.eq(b.statistik.totalPendapatanSepanjangMasa)).toBe(true);
-  expect(a.statistik.waktuMainDetik).toBe(b.statistik.waktuMainDetik);
-  expect(a.waktuTerakhirMs).toBe(b.waktuTerakhirMs);
+  expect(keSaveV3(a)).toEqual(keSaveV3(b));
 }
 
-/** Dua PO (salah satu dengan harga sendiri), satu PO di riwayat & masa jeda, loket kosong, perluasan berjalan, Renovasi. */
+/** State tengah game: bangunan, petugas, tarif, mitra PO (terdaftar, riwayat, jeda), perluasan, buku harian, rekor. */
 function stateTengahGame(): GameState {
-  let s = stateOtomatis({ peron: 43, loket: 49, keberangkatan: 44 });
-  s = jalankan(s, 12.3);
-  const kedua = { ...buatPoTerdaftar('lumpiaKilat', 3), xp: 1234.5, harga: { 2: 110 } };
-  s = {
-    ...s,
-    terminal: { ...s.terminal, loketKosong: 2, tahap: { ...s.terminal.tahap, keberangkatan: { ...s.terminal.tahap.keberangkatan, kepala: { direkrut: false } } } },
-    mitra: {
-      ...s.mitra,
-      terdaftar: [...s.mitra.terdaftar, kedua],
-      riwayat: { bakpiaRasa: { xp: 400, reputasi: 41, rekorLoket: 5, harga: { 3: 90 } } },
-      jedaSampai: { bakpiaRasa: 9_999 },
-      hadiahEvent: ['mudikCeria'],
-    },
-    perkembangan: { xpTerminal: 123_456, perluasan: 2, proyekDetik: 100 },
-    renovasi: { poin: new Decimal(7), jumlah: 2 },
-  };
-  s = { ...s, terminal: { ...s.terminal, tahap: { ...s.terminal.tahap, loket: { ...s.terminal.tahap.loket, level: loketTerisi(s) + 2 } } } };
-  return tandaiWaktu(s, T0 + 123_456);
+  let s = kaya(denganPerluasan(denganLevelTerminal(stateOtomatis({ jalur: 3, kursi: 2, kios: 2, toilet: 1, lahanParkir: 1 }), 12), 2), 5e8);
+  s = denganPetugas(s, ['peron', 'kebersihan', 'manajerOperasional', 'juruParkir', 'peron']);
+  s = denganPo(denganPo(s, 'peuyeumKilat', { level: 4, loket: 2 }), 'lumpiaKilat', { level: 2, loket: 2 });
+  s = putusPo(s, 'lumpiaKilat');
+  s = bangun(s, 'jendela', 'peuyeumKilat');
+  s = aturTarif(aturTarif(s, 'layanan', 12), 'parkir', 4000);
+  s = { ...s, terminal: { ...s.terminal, teknologi: { ...s.terminal.teknologi, mesinTiket: true } }, pencapaian: { tercapai: ['petugasPertama', 'sepekan'], diklaim: ['petugasPertama'] } };
+  return tandaiWaktu(jalankan(s, 120), T0 + 7);
 }
 
-function saveValid(): Record<string, unknown> {
-  return JSON.parse(serialisasi(stateTengahGame())) as Record<string, unknown>;
-}
+const saveValid = (): Record<string, unknown> => JSON.parse(serialisasi(stateTengahGame())) as Record<string, unknown>;
+const ubahTerminal = (d: Record<string, unknown>, ubah: Record<string, unknown>): Record<string, unknown> => ({ ...d, terminal: { ...(d['terminal'] as object), ...ubah } });
+const ubahPoPertama = (d: Record<string, unknown>, ubah: Record<string, unknown>): Record<string, unknown> => {
+  const mitra = d['mitra'] as Record<string, unknown[]>;
+  return { ...d, mitra: { ...mitra, terdaftar: [{ ...(mitra['terdaftar']![0] as object), ...ubah }, ...mitra['terdaftar']!.slice(1)] } };
+};
 
 describe('round-trip save/load', () => {
   it('state baru', () => {
     const s = buatStateBaru(T0);
-    expectStateSama(deserialisasi(serialisasi(s), 0), s);
+    expectStateSama(deserialisasi(serialisasi(s), T0), s);
   });
 
-  it('state tengah game (level, Kepala sebagian, mitra PO, perluasan, Renovasi, statistik)', () => {
+  it('state tengah game (bangunan, petugas urut rekrut, tarif, mitra PO, perluasan, buku harian, rekor)', () => {
     const s = stateTengahGame();
-    expectStateSama(deserialisasi(serialisasi(s), 0), s);
+    expect(s.keuangan.hariIni.penumpang).toBeGreaterThan(0);
+    expect(s.mitra.riwayat.lumpiaKilat).toBeDefined();
+    const b = deserialisasi(serialisasi(s), T0);
+    expectStateSama(b, s);
+    expect(b.terminal.petugas).toEqual(['peron', 'kebersihan', 'manajerOperasional', 'juruParkir', 'peron']);
   });
 
-  it('angka di luar batas Number (1e500) tetap persis', () => {
-    const s: GameState = { ...stateTengahGame(), uang: Decimal.pow(10, 500).times(1.2345678901234) };
-    const hasil = deserialisasi(serialisasi(s), 0);
-    expect(hasil.uang.eq(s.uang)).toBe(true);
-    expect(hasil.uang.exponent).toBe(500);
-  });
-
-  it('Decimal ⇄ string persis untuk banyak nilai acak', () => {
-    let seed = 42;
-    const acak = (): number => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
-    for (let i = 0; i < 2000; i++) {
-      const d = new Decimal(acak() * 10 ** Math.floor(acak() * 30)).times(1.0837).pow(1.01);
-      expect(stringKeDecimal(decimalKeString(d), 'x').eq(d)).toBe(true);
-    }
-  });
-
-  it('format JSON: schemaVersion + angka besar sebagai string', () => {
-    const data = saveValid();
-    expect(data['schemaVersion']).toBe(VERSI_SKEMA);
-    expect(typeof data['uang']).toBe('string');
-    expect(typeof (data['renovasi'] as Record<string, unknown>)['poin']).toBe('string');
-    expect(typeof (data['statistik'] as Record<string, unknown>)['totalPendapatanRun']).toBe('string');
-    // Blok v1 tidak ditulis lagi.
-    expect(data['prestige']).toBeUndefined();
-    expect(data['armada']).toBeUndefined();
-    expect(data['harga']).toBeUndefined();
-  });
-
-  it('level Loket dihitung ulang dari loket PO + loket kosong (angka di save diabaikan)', () => {
+  it('format JSON: schemaVersion 3, kas Rupiah sebagai angka', () => {
     const d = saveValid();
-    const tahap = (d['terminal'] as Record<string, Record<string, Record<string, unknown>>>)['tahap']!;
-    tahap['loket'] = { level: 3, kepala: { direkrut: true } };
-    const s = deserialisasi(JSON.stringify(d), T0);
-    expect(s.terminal.tahap.loket.level).toBe(49 + 3 + 2);
+    expect(d['schemaVersion']).toBe(VERSI_SKEMA);
+    expect(VERSI_SKEMA).toBe(3);
+    expect(typeof d['kas']).toBe('number');
+    expect(d['uang']).toBeUndefined();
   });
 });
 
@@ -138,37 +69,34 @@ describe('muatAtauBaru', () => {
   });
 
   const korup: Array<[string, (d: Record<string, unknown>) => unknown]> = [
-    ['bukan JSON', () => '{uang: 12'],
+    ['bukan JSON', () => '{kas: 12'],
     ['JSON null', () => null],
     ['JSON angka', () => 42],
     ['JSON array', () => []],
-    ['objek kosong', () => ({})],
+    ['objek kosong', () => ({ schemaVersion: 3 })],
     ['schemaVersion hilang', (d) => ({ ...d, schemaVersion: undefined })],
-    ['schemaVersion string', (d) => ({ ...d, schemaVersion: '2' })],
+    ['schemaVersion string', (d) => ({ ...d, schemaVersion: '3' })],
     ['schemaVersion 0', (d) => ({ ...d, schemaVersion: 0 })],
     ['schemaVersion dari masa depan', (d) => ({ ...d, schemaVersion: 999 })],
-    ['uang hilang', (d) => ({ ...d, uang: undefined })],
-    ['uang number', (d) => ({ ...d, uang: 12 })],
-    ['uang teks', (d) => ({ ...d, uang: 'abc' })],
-    ['uang format lokal', (d) => ({ ...d, uang: '12,5' })],
-    ['uang negatif', (d) => ({ ...d, uang: '-5e0' })],
-    ['uang NaN', (d) => ({ ...d, uang: 'NaN' })],
-    ['uang Infinity', (d) => ({ ...d, uang: 'Infinity' })],
+    ['kas hilang', (d) => ({ ...d, kas: undefined })],
+    ['kas string', (d) => ({ ...d, kas: '12' })],
+    ['kas negatif', (d) => ({ ...d, kas: -5 })],
+    ['kas tak hingga (null di JSON)', (d) => ({ ...d, kas: Number.POSITIVE_INFINITY })],
     ['terminal hilang', (d) => ({ ...d, terminal: undefined })],
-    ['tahap bukan objek', (d) => ({ ...d, terminal: { id: 'tipe-c', tahap: 'x' } })],
-    ['level 0', (d) => ubahTahap(d, { level: 0 })],
-    ['level pecahan', (d) => ubahTahap(d, { level: 1.5 })],
-    ['level string', (d) => ubahTahap(d, { level: '3' })],
-    ['level hilang', (d) => ubahTahap(d, { level: undefined })],
-    ['kepala.direkrut bukan boolean', (d) => ubahTahap(d, { level: 3, kepala: { direkrut: 'ya' } })],
-    ['renovasi salah tipe', (d) => ({ ...d, renovasi: 'banyak' })],
-    ['renovasi.poin rusak', (d) => ({ ...d, renovasi: { poin: '??', jumlah: 0 } })],
+    ['bangunan bukan objek', (d) => ubahTerminal(d, { bangunan: 'x' })],
+    ['jalur pecahan', (d) => ubahTerminal(d, { bangunan: { jalur: 1.5 } })],
+    ['kios string', (d) => ubahTerminal(d, { bangunan: { kios: '2' } })],
+    ['petugas bukan array', (d) => ubahTerminal(d, { petugas: 'peron' })],
+    ['tarif string', (d) => ubahTerminal(d, { tarif: { layanan: '10' } })],
+    ['teknologi bukan boolean', (d) => ubahTerminal(d, { teknologi: { eTiket: 'ya' } })],
     ['mitra salah tipe', (d) => ({ ...d, mitra: [] })],
     ['mitra.terdaftar bukan array', (d) => ({ ...d, mitra: { ...(d['mitra'] as object), terdaftar: {} } })],
     ['loket PO pecahan', (d) => ubahPoPertama(d, { loket: 2.5 })],
     ['xp PO negatif', (d) => ubahPoPertama(d, { xp: -1 })],
     ['perkembangan salah tipe', (d) => ({ ...d, perkembangan: 5 })],
-    ['loketKosong negatif', (d) => ({ ...d, terminal: { ...(d['terminal'] as object), loketKosong: -1 } })],
+    ['keuangan salah tipe', (d) => ({ ...d, keuangan: 'untung' })],
+    ['buku harian negatif', (d) => ({ ...d, keuangan: { hariIni: { hariKe: 0, pendapatan: { layanan: -1 } } } })],
+    ['target harian jenis lama', (d) => ({ ...d, harian: { ...(d['harian'] as object), jenis: 'upgrade' } })],
     ['waktuTerakhirMs string', (d) => ({ ...d, waktuTerakhirMs: 'kemarin' })],
   ];
 
@@ -191,16 +119,14 @@ describe('muatAtauBaru', () => {
 describe('kompatibilitas ke depan', () => {
   it('blok opsional yang hilang diisi default', () => {
     const d = saveValid();
-    delete d['renovasi'];
-    delete d['perkembangan'];
-    delete d['statistik'];
-    delete d['waktuTerakhirMs'];
+    for (const k of ['perkembangan', 'statistik', 'keuangan', 'rekor', 'hadiah', 'tantangan', 'event', 'profil', 'waktuTerakhirMs']) delete d[k];
     const s = deserialisasi(JSON.stringify(d), T0 + 5);
-    expect(s.renovasi.poin.toNumber()).toBe(0);
     expect(s.perkembangan).toEqual({ xpTerminal: 0, perluasan: 0, proyekDetik: 0 });
     expect(s.statistik.waktuMainDetik).toBe(0);
+    expect(s.keuangan.kemarin).toBeNull();
+    expect(s.rekor).toEqual({ penumpangHarian: 0, labaHarian: 0, arusTertinggi: 0 });
+    expect(s.profil).toEqual({ namaTerminal: '', ikutPeringkat: false });
     expect(s.waktuTerakhirMs).toBe(T0 + 5); // tanpa timestamp → tanpa offline
-    expect(s.terminal.tahap.loket.level).toBe(49 + 3 + 2);
   });
 
   it('tanpa blok mitra (atau semua PO tak dikenal) → PO awal, terminal tidak pernah tanpa PO', () => {
@@ -208,29 +134,39 @@ describe('kompatibilitas ke depan', () => {
     delete d['mitra'];
     expect(deserialisasi(JSON.stringify(d), T0).mitra.terdaftar.map((p) => p.id)).toEqual(['ondelOndel']);
     const d2 = { ...saveValid(), mitra: { terdaftar: [{ id: 'poGaib', xp: 1, loket: 3 }] } };
-    const s2 = deserialisasi(JSON.stringify(d2), T0);
-    expect(s2.mitra.terdaftar.map((p) => p.id)).toEqual(['ondelOndel']);
-    expect(s2.terminal.tahap.loket.level).toBe(1 + 2);
+    expect(deserialisasi(JSON.stringify(d2), T0).mitra.terdaftar.map((p) => p.id)).toEqual(['ondelOndel']);
   });
 
-  it('isi PO dirapikan: duplikat & id tak dikenal dibuang, reputasi dijepit, harga di luar jurusan dibuang & dirapikan', () => {
+  it('isi PO dirapikan: duplikat & id tak dikenal dibuang, reputasi dijepit, loket paling sedikit satu', () => {
     const d = saveValid();
     const mitra = d['mitra'] as Record<string, unknown[]>;
     const pertama = mitra['terdaftar']![0] as Record<string, unknown>;
-    mitra['terdaftar'] = [{ ...pertama, reputasi: 250, harga: { 0: 117, 99: 120, x: 80 } }, pertama, { id: 'poGaib', xp: 0, loket: 1 }];
+    mitra['terdaftar'] = [{ ...pertama, reputasi: 250, loket: 0 }, pertama, { id: 'poGaib', xp: 0, loket: 1 }];
     const s = deserialisasi(JSON.stringify(d), T0);
     expect(s.mitra.terdaftar).toHaveLength(1);
     expect(s.mitra.terdaftar[0]!.reputasi).toBe(100);
-    expect(s.mitra.terdaftar[0]!.harga).toEqual({ 0: 120 });
+    expect(s.mitra.terdaftar[0]!.loket).toBe(1);
   });
 
-  it('tahap yang belum ada di save mulai dari level 1', () => {
-    const d = saveValid();
-    const tahap = (d['terminal'] as Record<string, Record<string, unknown>>)['tahap']!;
-    delete tahap['keberangkatan'];
+  it('bangunan dijepit ke slot tahap perluasannya; jalur & jendela paling sedikit satu, jendela cukup untuk PO', () => {
+    const d = ubahTerminal({ ...saveValid(), perkembangan: { xpTerminal: 0, perluasan: 0, proyekDetik: 0 } }, { bangunan: { jalur: 0, jendela: 99, kursi: 0, toilet: 7 } });
     const s = deserialisasi(JSON.stringify(d), T0);
-    expect(s.terminal.tahap.keberangkatan.level).toBe(1);
-    expect(s.terminal.tahap.peron.level).toBe(43);
+    expect(s.terminal.bangunan.jalur).toBe(1);
+    expect(s.terminal.bangunan.jendela).toBe(slotBangunan('jendela', 0));
+    expect(s.terminal.bangunan.kursi).toBe(0);
+    expect(s.terminal.bangunan.toilet).toBe(slotBangunan('toilet', 0));
+    const kurang = ubahTerminal(saveValid(), { bangunan: { jendela: 1 } });
+    const k = deserialisasi(JSON.stringify(kurang), T0);
+    expect(k.terminal.bangunan.jendela).toBeGreaterThanOrEqual(k.mitra.terdaftar.reduce((a, p) => a + p.loket, 0));
+  });
+
+  it('petugas: peran tak dikenal dibuang, yang melebihi batas bangunannya keluar; tarif dirapikan', () => {
+    const d = ubahTerminal(saveValid(), { petugas: ['peron', 'kepalaLoket', 'peron', 'peron', 'peron', 'satpam'], tarif: { layanan: 99, parkir: 1234 } });
+    const s = deserialisasi(JSON.stringify(d), T0);
+    expect(s.terminal.petugas).toEqual(['peron', 'peron', 'peron', 'satpam']);
+    expect(s.terminal.tarif.layanan).toBe(EKONOMI.tycoon.tarif.layanan.maks);
+    expect(s.terminal.tarif.parkir).toBe(1000);
+    expect(s.terminal.tarif.sewaKios).toBe(tarifBawaan().sewaKios);
   });
 
   it('field tak dikenal diabaikan', () => {
@@ -249,123 +185,53 @@ describe('kompatibilitas ke depan', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Migrasi save v1 (prestige naik kelas, jurusan & kelas bus dibeli, kontrak PO sekali)
+// Save ekonomi idle (versi 1 & 2): dimulai baru, profil & benih cuaca dibawa
 
-/** Save v1 seperti yang ditulis versi sebelum ekonomi mitra PO. */
-function saveV1(o: { loket?: number; kelas?: number; penumpang?: number; po?: unknown[]; kelasBus?: Record<string, boolean>; poin?: string } = {}): Record<string, unknown> {
+/** Save v2 (ekonomi mitra PO 0.2.0) seperti yang ditulis versi sebelum tycoon. */
+function saveV2(): Record<string, unknown> {
   const tahap = (level: number): Record<string, unknown> => ({ level, kepala: { direkrut: true } });
   return {
-    schemaVersion: 1,
-    waktuTerakhirMs: T0,
-    uang: '1.5e6',
-    terminal: {
-      id: 'tipe-c',
-      tahap: { peron: tahap(30), loket: tahap(o.loket ?? 30), keberangkatan: tahap(30) },
-      fasilitas: { kios: 3, parkir: 2, toilet: 1, retribusi: 0 },
-      teknologi: { rambuHalte: true },
-      jalur: 3,
-      jurusanBuka: 6,
-      kelasBus: o.kelasBus ?? { ekonomi: true, patas: true, eksekutif: false, sleeper: false, tingkat: false },
-    },
-    armada: { po: o.po ?? [] },
-    harga: { jurusan: [120, 110], kelas: { patas: 20 } },
-    prestige: { poin: o.poin ?? '0e0', jumlahReset: o.kelas ?? 0 },
-    statistik: { totalPendapatanRun: '2e6', totalPendapatanSepanjangMasa: '3e7', waktuMainDetik: 5000, totalPenumpang: o.penumpang ?? 50_000 },
-    pencapaian: { tercapai: ['kepalaPertama'], diklaim: ['kepalaPertama'] },
-    profil: { namaTerminal: 'Sukamaju' },
+    schemaVersion: 2,
+    waktuTerakhirMs: T0 - 60_000,
+    uang: '1.5e9',
+    terminal: { id: 'tipe-c', tahap: { peron: tahap(80), loket: tahap(20), keberangkatan: tahap(80) }, fasilitas: { kios: 3, parkir: 2, toilet: 1, retribusi: 0 }, teknologi: { rambuHalte: true }, jalur: 3, loketKosong: 0 },
+    mitra: { terdaftar: [{ id: 'ondelOndel', xp: 900, loket: 20, rekorLoket: 20, reputasi: 70, harga: { 0: 120 }, kontrakDetik: 9000 }], riwayat: {}, jedaSampai: {}, hadiahEvent: [] },
+    perkembangan: { xpTerminal: 2e6, perluasan: 3, proyekDetik: 0 },
+    renovasi: { poin: '5e0', jumlah: 2 },
+    statistik: { totalPendapatanRun: '2e9', totalPendapatanSepanjangMasa: '3e10', waktuMainDetik: 50_000, totalPenumpang: 9e6 },
+    harian: { hariKe: 34, jenis: 'upgrade', target: 10, progres: 3, diklaim: false, jumlahSelesai: 12 },
+    pencapaian: { tercapai: ['kepalaPertama', 'level25'], diklaim: ['kepalaPertama'] },
+    benihCuaca: 4242,
+    profil: { namaTerminal: 'Sukamaju', ikutPeringkat: true },
   };
 }
 
-const muatV1 = (d: Record<string, unknown>): GameState => deserialisasi(JSON.stringify(d), T0);
-
-describe('migrasi v1 → v2', () => {
-  it('save v1 tanpa mitra PO: PO awal menyewa semua loket lama, level terminal dari total penumpang', () => {
-    const s = muatV1(saveV1({ loket: 30, penumpang: 50_000 }));
-    expect(s.mitra.terdaftar.map((p) => p.id)).toEqual(['ondelOndel']);
-    expect(loketTerisi(s)).toBe(30);
-    expect(s.terminal.tahap.loket.level).toBe(30);
-    expect(s.perkembangan.xpTerminal).toBe(50_000);
-    // Jatah PO cukup menampung semua loket lama: kapasitas Loket tidak turun.
-    const p = s.mitra.terdaftar[0]!;
-    expect(p.loket).toBeLessThanOrEqual(jatahLoket(levelPo(p), bonusJatahPerluasan(s.perkembangan.perluasan)));
-    // Data lain ikut terbawa.
-    expect(s.terminal.tahap.peron.level).toBe(30);
-    expect(s.terminal.fasilitas.kios).toBe(3);
-    expect(s.terminal.jalur).toBe(3);
-    expect(s.profil.namaTerminal).toBe('Sukamaju');
-    expect(s.pencapaian.tercapai).toEqual(['kepalaPertama']);
+describe('save ekonomi idle (versi 1 & 2) → game tycoon baru', () => {
+  it('ekonomi dimulai baru; nama terminal, persetujuan papan peringkat, dan benih cuaca dibawa', () => {
+    const s = deserialisasi(JSON.stringify(saveV2()), T0);
+    const baru = buatStateBaru(T0);
+    expect(s.kas).toBe(EKONOMI.tycoon.modalAwal);
+    expect(s.terminal.bangunan).toEqual(baru.terminal.bangunan);
+    expect(s.mitra.terdaftar.map((p) => [p.id, p.loket])).toEqual([['ondelOndel', 1]]);
+    expect(s.perkembangan).toEqual({ xpTerminal: 0, perluasan: 0, proyekDetik: 0 });
+    expect(s.statistik.totalPenumpang).toBe(0);
+    expect(s.pencapaian).toEqual({ tercapai: [], diklaim: [] });
+    expect(s.profil).toEqual({ namaTerminal: 'Sukamaju', ikutPeringkat: true });
+    expect(s.benihCuaca).toBe(4242);
   });
 
-  it('kelas v1 dipertahankan: level terminal minimal setara kelasnya, perluasan sampai level itu langsung jadi; prestige → Renovasi', () => {
-    const s = muatV1(saveV1({ kelas: 2, penumpang: 10, poin: '7e0' }));
-    expect(levelTerminal(s)).toBe(levelMinimalKelas(2));
-    expect(kelasTerminal(s)).toBe(2);
-    expect(s.perkembangan.xpTerminal).toBe(xpKumulatifTerminal(levelMinimalKelas(2)));
-    expect(s.perkembangan.perluasan).toBe(EKONOMI.mitra.perluasan.filter((t) => t.level <= levelMinimalKelas(2)).length);
-    expect(s.perkembangan.proyekDetik).toBe(0);
-    expect(s.renovasi.poin.toNumber()).toBe(7);
-    expect(s.renovasi.jumlah).toBe(2);
-    // Total penumpang yang lebih tinggi dari minimal kelas tetap dipakai.
-    const banyak = muatV1(saveV1({ kelas: 1, penumpang: xpKumulatifTerminal(25) }));
-    expect(levelTerminal(banyak)).toBe(25);
-    expect(kelasDariLevel(25)).toBe(2);
+  it('save v1 juga; profil yang rusak diganti bawaan', () => {
+    const v1 = { schemaVersion: 1, waktuTerakhirMs: T0, uang: '20e0', terminal: { tahap: {} }, profil: { namaTerminal: 7 }, benihCuaca: -3 };
+    const s = deserialisasi(JSON.stringify(v1), T0);
+    expect(s.kas).toBe(EKONOMI.tycoon.modalAwal);
+    expect(s.profil.namaTerminal).toBe('');
+    expect(Number.isSafeInteger(s.benihCuaca) && s.benihCuaca >= 0).toBe(true);
   });
 
-  it('mitra PO lama: yang paling bernilai menempati slot, sisanya riwayat; id tak dikenal diabaikan; PO event jadi hadiah', () => {
-    const po = ['ondelOndel', 'lumpiaKilat', 'bakpiaRasa', 'wayangLestari', 'mudikCeria', 'poGaib'];
-    const s = muatV1(saveV1({ loket: 31, kelas: 0, penumpang: 0, po }));
-    const slot = slotPo(1, 0);
-    expect(slot).toBe(2);
-    // Biaya daftar tertinggi lebih dulu: Wayang Lestari, lalu Bakpia Rasa.
-    expect(s.mitra.terdaftar.map((p) => p.id)).toEqual(['wayangLestari', 'bakpiaRasa']);
-    expect(Object.keys(s.mitra.riwayat).sort()).toEqual(['lumpiaKilat', 'mudikCeria', 'ondelOndel']);
-    expect(s.mitra.hadiahEvent).toEqual(['mudikCeria']);
-    // Loket lama dibagi rata ke PO terdaftar, semuanya muat di jatahnya.
-    expect(s.mitra.terdaftar.map((p) => p.loket)).toEqual([16, 15]);
-    for (const p of s.mitra.terdaftar) expect(p.loket).toBeLessThanOrEqual(jatahLoket(levelPo(p), bonusJatahPerluasan(s.perkembangan.perluasan)));
-    // Harga tiket kembali normal; kontrak baru panjang.
-    for (const p of s.mitra.terdaftar) {
-      expect(p.harga).toEqual({});
-      expect(p.kontrakDetik).toBe(EKONOMI.mitra.kontrak.hariHadiah * DETIK_SEHARI);
-    }
-  });
-
-  it('kelas bus yang sudah dibeli tetap beroperasi (PO naik ke level yang membukanya, sebatas tingkat & kelas terminal)', () => {
-    const kelasBus = { ekonomi: true, patas: true, eksekutif: true, sleeper: true, tingkat: true };
-    const s = muatV1(saveV1({ kelas: 2, po: ['ondelOndel', 'mudikCeria'], kelasBus }));
-    // Lokal paling tinggi Eksekutif; Regional (Mudik Ceria) sampai Sleeper; Double Decker butuh PO nasional.
-    expect(kelasBusBeroperasi(s)).toEqual(['ekonomi', 'patas', 'eksekutif', 'sleeper']);
-    const ondel = s.mitra.terdaftar.find((p) => p.id === 'ondelOndel')!;
-    expect(levelPo(ondel)).toBeGreaterThanOrEqual(EKONOMI.mitra.kelas.eksekutif.levelPo);
-    // Tanpa kelas terminal yang cukup, kelas besar tidak ikut (Sleeper butuh Tipe B).
-    const c = muatV1(saveV1({ kelas: 0, penumpang: 0, po: ['mudikCeria'], kelasBus }));
-    expect(kelasBusBeroperasi(c)).toEqual(['ekonomi', 'patas', 'eksekutif']);
-  });
-
-  it('blok v1 dibuang; hasil migrasi tersimpan sebagai v2 dan dimuat ulang sama persis', () => {
-    const d = migrasiV1keV2(saveV1({ kelas: 1, po: ['ondelOndel'] }));
-    expect(d['prestige']).toBeUndefined();
-    expect(d['armada']).toBeUndefined();
-    expect(d['harga']).toBeUndefined();
-    expect((d['terminal'] as Record<string, unknown>)['jurusanBuka']).toBeUndefined();
-    expect((d['terminal'] as Record<string, unknown>)['kelasBus']).toBeUndefined();
-    const s = muatV1(saveV1({ kelas: 1, po: ['ondelOndel'] }));
-    expectStateSama(deserialisasi(serialisasi(s), 0), s);
-  });
-
-  it('save v1 yang rusak tetap ditolak setelah migrasi', () => {
-    expect(muatAtauBaru(JSON.stringify({ ...saveV1(), uang: 'abc' }), T0).status).toBe('korup');
-    expect(muatAtauBaru(JSON.stringify({ ...saveV1(), terminal: undefined }), T0).status).toBe('korup');
+  it('hasil migrasi tersimpan sebagai v3 dan dimuat ulang sama persis', () => {
+    const s = deserialisasi(JSON.stringify(saveV2()), T0);
+    const ulang = deserialisasi(serialisasi(s), T0);
+    expectStateSama(ulang, s);
+    expect((JSON.parse(serialisasi(s)) as Record<string, unknown>)['schemaVersion']).toBe(3);
   });
 });
-
-function ubahTahap(d: Record<string, unknown>, tahapPeron: Record<string, unknown>): Record<string, unknown> {
-  const terminal = d['terminal'] as Record<string, Record<string, unknown>>;
-  return { ...d, terminal: { ...terminal, tahap: { ...terminal['tahap'], peron: tahapPeron } } };
-}
-
-function ubahPoPertama(d: Record<string, unknown>, ubah: Record<string, unknown>): Record<string, unknown> {
-  const mitra = d['mitra'] as Record<string, unknown[]>;
-  const [pertama, ...sisa] = mitra['terdaftar']!;
-  return { ...d, mitra: { ...mitra, terdaftar: [{ ...(pertama as object), ...ubah }, ...sisa] } };
-}

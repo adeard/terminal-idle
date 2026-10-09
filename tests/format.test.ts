@@ -1,6 +1,5 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
-import { formatAngka, formatBulat, formatDurasi, formatUang } from '../src/ui/format';
+import { formatAngka, formatBulat, formatDurasi, formatUang, formatUangBertanda } from '../src/ui/format';
 
 describe('formatAngka (gaya Indonesia)', () => {
   it('contoh dari spesifikasi', () => {
@@ -40,15 +39,15 @@ describe('formatAngka (gaya Indonesia)', () => {
   it('notasi ilmiah setelah triliun', () => {
     expect(formatAngka(1e15)).toBe('1e15');
     expect(formatAngka(1.234e15)).toBe('1,23e15');
-    expect(formatAngka(new Decimal('9.999e307'))).toBe('9,99e307');
-    expect(formatAngka(Decimal.pow(10, 500).times(4.5))).toBe('4,5e500');
+    expect(formatAngka(9.999e307)).toBe('9,99e307');
+    expect(formatAngka(1e300)).toBe('1e300');
   });
 
-  it('menerima Decimal, string, number; negatif & NaN aman', () => {
-    expect(formatAngka(new Decimal(12_500))).toBe('12,5 rb');
+  it('menerima string & number; negatif, NaN & tak hingga aman', () => {
     expect(formatAngka('3400000')).toBe('3,4 jt');
     expect(formatAngka(-1250)).toBe('-1.250');
     expect(formatAngka(Number.NaN)).toBe('–');
+    expect(formatAngka(Number.POSITIVE_INFINITY)).toBe('–');
   });
 
   it('opsi desimalKecil', () => {
@@ -81,7 +80,10 @@ describe('formatUang', () => {
     expect(formatUang(24.9)).toBe('Rp 24');
     expect(formatUang(16.2)).toBe('Rp 16');
     expect(formatUang(1250)).toBe('Rp 1.250');
-    expect(formatUang(new Decimal(3.4e6))).toBe('Rp 3,4 jt');
+    expect(formatUang(3.4e6)).toBe('Rp 3,4 jt');
+    expect(formatUangBertanda(1_200_000)).toBe('+Rp 1,2 jt');
+    expect(formatUangBertanda(-300_000)).toBe('−Rp 300 rb');
+    expect(formatUangBertanda(0.4)).toBe('Rp 0');
   });
 });
 

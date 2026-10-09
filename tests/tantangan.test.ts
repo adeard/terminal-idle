@@ -1,4 +1,3 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { peristiwaAksi } from '../src/app/analitik';
 import { KUNCI_SAVE, SesiGame, slotLokal, type Penyimpanan } from '../src/app/sesi';
@@ -8,25 +7,22 @@ import { terapkanAksi } from '../src/sim/aksi';
 import { tengahMalamWib } from '../src/sim/event';
 import { deserialisasi, serialisasi } from '../src/sim/save';
 import {
-  bangunFasilitas,
-  beliUpgrade,
+  aturTarif,
+  bangun,
+  beliTeknologi,
   bisaKlaimTantangan,
-  bukaJalur,
   hadiahTantangan,
   kepuasanTerminal,
   klaimTantangan,
-  renovasi,
   perbaruiTantangan,
   tandaiWaktu,
-  tick,
   type GameState,
 } from '../src/sim/state';
 import { JENIS_TANTANGAN, jenisTantanganMinggu, mingguWib } from '../src/sim/tantangan';
 import { buatModel } from '../src/ui/model';
-import { jalankan, stateOtomatis } from './helpers';
+import { denganBangunan, denganPetugas, denganPo, jalankan, kaya, padaJam, stateOtomatis } from './helpers';
 
 const wib = (tahun: number, bulan: number, tanggal: number, jam = 12): number => tengahMalamWib(tahun, bulan, tanggal) + jam * 3_600_000;
-const kaya = (s: GameState, uang = 1e12): GameState => ({ ...s, uang: new Decimal(uang) });
 const RABU = wib(2026, 9, 30);
 
 describe('minggu tantangan (WIB)', () => {
@@ -56,7 +52,7 @@ describe('minggu tantangan (WIB)', () => {
 });
 
 describe('tantangan mingguan di game', () => {
-  const siap = (): GameState => kaya(stateOtomatis({ peron: 20, loket: 20, keberangkatan: 20 }));
+  const siap = (): GameState => kaya(denganPo(stateOtomatis({ jalur: 3 }), 'ondelOndel', { loket: 4 }));
 
   it('dimulai dari jam nyata dengan target sesuai terminal; minggu yang sama tidak berubah', () => {
     const s = perbaruiTantangan(siap(), RABU);
@@ -70,40 +66,42 @@ describe('tantangan mingguan di game', () => {
     expect(perbaruiTantangan(s, RABU + 3_600_000)).toBe(s);
   });
 
-  it('kemajuan tiap jenis: penumpang & pendapatan dari main aktif, upgrade, fasilitas, kepuasan', () => {
-    let s = siap();
-    const pakai = (jenis: (typeof JENIS_TANTANGAN)[number]): GameState => ({
-      ...s,
+  it('kemajuan tiap jenis: penumpang & laba dari main aktif, bangun, kepuasan', () => {
+    const s = siap();
+    const pakai = (dasar: GameState, jenis: (typeof JENIS_TANTANGAN)[number]): GameState => ({
+      ...dasar,
       tantangan: { minggu: 'uji', selesaiMs: RABU, daftar: [{ jenis, target: 1e12, progres: 0, diklaim: false }], penumpang: 0 },
     });
     const kemajuan = (st: GameState): number => st.tantangan.daftar[0]!.progres;
-    expect(kemajuan(jalankan(pakai('penumpang'), 10))).toBeGreaterThan(0);
-    expect(kemajuan(jalankan(pakai('pendapatan'), 10))).toBeGreaterThan(0);
-    expect(kemajuan(beliUpgrade(pakai('upgrade'), 'peron'))).toBe(1);
-    expect(kemajuan(bangunFasilitas(pakai('fasilitas'), 'kios'))).toBe(1);
+    expect(kemajuan(jalankan(pakai(s, 'penumpang'), 10))).toBeGreaterThan(0);
+    const laba = jalankan(pakai(s, 'laba'), 10);
+    expect(kemajuan(laba)).toBeCloseTo(laba.statistik.totalPendapatan - laba.statistik.totalBiaya, 3);
+    expect(kemajuan(bangun(pakai(s, 'bangun'), 'kursi'))).toBe(1);
+    expect(kemajuan(beliTeknologi(pakai(s, 'bangun'), 'mesinTiket'))).toBe(1);
+    // Laba bisa turun lagi saat rugi, tidak di bawah nol.
+    const rugi = aturTarif(denganPetugas(pakai(s, 'laba'), ['manajerOperasional', 'manajerKemitraan', 'satpam']), 'layanan', 0);
+    expect(kemajuan(jalankan(rugi, 10))).toBe(0);
     // Kepuasan: hanya bertambah selama kepuasan di atas batas.
     expect(kepuasanTerminal(s).nilai).toBeLessThan(EKONOMI.tantangan.kepuasanMin);
-    expect(kemajuan(jalankan(pakai('kepuasan'), 10))).toBe(0);
-    s = kaya(stateOtomatis({ peron: 30, loket: 50, keberangkatan: 30 }));
-    for (let i = 0; i < 12; i++) s = bangunFasilitas(bangunFasilitas(s, 'kios'), 'toilet');
-    for (let i = 0; i < 5; i++) s = bukaJalur(s);
-    expect(kepuasanTerminal(s).nilai).toBeGreaterThanOrEqual(EKONOMI.tantangan.kepuasanMin);
-    expect(kemajuan(jalankan(pakai('kepuasan'), 10))).toBeCloseTo(10, 6);
+    expect(kemajuan(jalankan(pakai(s, 'kepuasan'), 10))).toBe(0);
+    const puas = denganPetugas(denganBangunan(s, { kursi: 2, kios: 3, toilet: 1, lahanParkir: 1 }), ['kebersihan', 'kebersihan', 'satpam', 'satpam', 'satpam', 'petugasToilet']);
+    expect(kepuasanTerminal(puas).nilai).toBeGreaterThanOrEqual(EKONOMI.tantangan.kepuasanMin);
+    expect(kemajuan(jalankan(pakai(puas, 'kepuasan'), 10))).toBeCloseTo(10, 6);
   });
 
   it('klaim: hadiah uang sekali; hadiah yang lupa diklaim dikirim saat minggu berganti', () => {
-    let s = perbaruiTantangan({ ...siap(), uang: new Decimal(0) }, RABU);
+    let s = perbaruiTantangan({ ...siap(), kas: 0 }, RABU);
     expect(bisaKlaimTantangan(s, 0)).toBe(false);
     s = { ...s, tantangan: { ...s.tantangan, daftar: s.tantangan.daftar.map((x) => ({ ...x, progres: x.target })) } };
-    const hadiah = hadiahTantangan(s).toNumber();
+    const hadiah = hadiahTantangan(s);
     expect(hadiah).toBeGreaterThan(0);
     const setelah = klaimTantangan(s, 0);
-    expect(setelah.uang.toNumber()).toBeCloseTo(hadiah, 6);
+    expect(setelah.kas).toBeCloseTo(hadiah, 6);
     expect(klaimTantangan(setelah, 0)).toBe(setelah);
     // Dua sisanya belum diklaim: dikirim otomatis di minggu berikutnya.
     const minggu2 = perbaruiTantangan(setelah, RABU + 7 * 86_400_000);
     expect(minggu2.tantangan.minggu).toBe('2026-10-05');
-    expect(minggu2.uang.toNumber()).toBeCloseTo(hadiah + 2 * hadiahTantangan(setelah).toNumber(), 3);
+    expect(minggu2.kas).toBeCloseTo(hadiah + 2 * hadiahTantangan(setelah), 3);
     expect(minggu2.tantangan.daftar.every((x) => x.progres === 0 && !x.diklaim)).toBe(true);
   });
 
@@ -119,11 +117,11 @@ describe('tantangan mingguan di game', () => {
     expect(buatModel(baru).jumlahKlaim).toBe(m.jumlahKlaim - 1);
   });
 
-  it('tersimpan; jenis yang tidak dikenal dibuang; save lama tanpa blok = belum dimulai', () => {
+  it('tersimpan; jenis yang tidak dikenal dibuang; save tanpa blok = belum dimulai', () => {
     const s = perbaruiTantangan(siap(), RABU);
     expect(deserialisasi(serialisasi(s), RABU).tantangan).toEqual(s.tantangan);
     const mentah = JSON.parse(serialisasi(s)) as { tantangan: { daftar: { jenis: string }[] } } & Record<string, unknown>;
-    mentah.tantangan.daftar[0]!.jenis = 'jenisMasaDepan';
+    mentah.tantangan.daftar[0]!.jenis = 'upgrade';
     expect(deserialisasi(JSON.stringify(mentah), RABU).tantangan.daftar).toHaveLength(2);
     delete (mentah as Record<string, unknown>)['tantangan'];
     expect(deserialisasi(JSON.stringify(mentah), RABU).tantangan.minggu).toBeNull();
@@ -149,33 +147,26 @@ describe('tantangan mingguan di game', () => {
 });
 
 describe('rekor pribadi', () => {
-  const sehari = 24 * WAKTU.detikPerJam;
-
   it('hitungan hari ini, rekor harian saat hari berganti, arus tertinggi', () => {
-    let s = kaya(stateOtomatis({ peron: 20, loket: 20, keberangkatan: 20 }));
-    s = jalankan(s, 60);
-    expect(s.rekor.penumpangHariIni).toBeGreaterThan(0);
-    expect(s.rekor.pendapatanHariIni).toBeGreaterThan(0);
+    let s = jalankan(padaJam(kaya(denganPo(stateOtomatis({ jalur: 3 }), 'ondelOndel', { loket: 4 })), 22, 1), 60);
+    expect(s.keuangan.hariIni.penumpang).toBeGreaterThan(0);
     expect(s.rekor.penumpangHarian).toBe(0);
     expect(s.rekor.arusTertinggi).toBeGreaterThan(0);
-    const hariIni = s.rekor.penumpangHariIni;
-    // Lompat ke akhir hari: hari yang lewat jadi rekor, hitungan mulai dari nol.
-    const hari = s.rekor.hariKe;
-    s = { ...s, statistik: { ...s.statistik, waktuMainDetik: (hari + 1) * sehari - WAKTU.jamAwal * WAKTU.detikPerJam - 0.05 } };
-    s = tick(s, 0.1);
-    expect(s.rekor.hariKe).toBe(hari + 1);
+    const hariIni = s.keuangan.hariIni.penumpang;
+    // Lewat tengah malam: hari yang lewat jadi rekor, hitungan mulai dari nol.
+    s = jalankan(s, 2.2 * WAKTU.detikPerJam);
+    expect(s.keuangan.hariIni.hariKe).toBe(2);
     expect(s.rekor.penumpangHarian).toBeGreaterThanOrEqual(hariIni);
-    expect(s.rekor.penumpangHariIni).toBeLessThan(hariIni);
+    expect(s.rekor.labaHarian).toBeGreaterThan(0);
+    expect(s.keuangan.hariIni.penumpang).toBeLessThan(s.rekor.penumpangHarian);
   });
 
-  it('tetap walau naik kelas & tersimpan', () => {
-    let s = jalankan(kaya(stateOtomatis({ peron: 20, loket: 20, keberangkatan: 20 })), 30);
-    s = { ...s, rekor: { ...s.rekor, penumpangHarian: 12_345, pendapatanHarian: 6_789, arusTertinggi: 99 } };
-    const naik = renovasi({ ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e9) } });
-    expect(naik.rekor).toEqual(s.rekor);
+  it('tersimpan; save tanpa blok mulai dari nol', () => {
+    let s = jalankan(kaya(stateOtomatis()), 30);
+    s = { ...s, rekor: { penumpangHarian: 12_345, labaHarian: 6_789, arusTertinggi: 99 } };
     expect(deserialisasi(serialisasi(s), RABU).rekor).toEqual(s.rekor);
     const mentah = JSON.parse(serialisasi(s)) as Record<string, unknown>;
     delete mentah['rekor'];
-    expect(deserialisasi(JSON.stringify(mentah), RABU).rekor).toMatchObject({ penumpangHarian: 0, arusTertinggi: 0 });
+    expect(deserialisasi(JSON.stringify(mentah), RABU).rekor).toEqual({ penumpangHarian: 0, labaHarian: 0, arusTertinggi: 0 });
   });
 });

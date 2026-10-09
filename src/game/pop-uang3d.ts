@@ -22,13 +22,11 @@ const IKON: Readonly<Record<JenisPop, string>> = {
   parkir: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 7v10h2.4v-3.2h2.1a3.4 3.4 0 0 0 0-6.8zM11.4 9.2v2.4h1.9a1.2 1.2 0 0 0 0-2.4z',
   // Tas belanja.
   belanja: 'M5.2 8h13.6l1 13H4.2zM8.4 8V7a3.6 3.6 0 0 1 7.2 0v1h-1.8V7a1.8 1.8 0 0 0-3.6 0v1z',
-  // Kios berkanopi dengan pintu.
-  sewa: 'M4 4h16l1 5a2.6 2.6 0 0 1-4.6 1.6A2.6 2.6 0 0 1 12 10.6a2.6 2.6 0 0 1-4.4 0A2.6 2.6 0 0 1 3 9zM5 12.4h14V20H5zM10.2 15v5h3.6v-5z',
   // Not balok.
   telolet: 'M10 3.5l8.5 2.6v3.6L12 7.8V17a3.4 3 0 1 1-2-2.8z',
 };
-/** Umur efek (detik nyata); sewa kios harian lebih lama & lebih besar. */
-const UMUR: Readonly<Record<JenisPop, number>> = { tiket: 1.5, retribusi: 1.8, parkir: 1.5, belanja: 1.5, sewa: 3.6, telolet: 1.8 };
+/** Umur efek (detik nyata). */
+const UMUR: Readonly<Record<JenisPop, number>> = { tiket: 1.5, retribusi: 1.8, parkir: 1.5, belanja: 1.5, telolet: 1.8 };
 /** Naik sejauh ini (px CSS, sebelum skala) selama umurnya. */
 const NAIK_PX = 26;
 const MUNCUL_DETIK = 0.15;
@@ -46,7 +44,6 @@ const JANGKAR: Readonly<Record<JenisPop, { readonly h: number | null; readonly g
   retribusi: { h: 1.02, geserPx: 30 },
   parkir: { h: null, geserPx: 0 },
   belanja: { h: null, geserPx: 0 },
-  sewa: { h: null, geserPx: 12 },
   telolet: { h: 1.02, geserPx: 30 },
 };
 
@@ -95,7 +92,7 @@ export class PopUang3D {
   }
 
   private tambahSatu(jenis: JenisPop, x: number, y: number, isi: string, ikuti: PopDom['ikuti'] = null): void {
-    const h = JANGKAR[jenis].h ?? (tinggiLantai(x, y) ?? 0) + (jenis === 'sewa' ? 0.9 : H_KEPALA);
+    const h = JANGKAR[jenis].h ?? (tinggiLantai(x, y) ?? 0) + H_KEPALA;
     const el = buatEl(jenis, isi);
     el.hidden = true;
     this.wadah.append(el);

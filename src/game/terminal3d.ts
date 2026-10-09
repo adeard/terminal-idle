@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import type { PembacaState } from '../app/pengendali';
 import { cuacaTerminal, cuacaTerminalState, kilatPada, type Cuaca } from '../sim/cuaca';
-import type { FasilitasId, PoId, TeknologiId } from '../sim/fitur';
+import type { BangunanId, PetugasId, PoId, TeknologiId } from '../sim/fitur';
 import { busEmasAktif, kelasBusBeroperasi, kelasTerminal, loketTerisi, type GameState, type PoTerdaftar } from '../sim/state';
 import { keramaianTerminal, waktuTerminal, waktuTerminalState } from '../sim/waktu';
 import { URL_ATLAS } from './aset';
@@ -138,8 +138,6 @@ const DETIK_KERING = 120;
 /** Langkah simulasi keramaian terbesar (detik main); dipercepat = beberapa langkah per frame. */
 const LANGKAH_SIM = 0.05;
 
-/** Tempat "+Rp" sewa kios harian: di atas deretan kios ruang tunggu. */
-const TEMPAT_SEWA: readonly [number, number] = [RUANG_TUNGGU.x0 + 0.4, (KIOS_TUNGGU[0]![0] + KIOS_TUNGGU[KIOS_TUNGGU.length - 1]![1]) / 2];
 
 /** Pecahan tetap per id (0–1). */
 const pecahanId = (id: number): number => (id * 0.6180339887 + 0.21) % 1;
@@ -179,8 +177,10 @@ interface OrangStatis {
   readonly orang: DataOrang;
   /** Terlihat bila keramaian ≥ ambang (0 = selalu ada, mis. petugas). */
   readonly ambang: number;
-  /** Hanya ada setelah fasilitas ini dibangun (mis. penjaga kios, juru parkir). */
-  readonly fasilitas?: FasilitasId;
+  /** Hanya ada setelah unit ke-(ke + 1) bangunan ini dibangun (mis. penjaga kios, juru parkir). */
+  readonly bangunan?: { readonly id: BangunanId; readonly ke: number };
+  /** Hanya ada bila petugas peran ini sudah direkrut (mis. juru parkir, petugas toilet). */
+  readonly petugas?: PetugasId;
   /** Hanya ada setelah modernisasi ini dipasang (mis. petugas pengatur bus). */
   readonly teknologi?: TeknologiId;
   /** Penjaga toko: pulang saat tokonya tutup (lihat JAM_BUKA). */
@@ -190,11 +190,12 @@ interface OrangStatis {
 }
 
 /**
- * Orang statis ini sedang bertugas/berada di terminal menurut state (fasilitas, modernisasi, jam buka).
+ * Orang statis ini sedang bertugas/berada di terminal menurut state (bangunan, petugas, modernisasi, jam buka).
  * @param jendela banyaknya jendela loket yang dipakai mitra PO di siang hari (lihat jendelaDipakai)
  */
 function hadir(s: OrangStatis, state: GameState, jam: number, jendela: number): boolean {
-  if (s.fasilitas && state.terminal.fasilitas[s.fasilitas] === 0) return false;
+  if (s.bangunan && state.terminal.bangunan[s.bangunan.id] <= s.bangunan.ke) return false;
+  if (s.petugas && !state.terminal.petugas.includes(s.petugas)) return false;
   if (s.teknologi && !state.terminal.teknologi[s.teknologi]) return false;
   if (s.toko && !tokoBuka(s.toko, jam)) return false;
   if (s.loket !== undefined && !loketBuka(jam, jendela).includes(s.loket)) return false;
@@ -278,15 +279,15 @@ function orangStatis(): OrangStatis[] {
     ...[...petugas, ...petugasLain].map(selalu),
     ...petugasLoket.map((orang, i): OrangStatis => ({ orang, ambang: 0, loket: i })),
     // Fasilitas: penjaga kios & toko (pulang saat tokonya tutup), juru parkir, petugas toilet, petugas retribusi.
-    ...penjual.map((orang): OrangStatis => ({ orang, ambang: 0, fasilitas: 'kios', toko: 'kios' })),
-    ...penjagaToko.map((orang, i): OrangStatis => ({ orang, ambang: 0, fasilitas: 'kios', toko: TOKO_AULA[i]!.nama === 'MINIMARKET' ? 'minimarket' : 'apotek' })),
+    ...penjual.map((orang, i): OrangStatis => ({ orang, ambang: 0, bangunan: { id: 'kios', ke: i }, toko: 'kios' })),
+    ...penjagaToko.map((orang, i): OrangStatis => ({ orang, ambang: 0, bangunan: { id: 'toko', ke: i }, toko: TOKO_AULA[i]!.nama === 'MINIMARKET' ? 'minimarket' : 'apotek' })),
     // Pangkalan ojek: satu duduk di bangku gubuk, satu menawarkan ojek di mulut gang (siang).
     { orang: { id: ID_STATIS + 94, x: GUBUK_OJEK.x - 0.02, y: (GUBUK_OJEK.y0 + GUBUK_OJEK.y1) / 2, h: 0.055, penampilan: seragam(0x7f1d1d, 0x1f2937, false), pose: 'duduk', hadap: 0 }, ambang: 0 },
     { orang: { id: ID_STATIS + 95, x: GUBUK_OJEK.x + 0.55, y: 19.75, h: H_TROTOAR, penampilan: seragam(0x1f2937, 0x334155, true), hadap: -Math.PI / 2 }, ambang: 0.35 },
-    { orang: { id: ID_STATIS + 90, x: LORONG_PARKIR.x0 - 0.3, y: LORONG_PARKIR.y + 0.6, h: H_LANTAI, penampilan: rompi(0xf97316), hadap: Math.PI }, ambang: 0, fasilitas: 'parkir' },
+    { orang: { id: ID_STATIS + 90, x: LORONG_PARKIR.x0 - 0.3, y: LORONG_PARKIR.y + 0.6, h: H_LANTAI, penampilan: rompi(0xf97316), hadap: Math.PI }, ambang: 0, bangunan: { id: 'lahanParkir', ke: 0 }, petugas: 'juruParkir' },
     // Petugas kebersihan toilet berjaga di lorong sayap barat, di sisi dinding aula (tidak menghalangi jalan).
-    { orang: { id: ID_STATIS + 91, x: GEDUNG.x0 - 0.15, y: 12.3, h: hAula, penampilan: seragam(0x16a34a, 0x1f2937, false), hadap: Math.PI }, ambang: 0, fasilitas: 'toilet' },
-    { orang: { id: ID_STATIS + 1, x: POS_RETRIBUSI.x0 - 0.5, y: POS_RETRIBUSI.y1 + 0.3, h: 0, penampilan: seragam(0x8b6b3d, 0x4a3b24, true), hadap: Math.PI / 4 }, ambang: 0, fasilitas: 'retribusi' },
+    { orang: { id: ID_STATIS + 91, x: GEDUNG.x0 - 0.15, y: 12.3, h: hAula, penampilan: seragam(0x16a34a, 0x1f2937, false), hadap: Math.PI }, ambang: 0, bangunan: { id: 'toilet', ke: 0 }, petugas: 'petugasToilet' },
+    { orang: { id: ID_STATIS + 1, x: POS_RETRIBUSI.x0 - 0.5, y: POS_RETRIBUSI.y1 + 0.3, h: 0, penampilan: seragam(0x8b6b3d, 0x4a3b24, true), hadap: Math.PI / 4 }, ambang: 0, bangunan: { id: 'posRetribusi', ke: 0 }, petugas: 'petugasRetribusi' },
     // Modernisasi: petugas pengatur bus berompi di peron kedatangan & keberangkatan.
     { orang: { id: ID_STATIS + 92, x: PERON.x0 + 0.45, y: PERON.y0 + 0.4, h: TINGGI_PERON, penampilan: rompi(0xfacc15), hadap: -Math.PI / 2 }, ambang: 0, teknologi: 'pengaturBus' },
     { orang: { id: ID_STATIS + 93, x: RUANG_TUNGGU.x1 - 0.45, y: PERON_BERANGKAT.y0 + 0.3, h: TINGGI_PERON, penampilan: rompi(0xfacc15), hadap: -Math.PI / 2 }, ambang: 0, teknologi: 'pengaturBus' },
@@ -481,7 +482,7 @@ export class Terminal3D {
     // Bagian terminal yang belum dibangun (jalur & kelompok parkir), dan proyek perluasan yang sedang berjalan.
     const bangunan = bangunanTerminal(pembaca.state);
     const pembangunan = new PembangunanTerminal();
-    pembangunan.perbarui({ jalur: pembaca.state.terminal.jalur, kelompok: bangunan.kelompok });
+    pembangunan.perbarui({ jalur: pembaca.state.terminal.bangunan.jalur, kelompok: bangunan.kelompok });
     const proyek = new ProyekPerluasan(m);
     proyek.perbarui(tahapProyek(pembaca.state), 0, 0);
     adegan.scene.add(pembangunan.objek, proyek.objek);
@@ -588,7 +589,7 @@ export class Terminal3D {
     const bangunan = bangunanTerminal(state);
     this.jendela = bangunan.jendela;
     this.papanJurusan.perbarui({ mask: bangunan.mask, jendela: this.pemilikJendela(state), kelompok: bangunan.kelompok });
-    this.pembangunan.perbarui({ jalur: state.terminal.jalur, kelompok: bangunan.kelompok });
+    this.pembangunan.perbarui({ jalur: state.terminal.bangunan.jalur, kelompok: bangunan.kelompok });
     this.parkirBaris2.visible = state.perkembangan.perluasan >= TAHAP_PARKIR_MOBIL_PENUH;
     this.perbaruiProyek(state, dt, dtNyata);
     this.modernisasi.perbarui(state.terminal.teknologi);
@@ -596,7 +597,8 @@ export class Terminal3D {
     this.hiasanEvent.perbarui(state.event.aktif?.id ?? null);
     this.jam = w.jamDesimal;
     this.detikPatroli += dt;
-    this.rollingDoor.perbarui(this.jam, this.jendela, state.terminal.fasilitas.kios > 0, state.terminal.jalur);
+    const b = state.terminal.bangunan;
+    this.rollingDoor.perbarui(this.jam, this.jendela, b.kios + b.toko > 0, b.jalur);
     this.luar.perbarui(this.jam, this.keramaian);
     this.material.aturBasah(this.basah);
     this.laluLintas.kepadatan = kepadatanLuar(this.keramaian);
@@ -642,7 +644,7 @@ export class Terminal3D {
     this.labelBus.perbarui(this.dunia.bus, dtNyata, this.adegan, this.adegan.lebarCss, this.adegan.tinggiCss, pandang.jarak);
     this.labelBus.perbaruiLoket(this.dunia.orang, dtNyata, this.adegan, this.adegan.lebarCss, this.adegan.tinggiCss, pandang.jarak);
     // "+Rp": uang yang masuk menurut sim dibagikan ke transaksi yang terlihat frame ini.
-    const pop = this.kas.perbarui(detikMain, dt, this.lajuUangTersimpan(state), this.transaksi, state.sewaKios, TEMPAT_SEWA);
+    const pop = this.kas.perbarui(detikMain, dt, this.lajuUangTersimpan(state), this.transaksi);
     if (pop.length > 0) this.popUang.tambah(pop);
     this.popUang.perbarui(dtNyata, this.adegan, this.adegan.lebarCss, this.adegan.tinggiCss, pandang.jarak);
     kibarkan(this.bendera, this.waktu);

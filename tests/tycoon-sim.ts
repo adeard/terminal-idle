@@ -9,8 +9,8 @@ import { EKONOMI, type KonfigEkonomi } from '../src/config/economy.config';
 import { bangunanAwal, biayaBangun, slotBangunan } from '../src/sim/bangunan';
 import { BANGUNAN_IDS, PETUGAS_IDS, PO_IDS, TEKNOLOGI_IDS, type BangunanId, type PetugasId, type PoId, type TeknologiId } from '../src/sim/fitur';
 import { keuanganPerJam, majukanKas } from '../src/sim/keuangan';
-import { kelasDariLevel, slotPo } from '../src/sim/level-terminal';
-import { kelasAktif, majukanReputasi, syaratDaftarKurang, targetReputasi, tingkatPo } from '../src/sim/mitra';
+import { kelasDariLevel, levelTerminalDariXp, slotPo } from '../src/sim/level-terminal';
+import { kelasAktif, levelPoDariXp, majukanReputasi, syaratDaftarKurang, targetReputasi, tingkatPo } from '../src/sim/mitra';
 import { hitungOperasi, type HasilOperasi, type KeadaanOperasi } from '../src/sim/operasi';
 import { berhentiKasHabis, bisaRekrut, rekrut } from '../src/sim/petugas';
 import { tarifBawaan, type NilaiTarif } from '../src/sim/tarif';
@@ -53,15 +53,6 @@ export interface Catatan {
   readonly biaya: number;
 }
 
-/** Level dari XP kumulatif xpA × (L − 1)^xpK. */
-export function levelDariXp(xp: number, k: { readonly xpA: number; readonly xpK: number }): number {
-  if (!(xp > 0)) return 1;
-  let level = 1 + Math.floor(Math.pow(xp / k.xpA, 1 / k.xpK));
-  while (level > 1 && k.xpA * Math.pow(level - 1, k.xpK) > xp) level--;
-  while (k.xpA * Math.pow(level, k.xpK) <= xp) level++;
-  return level;
-}
-
 export function buatSim(cfg: KonfigEkonomi = EKONOMI): SimTycoon {
   return {
     detik: 0,
@@ -79,8 +70,8 @@ export function buatSim(cfg: KonfigEkonomi = EKONOMI): SimTycoon {
   };
 }
 
-export const levelTerminalSim = (s: SimTycoon, cfg: KonfigEkonomi = EKONOMI): number => levelDariXp(s.xpTerminal, cfg.tycoon.xpTerminal);
-export const levelPoSim = (p: PoSim, cfg: KonfigEkonomi = EKONOMI): number => levelDariXp(p.xp, cfg.tycoon.xpPo);
+export const levelTerminalSim = (s: SimTycoon, cfg: KonfigEkonomi = EKONOMI): number => levelTerminalDariXp(s.xpTerminal, cfg);
+export const levelPoSim = (p: PoSim, cfg: KonfigEkonomi = EKONOMI): number => levelPoDariXp(p.xp, cfg);
 
 export function keadaan(s: SimTycoon, cfg: KonfigEkonomi = EKONOMI): KeadaanOperasi {
   return {
@@ -96,8 +87,8 @@ export function keadaan(s: SimTycoon, cfg: KonfigEkonomi = EKONOMI): KeadaanOper
 
 /** Ritme permintaan (sudah dilandaikan seperti permintaan 0.2.0) pada detik main ini. */
 export function ritmePada(detik: number, cfg: KonfigEkonomi = EKONOMI): number {
-  const p = cfg.permintaan;
-  return p.ritmeMin + (1 - p.ritmeMin) * keramaianTerminal(waktuTerminal(detik));
+  const r = cfg.tycoon.pasar.ritmeMin;
+  return r + (1 - r) * keramaianTerminal(waktuTerminal(detik));
 }
 
 const malamPada = (detik: number): boolean => {
@@ -130,7 +121,6 @@ const salinSim = (s: SimTycoon): SimTycoon => ({
 
 /** Biaya aksi (Rp), atau null bila tidak bisa dilakukan sekarang (tanpa memeriksa kas). */
 export function biayaAksi(s: SimTycoon, a: AksiSim, cfg: KonfigEkonomi = EKONOMI): number | null {
-  const t = cfg.tycoon;
   switch (a.jenis) {
     case 'jendela':
       return biayaBangun('jendela', s.bangunan, s.perluasan, cfg);
@@ -141,7 +131,7 @@ export function biayaAksi(s: SimTycoon, a: AksiSim, cfg: KonfigEkonomi = EKONOMI
     case 'teknologi': {
       if (s.teknologi[a.id]) return null;
       const syarat = cfg.teknologi[a.id].syarat;
-      return syarat && !s.teknologi[syarat] ? null : t.teknologi[a.id].biaya;
+      return syarat && !s.teknologi[syarat] ? null : cfg.teknologi[a.id].biaya;
     }
     case 'po': {
       const level = levelTerminalSim(s, cfg);
@@ -152,12 +142,12 @@ export function biayaAksi(s: SimTycoon, a: AksiSim, cfg: KonfigEkonomi = EKONOMI
       if (syaratDaftarKurang(a.id, { kelasTerminal: kelasDariLevel(level, cfg), kepuasan: op.kepuasan.nilai }, cfg)) return null;
       // PO butuh jendela: dibangun PO sendiri di slot kosong.
       if (s.bangunan.jendela >= slotBangunan('jendela', s.perluasan, cfg)) return null;
-      return t.biayaDaftarPo[a.id];
+      return cfg.mitra.po[a.id].biayaDaftar;
     }
     case 'perluasan': {
       const tahap = cfg.mitra.perluasan[s.perluasan];
       if (!tahap || s.proyekDetik > 0 || levelTerminalSim(s, cfg) < tahap.level) return null;
-      return t.perluasan[s.perluasan]!.biaya;
+      return tahap.biaya;
     }
   }
 }
@@ -292,7 +282,7 @@ export function majukan(s: SimTycoon, dt: number, cfg: KonfigEkonomi = EKONOMI):
     p.xp += (op.po[i]!.arus / cfg.tycoon.kapasitas.penumpangPerBus) * dtJam;
     const level = levelPoSim(p, cfg);
     const kelas = kelasAktif(p.id, level, k.kelasTerminal, cfg).length;
-    p.reputasi = majukanReputasi(p.reputasi, targetReputasi(op.kepuasan.nilai, 100, kelas, cfg), dt, cfg);
+    p.reputasi = majukanReputasi(p.reputasi, targetReputasi(op.kepuasan.nilai, kelas, cfg), dt, cfg);
   });
   if (x.proyekDetik > 0) {
     x.proyekDetik -= dt;

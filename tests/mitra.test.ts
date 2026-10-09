@@ -1,14 +1,11 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { EKONOMI } from '../src/config/economy.config';
 import { PO_IDS } from '../src/sim/fitur';
-import { kelasDariLevel, levelMinimalKelas, levelTerminalDariXp, pengaliLevelTerminal, slotPo, xpKumulatifTerminal } from '../src/sim/level-terminal';
+import { kelasDariLevel, levelMinimalKelas, levelTerminalDariXp, slotPo, xpKumulatifTerminal } from '../src/sim/level-terminal';
 import {
-  biayaPerpanjang,
   faktorReputasi,
   hariKontrakPertama,
   indeksJurusan,
-  jatahLoket,
   jurusanAktif,
   kelasAktif,
   levelPoDariXp,
@@ -16,18 +13,16 @@ import {
   nilaiJurusan,
   nilaiTiketPo,
   sisaSetelahPerpanjang,
-  skorHarga,
   syaratDaftarKurang,
   targetReputasi,
   xpKumulatifPo,
   xpLevelPo,
-  xpLoketBaru,
 } from '../src/sim/mitra';
-import { bonusJatahPerluasan, biayaPerluasan, levelCukupPerluasan, tahapPerluasanBerikutnya } from '../src/sim/perluasan';
+import { biayaPerluasan, levelCukupPerluasan, tahapPerluasanBerikutnya } from '../src/sim/perluasan';
 
 const M = EKONOMI.mitra;
 
-describe('data mitra PO v2', () => {
+describe('data mitra PO', () => {
   it('semua jurusan PO ada di EKONOMI.jurusan dan semua jurusan punya nilai tiket', () => {
     for (const id of PO_IDS) for (const nama of M.po[id].jurusan) expect(indeksJurusan(nama), `${id}: ${nama}`).toBeGreaterThanOrEqual(0);
     for (const j of EKONOMI.jurusan) expect(M.nilaiJurusan[j.nama], j.nama).toBeGreaterThan(0);
@@ -63,18 +58,11 @@ describe('level & XP PO', () => {
     expect(levelPoDariXp(Number.NaN)).toBe(1);
   });
 
-  it('XP per level naik, dan XP loket baru = 10% kebutuhan level', () => {
+  it('XP per level naik', () => {
     expect(xpLevelPo(2)).toBeGreaterThan(xpLevelPo(1));
-    expect(xpLoketBaru(5)).toBeCloseTo(0.1 * xpLevelPo(5), 9);
   });
 
-  it('jatah loket 6 + 4 × (L − 1) + bonus perluasan', () => {
-    expect(jatahLoket(1)).toBe(6);
-    expect(jatahLoket(3)).toBe(14);
-    expect(jatahLoket(10, 6)).toBe(48);
-  });
-
-  it('nilai tiket PO ×1,06 per level', () => {
+  it('harga tiket PO ×1,06 per level', () => {
     expect(nilaiTiketPo(1)).toBe(1);
     expect(nilaiTiketPo(11)).toBeCloseTo(Math.pow(1.06, 10), 12);
   });
@@ -119,23 +107,11 @@ describe('reputasi', () => {
     expect(faktorReputasi(150)).toBeCloseTo(1.3, 12);
   });
 
-  it('skor harga: ≤ 90% penuh, 100% 0,83, 120% 0,5, ≥ 150% nol', () => {
-    expect(skorHarga(80)).toBe(1);
-    expect(skorHarga(90)).toBe(1);
-    expect(skorHarga(100)).toBeCloseTo(50 / 60, 12);
-    expect(skorHarga(120)).toBeCloseTo(0.5, 12);
-    expect(skorHarga(150)).toBe(0);
-    expect(skorHarga(200)).toBe(0);
-  });
-
-  it('target = 50 × kepuasan + 30 × skor harga + 20 × kelas ÷ 5', () => {
-    expect(targetReputasi(1, 90, 5)).toBeCloseTo(100, 9);
-    expect(targetReputasi(0, 150, 0)).toBe(0);
-    expect(targetReputasi(0.8, 100, 2)).toBeCloseTo(40 + 25 + 8, 9);
-  });
-
-  it('tiket mahal menurunkan target reputasi', () => {
-    expect(targetReputasi(1, 140, 3)).toBeLessThan(targetReputasi(1, 100, 3));
+  it('target = 25 (harga tiket normal) + 50 × kepuasan + 20 × kelas ÷ 5; tidak lagi ikut harga', () => {
+    expect(targetReputasi(1, 5)).toBeCloseTo(95, 9);
+    expect(targetReputasi(0, 0)).toBe(25);
+    expect(targetReputasi(0.8, 2)).toBeCloseTo(25 + 40 + 8, 9);
+    expect(targetReputasi(2, 9)).toBeCloseTo(95, 9);
   });
 
   it('mendekati target secara eksponensial: satu langkah besar = banyak langkah kecil', () => {
@@ -171,9 +147,7 @@ describe('pendaftaran & kontrak', () => {
     expect(hariKontrakPertama('kembangApi')).toBe(14);
   });
 
-  it('perpanjang: 10 menit pendapatan PO (minimal Rp 50), sisa maksimal 14 hari', () => {
-    expect(biayaPerpanjang(new Decimal(2)).toNumber()).toBe(1200);
-    expect(biayaPerpanjang(new Decimal(0.01)).toNumber()).toBe(50);
+  it('perpanjang menambah 7 hari, sisa maksimal 14 hari', () => {
     expect(sisaSetelahPerpanjang(2)).toBe(9);
     expect(sisaSetelahPerpanjang(10)).toBe(14);
     expect(sisaSetelahPerpanjang(-3)).toBe(7);
@@ -181,9 +155,10 @@ describe('pendaftaran & kontrak', () => {
 });
 
 describe('level & kelas terminal', () => {
-  it('XP kumulatif = 4.500 × (T − 1)^3,2 dan dibalik tepat di tiap batas', () => {
+  it('XP kumulatif = 50 × (T − 1)^2,75 dan dibalik tepat di tiap batas', () => {
     expect(xpKumulatifTerminal(1)).toBe(0);
-    expect(xpKumulatifTerminal(2)).toBe(4_500);
+    expect(xpKumulatifTerminal(2)).toBe(50);
+    expect(xpKumulatifTerminal(11)).toBeCloseTo(50 * Math.pow(10, 2.75), 6);
     for (let T = 1; T <= 80; T++) {
       expect(levelTerminalDariXp(xpKumulatifTerminal(T)), `T${T}`).toBe(T);
       if (T > 1) expect(levelTerminalDariXp(xpKumulatifTerminal(T) * (1 - 1e-9)), `di bawah T${T}`).toBe(T - 1);
@@ -211,10 +186,6 @@ describe('level & kelas terminal', () => {
     expect(slotPo(60, 5)).toBe(12);
   });
 
-  it('bonus pendapatan +4% per level', () => {
-    expect(pengaliLevelTerminal(1)).toBe(1);
-    expect(pengaliLevelTerminal(26)).toBeCloseTo(2, 12);
-  });
 });
 
 describe('perluasan terminal', () => {
@@ -226,13 +197,7 @@ describe('perluasan terminal', () => {
     expect(levelCukupPerluasan(3, 20)).toBe(true);
     expect(tahapPerluasanBerikutnya(M.perluasan.length)).toBeNull();
     expect(biayaPerluasan(M.perluasan.length)).toBeNull();
-    expect(biayaPerluasan(1)?.toNumber()).toBe(50_000);
+    expect(biayaPerluasan(1)).toBe(M.perluasan[1]!.biaya);
   });
 
-  it('bonus jatah loket menumpuk per tahap selesai', () => {
-    expect(bonusJatahPerluasan(0)).toBe(0);
-    expect(bonusJatahPerluasan(2)).toBe(4);
-    expect(bonusJatahPerluasan(5)).toBe(12);
-    expect(bonusJatahPerluasan(99)).toBe(12);
-  });
 });

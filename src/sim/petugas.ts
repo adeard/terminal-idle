@@ -1,9 +1,9 @@
 /**
- * Tycoon, petugas bergaji (murni): batas tiap peran menurut bangunan, gaji
+ * Petugas bergaji (murni): batas tiap peran menurut bangunan, gaji
  * harian, dan siapa yang berhenti lebih dulu bila kas habis. Petugas
  * menggantikan Kepala. State menyimpan urutan rekrut (bukan jumlah), supaya
  * "yang terakhir direkrut berhenti lebih dulu" tidak butuh data tambahan.
- * Rancangan: bagian 5 & 6.3 documents/13-rancangan-tycoon.md. Belum dipakai game.
+ * Rancangan: bagian 5 & 6.3 documents/13-rancangan-tycoon.md.
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import type { JumlahBangunan } from './bangunan';

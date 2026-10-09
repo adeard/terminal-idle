@@ -1,8 +1,8 @@
 /**
- * Tycoon, keuangan terminal (murni): pendapatan per sumber & biaya per pos per
+ * Keuangan terminal (murni): pendapatan per sumber & biaya per pos per
  * jam terminal dari hasil operasi, dan kas yang tidak pernah minus (bila kas
  * habis, gaji tak terbayar dan petugas berhenti satu per satu). Rancangan:
- * bagian 6 documents/13-rancangan-tycoon.md. Belum dipakai game.
+ * bagian 6 documents/13-rancangan-tycoon.md.
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { operasionalGedung, pengaliBiayaKelas, perawatanHarian } from './bangunan';

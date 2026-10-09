@@ -56,7 +56,7 @@ export function pasangTombolFoto(induk: HTMLElement, o: OpsiFoto): void {
 export function keteranganFoto(pembaca: PembacaState): string {
   const m = buatModel(pembaca.state);
   const jurusan = new Set(m.mitra.terdaftar.flatMap((p) => p.jurusan.filter((j) => j.aktif).map((j) => j.jurusan))).size;
-  return TEKS.fotoKeterangan(namaKelas(m.terminal.kelas), jurusan, formatAngka(m.hud.arusPotensial), m.mitra.terdaftar.length, m.terminal.nama);
+  return TEKS.fotoKeterangan(namaKelas(m.terminal.kelas), jurusan, formatAngka(Math.round(m.bangun.arusPuncak)), m.mitra.terdaftar.length, m.terminal.nama);
 }
 
 async function bukaFoto(o: OpsiFoto): Promise<void> {

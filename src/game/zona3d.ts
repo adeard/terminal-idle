@@ -1,13 +1,12 @@
 /**
- * Penanda tahap di dunia 3D: sorotan merah berdenyut + garis tepi di tanah
- * (bottleneck), dan label DOM (nama tahap, lencana Kepala, "⚠ PALING LAMBAT")
- * yang mengikuti proyeksi kamera. Label DOM dipilih supaya teks tetap tajam di
- * semua zoom. Semua tahap selalu berjalan, jadi label hanya penanda (tidak
- * bisa diketuk).
+ * Penanda area di dunia 3D: sorotan merah berdenyut + garis tepi di tanah
+ * (area yang membatasi arus jam sibuk), dan label DOM (nama area, "⚠ PALING
+ * LAMBAT") yang mengikuti proyeksi kamera. Label DOM dipilih supaya teks tetap
+ * tajam di semua zoom. Label hanya penanda (tidak bisa diketuk).
  */
 import * as THREE from 'three';
 import { WARNA, WARNA_TAHAP, keHexCss } from '../config/tema';
-import { daftarBottleneckState, type GameState } from '../sim/state';
+import { bottleneckState, type GameState } from '../sim/state';
 import { TAHAP_IDS, type TahapId } from '../sim/tahap';
 import { NAMA_TAHAP, TEKS } from '../ui/teks';
 import { bidang, kotak } from './geometri';
@@ -22,7 +21,6 @@ interface TampilanZona {
   readonly tepi: THREE.Mesh;
   readonly label: HTMLElement;
   readonly lambat: HTMLElement;
-  readonly kepala: HTMLElement;
   /** Lebar label terakhir (px) dan isi yang tampil saat diukur; diukur ulang hanya bila isinya berubah. */
   lebarLabel: number;
   kunciLabel: string;
@@ -86,26 +84,23 @@ export class ZonaTahap {
       const baris = el('lz-baris');
       const nama = el('lz-nama');
       nama.append(el('lz-teks', NAMA_TAHAP[id].toUpperCase()));
-      const kepala = el('lz-kepala', 'K');
-      baris.append(nama, kepala);
+      baris.append(nama);
       label.append(lambat, baris);
       wadahLabel.append(label);
-      this.zona[id] = { sorotan, tepi, label, lambat, kepala, lebarLabel: 0, kunciLabel: '' };
+      this.zona[id] = { sorotan, tepi, label, lambat, lebarLabel: 0, kunciLabel: '' };
     }
   }
 
   perbarui(state: GameState, waktu: number, kamera: Proyektor, lebar: number, tinggi: number): void {
-    const lambat = new Set(daftarBottleneckState(state));
+    const lambat = bottleneckState(state);
     const denyut = 0.5 + 0.5 * Math.sin(waktu * 5.9);
     this.matSorotan.opacity = 0.12 + 0.2 * denyut;
     for (const id of TAHAP_IDS) {
-      const t = state.terminal.tahap[id];
       const z = this.zona[id];
-      const isLambat = lambat.has(id);
+      const isLambat = lambat === id;
       z.sorotan.visible = isLambat;
       z.tepi.visible = isLambat && denyut > 0.25;
       z.lambat.hidden = !isLambat;
-      z.kepala.hidden = !t.kepala.direkrut;
 
       const [x, y, h] = ZONA[id].label;
       const p = kamera.proyeksi(x, y, h);
@@ -113,7 +108,7 @@ export class ZonaTahap {
       if (p.terlihat) {
         // Tetap di dalam layar supaya label di tepi tidak terpotong. Membaca offsetWidth
         // tiap frame memaksa layout ulang seluruh halaman, jadi lebar disimpan per isi label.
-        const kunci = `${isLambat}${t.kepala.direkrut}`;
+        const kunci = String(isLambat);
         if (kunci !== z.kunciLabel || z.lebarLabel === 0) {
           z.kunciLabel = kunci;
           z.lebarLabel = z.label.offsetWidth;

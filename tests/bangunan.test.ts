@@ -47,9 +47,9 @@ describe('bangunan tycoon', () => {
   it('perawatan, operasional gedung, petak bus, dan pengali biaya kelas', () => {
     const b = bangunanAwal();
     expect(perawatanHarian(b, tanpaTeknologi)).toBe(T.bangunan.jalur.perawatan + T.bangunan.jendela.perawatan + T.bangunan.kursi.perawatan);
-    expect(perawatanHarian(b, { ...tanpaTeknologi, mesinTiket: true }) - perawatanHarian(b, tanpaTeknologi)).toBe(T.teknologi.mesinTiket.perawatan);
+    expect(perawatanHarian(b, { ...tanpaTeknologi, mesinTiket: true }) - perawatanHarian(b, tanpaTeknologi)).toBe(EKONOMI.teknologi.mesinTiket.perawatan);
     expect(operasionalGedung(0)).toBe(0);
-    expect(operasionalGedung(2)).toBe(T.perluasan[0]!.operasional + T.perluasan[1]!.operasional);
+    expect(operasionalGedung(2)).toBe(EKONOMI.mitra.perluasan[0]!.operasional + EKONOMI.mitra.perluasan[1]!.operasional);
     expect([0, 1, 2, 4, 5].map((t) => petakBus(t))).toEqual([10, 10, 20, 40, 60]);
     expect(pengaliBiayaKelas(0)).toBe(1);
     for (let k = 1; k <= 4; k++) expect(pengaliBiayaKelas(k)).toBeGreaterThanOrEqual(pengaliBiayaKelas(k - 1));

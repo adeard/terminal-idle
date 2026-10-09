@@ -1,4 +1,3 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import {
   bacaAkunAktif,
@@ -68,13 +67,13 @@ class AwanPalsu implements PenyimpananAwan {
   }
 }
 
-/** Save dengan uang & total pendapatan tertentu; pendapatan 0 = belum ada progres. */
-function buatSave(uang: number, pendapatan: number, waktuMs = T0): string {
+/** Save dengan kas & total pendapatan tertentu; pendapatan 0 = belum ada progres. */
+function buatSave(kas: number, pendapatan: number, waktuMs = T0): string {
   const s = buatStateBaru(T0);
   return serialisasi({
     ...s,
-    uang: new Decimal(uang),
-    statistik: { ...s.statistik, totalPendapatanSepanjangMasa: new Decimal(pendapatan) },
+    kas,
+    statistik: { ...s.statistik, totalPendapatan: pendapatan },
     waktuTerakhirMs: waktuMs,
   });
 }
@@ -110,9 +109,9 @@ function siapkan(jawaban: PilihanKonflik = 'lokal') {
 describe('ringkasSave', () => {
   it('meringkas save; kosong atau korup → null', () => {
     const r = ringkasSave(SAVE_A);
-    expect(r?.uang.toNumber()).toBe(1000);
-    expect(r?.totalPendapatan.toNumber()).toBe(5000);
-    expect(r?.totalLevel).toBe(3);
+    expect(r?.kas).toBe(1000);
+    expect(r?.totalPendapatan).toBe(5000);
+    expect(r?.levelTerminal).toBe(1);
     expect(ringkasSave(null)).toBeNull();
     expect(ringkasSave('{"rusak"')).toBeNull();
   });
@@ -139,8 +138,8 @@ describe('putuskanSinkron (save akun di perangkat ini vs cloud)', () => {
     const k = putuskanSinkron(lokal(SAVE_A, 3, false), { isi: SAVE_B, revisi: 4 });
     expect(k.pakai).toBe('tanya');
     if (k.pakai !== 'tanya') return;
-    expect(k.lokal.uang.toNumber()).toBe(1000);
-    expect(k.awan.uang.toNumber()).toBe(3000);
+    expect(k.lokal.kas).toBe(1000);
+    expect(k.awan.kas).toBe(3000);
     // Revisi cloud mundur (anomali) juga ditanyakan.
     expect(putuskanSinkron(lokal(SAVE_A, 7, true), { isi: SAVE_B, revisi: 4 }).pakai).toBe('tanya');
   });
@@ -317,7 +316,7 @@ describe('SlotAkun: kembali dari background', () => {
     awan.dok = { isi: buatSave(3000, 9000, T0 + 10_000), revisi: 2 };
     waktu.sekarang += 60_000;
     await sesi.lanjut();
-    expect(sesi.pengendali.state.uang.toNumber()).toBe(3000);
+    expect(sesi.pengendali.state.kas).toBe(3000);
     expect(sesi.sedangDijeda).toBe(false);
   });
 });

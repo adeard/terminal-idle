@@ -1,9 +1,8 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { MAKS_GALAT_PER_SESI, PencatatAnalitik, pesanGalat, ringkasanSesi, ringkasGalat, type DataAnalitik } from '../src/app/analitik';
 import { terapkanAksi } from '../src/sim/aksi';
-import { bukaJalur, levelTerminal } from '../src/sim/state';
-import { jalankan, stateOtomatis } from './helpers';
+import { bangun, levelTerminal } from '../src/sim/state';
+import { jalankan, kaya, stateOtomatis } from './helpers';
 
 const penampung = (): { catat(nama: string, data?: DataAnalitik): void; semua: { nama: string; data?: DataAnalitik }[] } => {
   const semua: { nama: string; data?: DataAnalitik }[] = [];
@@ -38,36 +37,37 @@ describe('laporan error (GA4 exception)', () => {
 });
 
 describe('ringkasan sesi', () => {
-  it('menghitung penumpang, lama main, orde pendapatan, upgrade, dan keadaan terminal', () => {
-    const awal = { ...stateOtomatis({ peron: 10, loket: 10, keberangkatan: 10 }), uang: new Decimal(1e6) };
-    let akhir = bukaJalur(awal);
-    akhir = jalankan(akhir, 60);
+  it('menghitung penumpang, lama main, pendapatan & laba (juta), bangunan, dan keadaan terminal', () => {
+    const awal = kaya(stateOtomatis({ jendela: 3 }), 1e9);
+    let akhir = bangun(awal, 'jalur');
+    akhir = jalankan(akhir, 60 * 24);
     const r = ringkasanSesi(awal, akhir, 4, 75.4);
-    expect(r).toMatchObject({ detik: 75, detik_main: 60, upgrade: 4, kelas: 0, level_terminal: levelTerminal(akhir), jalur: 2, jurusan: 1, po: 1, level_rata: 10 });
+    expect(r).toMatchObject({ detik: 75, detik_main: 1440, bangun: 4, kelas: 0, level_terminal: levelTerminal(akhir), jalur: 2, jurusan: 1, po: 1, petugas: 0 });
     expect(r['penumpang']).toBeGreaterThan(0);
-    expect(r['pendapatan_log10']).toBeGreaterThan(0);
+    expect(r['pendapatan_juta']).toBeGreaterThan(0);
+    expect(r['laba_juta']).toBeLessThan(r['pendapatan_juta'] as number);
+    expect(r['kas_juta']).toBeCloseTo(Math.round(akhir.kas / 1e5) / 10, 9);
     expect(r['kepuasan']).toBeGreaterThanOrEqual(0);
     expect(r['kepuasan']).toBeLessThanOrEqual(100);
     // Save lain dimuat di tengah sesi: selisih tidak pernah negatif.
     const mundur = ringkasanSesi(akhir, awal, 0, 1);
     expect(mundur['penumpang']).toBe(0);
     expect(mundur['detik_main']).toBe(0);
-    expect(mundur['pendapatan_log10']).toBe(0);
   });
 
-  it('pencatat menghitung upgrade sejak ringkasan terakhir', () => {
+  it('pencatat menghitung bangunan sejak ringkasan terakhir', () => {
     const t = penampung();
     const a = new PencatatAnalitik(t);
-    const s = { ...stateOtomatis(), uang: new Decimal(1e6) };
+    const s = kaya(stateOtomatis());
     let x = s;
     for (let i = 0; i < 3; i++) {
-      const baru = terapkanAksi(x, { jenis: 'upgrade', tahap: 'peron' });
-      a.catatAksi({ jenis: 'upgrade', tahap: 'peron' }, x, baru);
+      const baru = terapkanAksi(x, { jenis: 'bangun', bangunan: 'kursi' });
+      a.catatAksi({ jenis: 'bangun', bangunan: 'kursi' }, x, baru);
       x = baru;
     }
     a.catatRingkasanSesi(s, x, 10);
     a.catatRingkasanSesi(x, x, 10);
     const ringkas = t.semua.filter((p) => p.nama === 'ringkasan_sesi');
-    expect(ringkas.map((p) => p.data?.['upgrade'])).toEqual([3, 0]);
+    expect(ringkas.map((p) => p.data?.['bangun'])).toEqual([3, 0]);
   });
 });

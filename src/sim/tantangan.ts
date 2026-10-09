@@ -7,12 +7,11 @@
 
 /**
  * - penumpang: berangkatkan N penumpang;
- * - pendapatan: kumpulkan Rp N dari operasi terminal (tiket, retribusi, parkir, sewa);
- * - upgrade: lakukan N upgrade tahap;
- * - kepuasan: jaga kepuasan ≥ batas selama N detik main;
- * - fasilitas: naikkan level fasilitas N kali.
+ * - laba: kumpulkan laba bersih Rp N dari operasi terminal (turun lagi saat rugi);
+ * - bangun: bangun N unit atau modernisasi;
+ * - kepuasan: jaga kepuasan ≥ batas selama N detik main.
  */
-export const JENIS_TANTANGAN = ['penumpang', 'pendapatan', 'upgrade', 'kepuasan', 'fasilitas'] as const;
+export const JENIS_TANTANGAN = ['penumpang', 'laba', 'bangun', 'kepuasan'] as const;
 export type JenisTantangan = (typeof JENIS_TANTANGAN)[number];
 
 export function isJenisTantangan(nilai: unknown): nilai is JenisTantangan {

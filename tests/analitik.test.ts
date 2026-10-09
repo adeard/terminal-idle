@@ -1,12 +1,11 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { PencatatAnalitik, peristiwaAksi, type Analitik, type DataAnalitik } from '../src/app/analitik';
 import { PengendaliGame } from '../src/app/pengendali';
 import { terapkanAksi, type Aksi } from '../src/sim/aksi';
 import { buatStateBaru, type GameState } from '../src/sim/state';
-import { T0 } from './helpers';
+import { stateOtomatis, T0 } from './helpers';
 
-const kaya = (): GameState => ({ ...buatStateBaru(T0), uang: new Decimal(1e12) });
+const kaya = (): GameState => ({ ...buatStateBaru(T0), kas: 1e12 });
 
 function rekam(): { analitik: Analitik; catatan: { nama: string; data?: DataAnalitik }[] } {
   const catatan: { nama: string; data?: DataAnalitik }[] = [];
@@ -16,37 +15,45 @@ function rekam(): { analitik: Analitik; catatan: { nama: string; data?: DataAnal
 const terapkan = (s: GameState, aksi: Aksi): { lama: GameState; baru: GameState } => ({ lama: s, baru: terapkanAksi(s, aksi) });
 
 describe('analitik: aksi pemain → peristiwa', () => {
-  it('aksi yang tidak berlaku (uang kurang) tidak menghasilkan peristiwa', () => {
-    const s = { ...buatStateBaru(T0), uang: new Decimal(0) };
-    const { lama, baru } = terapkan(s, { jenis: 'upgrade', tahap: 'loket' });
+  it('aksi yang tidak berlaku (kas kurang) tidak menghasilkan peristiwa', () => {
+    const s = { ...buatStateBaru(T0), kas: 0 };
+    const { lama, baru } = terapkan(s, { jenis: 'bangun', bangunan: 'jendela' });
     expect(baru).toBe(lama);
-    expect(peristiwaAksi({ jenis: 'upgrade', tahap: 'loket' }, lama, baru)).toEqual([]);
+    expect(peristiwaAksi({ jenis: 'bangun', bangunan: 'jendela' }, lama, baru)).toEqual([]);
   });
 
-  it('upgrade hanya dicatat di level tonggak (2, 5, 10, …), bukan tiap upgrade', () => {
+  it('bangun, bongkar, rekrut, berhentikan, modernisasi, dan mitra PO tercatat dengan datanya', () => {
     let s = kaya();
-    const tercatat: number[] = [];
-    for (let i = 0; i < 12; i++) {
-      const { lama, baru } = terapkan(s, { jenis: 'upgrade', tahap: 'peron' });
-      for (const p of peristiwaAksi({ jenis: 'upgrade', tahap: 'peron' }, lama, baru)) tercatat.push(p.data!['level'] as number);
-      s = baru;
-    }
-    expect(tercatat).toEqual([2, 5, 10]);
-  });
-
-  it('Kepala, fasilitas pertama, dan mitra PO tercatat dengan datanya', () => {
-    let s = kaya();
-    const k = terapkan(s, { jenis: 'rekrutKepala', tahap: 'loket' });
-    expect(peristiwaAksi({ jenis: 'rekrutKepala', tahap: 'loket' }, k.lama, k.baru)).toEqual([{ nama: 'rekrut_kepala', data: { tahap: 'loket', jumlah_kepala: 1 } }]);
-    s = k.baru;
-    const f = terapkan(s, { jenis: 'bangunFasilitas', fasilitas: 'kios' });
-    expect(peristiwaAksi({ jenis: 'bangunFasilitas', fasilitas: 'kios' }, f.lama, f.baru)).toEqual([{ nama: 'bangun_fasilitas', data: { fasilitas: 'kios', level: 1 } }]);
-    const f2 = terapkan(f.baru, { jenis: 'bangunFasilitas', fasilitas: 'kios' });
-    expect(peristiwaAksi({ jenis: 'bangunFasilitas', fasilitas: 'kios' }, f2.lama, f2.baru)).toEqual([{ nama: 'bangun_fasilitas', data: { fasilitas: 'kios', level: 2 } }]);
-    const f3 = terapkan(f2.baru, { jenis: 'bangunFasilitas', fasilitas: 'kios' });
-    expect(peristiwaAksi({ jenis: 'bangunFasilitas', fasilitas: 'kios' }, f3.lama, f3.baru)).toEqual([]);
+    const b = terapkan(s, { jenis: 'bangun', bangunan: 'kios' });
+    expect(peristiwaAksi({ jenis: 'bangun', bangunan: 'kios' }, b.lama, b.baru)).toEqual([{ nama: 'bangun', data: { bangunan: 'kios', jumlah: 1 } }]);
+    const x = terapkan(b.baru, { jenis: 'bongkar', bangunan: 'kios' });
+    expect(peristiwaAksi({ jenis: 'bongkar', bangunan: 'kios' }, x.lama, x.baru)).toEqual([{ nama: 'bongkar', data: { bangunan: 'kios', jumlah: 0 } }]);
+    const r = terapkan(s, { jenis: 'rekrut', petugas: 'peron' });
+    expect(peristiwaAksi({ jenis: 'rekrut', petugas: 'peron' }, r.lama, r.baru)).toEqual([{ nama: 'rekrut', data: { petugas: 'peron', jumlah: 1 } }]);
+    const h = terapkan(r.baru, { jenis: 'berhentikan', petugas: 'peron' });
+    expect(peristiwaAksi({ jenis: 'berhentikan', petugas: 'peron' }, h.lama, h.baru)).toEqual([{ nama: 'berhentikan', data: { petugas: 'peron' } }]);
+    const t = terapkan(s, { jenis: 'beliTeknologi', teknologi: 'mesinTiket' });
+    expect(peristiwaAksi({ jenis: 'beliTeknologi', teknologi: 'mesinTiket' }, t.lama, t.baru)).toEqual([{ nama: 'beli_teknologi', data: { teknologi: 'mesinTiket' } }]);
+    s = t.baru;
     const j = terapkan(s, { jenis: 'daftarPo', po: 'peuyeumKilat' });
     expect(peristiwaAksi({ jenis: 'daftarPo', po: 'peuyeumKilat' }, j.lama, j.baru)).toEqual([{ nama: 'daftar_po', data: { po: 'peuyeumKilat', jumlah: 2 } }]);
+  });
+
+  it('tarif: atur & saran dicatat tanpa nilainya, sekali per sesi per tarif', () => {
+    const s = stateOtomatis({ jalur: 2, jendela: 3 });
+    const a = terapkan(s, { jenis: 'aturTarif', tarif: 'layanan', nilai: 12 });
+    expect(peristiwaAksi({ jenis: 'aturTarif', tarif: 'layanan', nilai: 12 }, a.lama, a.baru)).toEqual([{ nama: 'atur_tarif', data: { tarif: 'layanan' } }]);
+    const { analitik, catatan } = rekam();
+    const p = new PencatatAnalitik(analitik);
+    let x = s;
+    for (const nilai of [11, 12, 13]) {
+      const baru = terapkanAksi(x, { jenis: 'aturTarif', tarif: 'layanan', nilai });
+      p.catatAksi({ jenis: 'aturTarif', tarif: 'layanan', nilai }, x, baru);
+      x = baru;
+    }
+    const baru = terapkanAksi(x, { jenis: 'aturTarif', tarif: 'parkir', nilai: 3000 });
+    p.catatAksi({ jenis: 'aturTarif', tarif: 'parkir', nilai: 3000 }, x, baru);
+    expect(catatan.map((c) => c.data?.['tarif'])).toEqual(['layanan', 'parkir']);
   });
 
   it('pencatat: telolet sekali per sesi, peristiwa lain tidak disaring', () => {
@@ -54,20 +61,20 @@ describe('analitik: aksi pemain → peristiwa', () => {
     const p = new PencatatAnalitik(analitik);
     for (let i = 0; i < 5; i++) {
       p.catat('telolet');
-      p.catat('rekrut_kepala', { tahap: 'peron', jumlah_kepala: 1 });
+      p.catat('rekrut', { petugas: 'peron', jumlah: 1 });
     }
     expect(catatan.filter((c) => c.nama === 'telolet')).toHaveLength(1);
-    expect(catatan.filter((c) => c.nama === 'rekrut_kepala')).toHaveLength(5);
+    expect(catatan.filter((c) => c.nama === 'rekrut')).toHaveLength(5);
   });
 
   it('pengendali memberi tahu pemantau hanya untuk aksi yang berlaku', () => {
-    const pengendali = new PengendaliGame({ ...buatStateBaru(T0), uang: new Decimal(0) });
+    const pengendali = new PengendaliGame({ ...buatStateBaru(T0), kas: 0 });
     const aksi: string[] = [];
     pengendali.pantauAksi((a, lama, baru) => {
       expect(baru).not.toBe(lama);
       aksi.push(a.jenis);
     });
-    pengendali.kirim({ jenis: 'upgrade', tahap: 'loket' }); // uang kurang: tidak berlaku
+    pengendali.kirim({ jenis: 'bangun', bangunan: 'jendela' }); // kas kurang: tidak berlaku
     pengendali.kirim({ jenis: 'aturNamaTerminal', nama: 'Sukamaju' });
     expect(aksi).toEqual(['aturNamaTerminal']);
   });

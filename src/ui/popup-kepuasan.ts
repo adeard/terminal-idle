@@ -1,11 +1,11 @@
 /**
- * Rincian kepuasan penumpang (dibuka dari pil kepuasan di HUD): nilai, bonus
- * pendapatan & tambahan penumpang yang datang, lalu tiga komponen berbilah
- * dengan saran yang langsung bisa dikerjakan pemain (upgrade tahap paling
- * lambat, Kios & Toilet, jalur bus).
+ * Rincian kepuasan penumpang (dibuka dari pil kepuasan di HUD): nilai,
+ * tambahan calon penumpang, lalu enam komponen berbilah dengan saran yang
+ * langsung bisa dikerjakan pemain (area paling lambat, kursi, petugas
+ * kebersihan, satpam, fasilitas, tarif).
  */
 import type { ModelKepuasan } from './model';
-import { NAMA_TAHAP, TEKS } from './teks';
+import { NAMA_AREA, NAMA_BANGUNAN, TEKS } from './teks';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, kelas?: string, teks?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -26,6 +26,12 @@ export function tingkatKepuasan(nilai: number): 'baik' | 'sedang' | 'kurang' {
   return nilai >= 0.75 ? 'baik' : nilai >= 0.45 ? 'sedang' : 'kurang';
 }
 
+/** Saran fasilitas: yang belum ada sama sekali, atau tambah sesuai keramaian. */
+function saranFasilitas(m: ModelKepuasan): string {
+  if (m.fasilitasKurang.length === 0) return TEKS.kepuasanSaranFasilitasCukup;
+  return TEKS.kepuasanSaranFasilitas(m.fasilitasKurang.map((id) => NAMA_BANGUNAN[id].nama.toLowerCase()).join(', '));
+}
+
 export function tampilkanPopupKepuasan(akar: HTMLElement, m: ModelKepuasan): void {
   akar.querySelector('.popup-latar.latar-kepuasan')?.remove();
   const latar = el('div', 'popup-latar latar-kepuasan');
@@ -36,9 +42,7 @@ export function tampilkanPopupKepuasan(akar: HTMLElement, m: ModelKepuasan): voi
   const wajah = el('div', 'kepuasan-wajah', wajahKepuasan(m.nilai));
   const judul = el('h2', undefined, TEKS.kepuasanJudul(persen(m.nilai)));
   judul.id = 'popup-kepuasan-judul';
-  const bonus = el('p', 'kepuasan-bonus', TEKS.kepuasanBonus(persen(m.bonus), persen(m.bonusMulai), persen(m.bonusMaks)));
-  bonus.classList.toggle('nol', m.bonus <= 0);
-  const penumpang = el('p', 'kepuasan-penumpang', TEKS.kepuasanPenumpang(persen(m.tambahanPenumpang), persen(m.keterisian)));
+  const penumpang = el('p', 'kepuasan-penumpang', TEKS.kepuasanPenumpang(persen(m.tambahanPenumpang)));
   const baris = (label: string, nilai: number, saran: string): HTMLElement => {
     const b = el('div', 'kepuasan-baris');
     b.dataset['tingkat'] = tingkatKepuasan(nilai);
@@ -48,19 +52,22 @@ export function tampilkanPopupKepuasan(akar: HTMLElement, m: ModelKepuasan): voi
     const isi = el('div', 'bar-isi');
     isi.style.width = `${(nilai * 100).toFixed(1)}%`;
     bar.append(isi);
-    b.append(atas, bar, el('div', 'kepuasan-saran', nilai >= 0.999 ? TEKS.kepuasanBaik : saran));
+    b.append(atas, bar, el('div', 'kepuasan-saran', nilai >= 0.995 ? TEKS.kepuasanBaik : saran));
     return b;
   };
   const daftar = el('div', 'kepuasan-daftar');
   daftar.append(
-    baris(TEKS.kepuasanKelancaran, m.kelancaran, TEKS.kepuasanSaranKelancaran(NAMA_TAHAP[m.tahapLambat])),
-    baris(TEKS.kepuasanFasilitas, m.fasilitas, TEKS.kepuasanSaranFasilitas(m.levelFasilitas, m.fasilitasPerlu)),
-    baris(TEKS.kepuasanJalur, m.jalur, TEKS.kepuasanSaranJalur(m.jumlahJalur, m.jalurPerlu)),
+    baris(TEKS.kepuasanKelancaran, m.kelancaran, m.bottleneck ? TEKS.kepuasanSaranKelancaran(NAMA_AREA[m.bottleneck]) : TEKS.kepuasanBaik),
+    baris(TEKS.kepuasanKenyamanan, m.kenyamanan, m.kursi.ada < m.kursi.perlu || m.papanJadwal ? TEKS.kepuasanSaranKenyamanan(m.kursi.ada, m.kursi.perlu) : TEKS.kepuasanSaranJadwal),
+    baris(TEKS.kepuasanKebersihan, m.kebersihan, TEKS.kepuasanSaranKebersihan(m.petugasKebersihan.ada, m.petugasKebersihan.perlu)),
+    baris(TEKS.kepuasanKeamanan, m.keamanan, TEKS.kepuasanSaranKeamanan(m.satpam.ada, m.satpam.perlu)),
+    baris(TEKS.kepuasanFasilitas, m.fasilitas, saranFasilitas(m)),
+    baris(TEKS.kepuasanHarga, m.harga, TEKS.kepuasanSaranHarga),
   );
   const catatan = el('p', 'popup-catatan', TEKS.kepuasanCatatan);
   const tutupB = el('button', 'tombol tombol-hijau popup-tombol', TEKS.kepuasanTutup);
   tutupB.type = 'button';
-  kotak.append(wajah, judul, bonus, penumpang, daftar, catatan, tutupB);
+  kotak.append(wajah, judul, penumpang, daftar, catatan, tutupB);
   latar.append(kotak);
   akar.append(latar);
   const tutup = (): void => {

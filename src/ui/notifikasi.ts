@@ -1,10 +1,10 @@
 /**
  * Notifikasi singkat dari perubahan view model di antara dua pembaruan state:
- * satu pesan terpenting per pembaruan (event, kelas & level terminal, mitra
- * PO, penghargaan, rekor, …). Murni, tanpa DOM; ditampilkan oleh overlay.ts.
+ * satu pesan terpenting per pembaruan (kas, event, kelas & level terminal,
+ * mitra PO, penghargaan, rekor, …). Murni, tanpa DOM; ditampilkan oleh overlay.ts.
  */
 import type { PoId } from '../sim/fitur';
-import { formatAngka, formatUang } from './format';
+import { formatAngka } from './format';
 import type { ModelTampilan } from './model';
 import { namaKelas, NAMA_EVENT, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, TEKS } from './teks';
 
@@ -13,13 +13,15 @@ import { namaKelas, NAMA_EVENT, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN,
  * @returns null bila tidak ada yang perlu diberitahukan.
  */
 export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diputus: ReadonlySet<PoId> = new Set()): string | null {
+  // Kas lebih dulu: pemain perlu bertindak sebelum petugas berikutnya berhenti.
+  if (m.petugasBerhenti > lalu.petugasBerhenti) return TEKS.notifPetugasBerhenti;
+  if (m.hud.kasMenipis && !lalu.hud.kasMenipis) return TEKS.notifKasMenipis;
   const ev = m.event;
   if (ev?.aktif && !lalu.event?.aktif) return TEKS.notifEventMulai(NAMA_EVENT[ev.id].ikon, NAMA_EVENT[ev.id].nama, formatAngka(ev.pengali, { desimalKecil: 2 }));
   if (ev?.bisaKlaim && !lalu.event?.bisaKlaim) return TEKS.notifEventTahap;
   const t = m.terminal;
   const tl = lalu.terminal;
   if (t.kelas > tl.kelas) return TEKS.notifNaikKelas(namaKelas(t.kelas));
-  if (t.renovasi.jumlah > tl.renovasi.jumlah) return TEKS.notifRenovasi(Math.round(t.renovasi.bonus * 100));
   const perluasan = t.perluasan.selesai > tl.perluasan.selesai ? NAMA_PERLUASAN[t.perluasan.selesai - 1] : undefined;
   if (perluasan) return TEKS.notifPerluasan(perluasan.nama);
   const sekarang = new Map(m.mitra.terdaftar.map((p) => [p.id, p]));
@@ -43,7 +45,8 @@ export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diput
     return l !== undefined && p.kontrakHari <= 1 && l.kontrakHari > 1;
   });
   if (hampirHabis) return TEKS.notifKontrakHampir(NAMA_PO[hampirHabis.id].nama);
-  if (m.jalur.jumlah > lalu.jalur.jumlah) return TEKS.notifJalur(m.jalur.jumlah);
+  const jalur = m.bangun.bangunan.jalur.jumlah;
+  if (jalur > lalu.bangun.bangunan.jalur.jumlah) return TEKS.notifJalur(jalur);
   const pencapaian = m.pencapaian.find((p, i) => p.tercapai && !lalu.pencapaian[i]?.tercapai);
   if (pencapaian) return TEKS.notifPencapaian(NAMA_PENCAPAIAN[pencapaian.id].nama);
   // Tantangan yang baru tercapai (minggu yang sama) & rekor harian yang baru dipecahkan.
@@ -56,10 +59,6 @@ export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diput
     return l !== undefined && p.level > l.level;
   });
   if (poNaik) return TEKS.notifPoLevel(NAMA_PO[poNaik.id].nama, poNaik.level);
-  if (t.renovasi.bisa && !tl.renovasi.bisa) return TEKS.notifSiapRenovasi;
   if (m.target.selesai && !lalu.target.selesai && !m.target.diklaim) return TEKS.notifTarget;
-  if (m.sewaKios.hariKe !== lalu.sewaKios.hariKe && m.sewaKios.hari && m.sewaKios.terakhir.gt(0)) {
-    return TEKS.notifSewaKios(m.sewaKios.hari, formatUang(m.sewaKios.terakhir));
-  }
   return null;
 }

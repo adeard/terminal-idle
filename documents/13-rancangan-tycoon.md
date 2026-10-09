@@ -1,6 +1,6 @@
 # 13 · Rancangan Tycoon: dari idle ke tycoon
 
-> **Status: langkah 1 selesai (8 Oktober 2026)** di cabang `tycoon`: modul murni (`src/sim/bangunan.ts`, `petugas.ts`, `tarif.ts`, `operasi.ts`, `keuangan.ts`) dan kalibrasi lewat tes tempo. Game belum memakainya; rilis 0.2.0 (ekonomi mitra PO, dokumen 12) masih memakai konsep idle. Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
+> **Status: langkah 1, 2, 3, dan 5 selesai (9 Oktober 2026)** di cabang `tycoon` (bagian 15): modul murni & kalibrasi, lalu `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik sudah memakai ekonomi tycoon. Sisa: adegan 3D (bagian 12) dan rilis 0.3.0. Produksi masih rilis 0.2.0 (ekonomi mitra PO, dokumen 12, konsep idle). Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
 >
 > Angka di dokumen ini adalah hasil kalibrasi pertama (bagian 14), masih bisa digeser. Angka yang berlaku selalu yang di `EKONOMI.tycoon` (`src/config/economy.config.ts`).
 
@@ -255,14 +255,16 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
 
 - Terminal hanya beroperasi saat game ditutup bila ada **Manajer Operasional**. Tanpa manajer, terminal tutup: tidak ada pendapatan dan tidak ada biaya.
 - Dengan manajer, laba offline = pendapatan × 60% − biaya penuh, paling lama **8 jam**, cukup untuk semalam tidur. Bisa negatif bila petugasnya terlalu banyak. Popup "Selama kamu pergi…" menampilkan pendapatan, biaya, dan laba.
+- Jam terminal berhenti selama game ditutup, jadi pendapatan offline dihitung dari rata-rata hari biasa dengan tarif pemain, tapi tidak pernah melebihi hasil tarif bawaan: tarif ekstrem sesaat sebelum keluar tidak menggelembungkan laba offline.
+- Kas tetap tidak minus: bila habis, petugas berhenti satu per satu seperti bagian 6.3 dan biayanya ikut turun. Bila Manajer Operasional ikut berhenti, terminal tutup untuk sisa waktunya. Popup menyebut petugas yang berhenti.
 - Proyek perluasan tetap berjalan, dengan atau tanpa manajer (keputusan 8 dokumen 12).
 
 ## 10. Target, tantangan, penghargaan, event, iklan
 
 - **Target harian**: penumpang (tetap) dan **laba bersih hari ini ≥ X**. "Upgrade 10×" dihapus.
-- **Tantangan mingguan**: penumpang, laba bersih, dan kepuasan. "Upgrade 40×" dihapus.
-- **Penghargaan**: yang berbasis level tahap (mis. `level100`) diganti, misalnya "5 jalur", "tanpa rugi 7 hari", "semua slot loket terisi", dan "Terpadu".
-- **Hadiah "N menit pendapatan"** menjadi "N menit laba" (laba rata-rata per jam, paling sedikit nilai kecil supaya tetap terasa saat rugi).
+- **Tantangan mingguan**: tiga dari empat jenis diundi tiap minggu: penumpang, laba bersih, kepuasan ≥ 75% selama 60 menit main, dan bangun 15 unit atau modernisasi. "Upgrade 40×" dihapus.
+- **Penghargaan**: yang berbasis level tahap (mis. `level100`) diganti. Kini 20 penghargaan (`PENCAPAIAN_IDS`), antara lain petugas pertama, Manajer Operasional, lima jalur, tujuh hari tanpa rugi, kas Rp 1 M, aula loket penuh, dan Terpadu.
+- **Hadiah "N menit pendapatan"** menjadi "N menit laba": laba rata-rata per jam hari biasa dengan tarif bawaan, paling sedikit Rp 200 rb per menit supaya tetap terasa saat rugi.
 - **Boost iklan** tetap: pendapatan ×2 selama 30 menit. Bus Emas tetap.
 - **Event musiman** tetap: pasar penumpang naik (Mudik ×1,5, Nataru ×1,3, HUT RI ×1,17), jadi kapasitas & petugas tambahan terasa gunanya.
 
@@ -276,6 +278,7 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
 - **HUD**: kas, laba hari ini (hijau/merah), arus, kepuasan, jam.
 - **Adegan**: label area (PERON, LOKET, KEBERANGKATAN, PANGKALAN) bisa diketuk untuk membuka kartu Bangun area itu. Penanda "PALING LAMBAT" tetap ada di area yang membatasi arus.
 - **Mode ringkas** hanya menyembunyikan panel. Rel chip tahap dihapus.
+- Semua di atas sudah diterapkan (langkah 3), kecuali label area yang bisa diketuk: menyusul bersama adegan 3D (bagian 12).
 
 ## 12. Adegan 3D
 
@@ -286,10 +289,13 @@ Sebagian besar sudah menggambarkan benda nyata: halte & gerbang per jalur, jende
 - **Lahan parkir kendaraan** (baris 1, baris 2 di tahap 2) dan **pos retribusi** mengikuti yang dibangun.
 - **Label area** bisa diketuk (bagian 11).
 
+Yang sudah ikut langkah 2: lencana "K" dihapus dari label area, penanda "PALING LAMBAT" mengikuti area yang membatasi arus jam sibuk (`bottleneckState`), penjaga kios & toko hadir per unit yang dibangun, kios & toko tertutup rolling door sampai ada yang dibangun, dan juru parkir, petugas toilet, serta petugas retribusi hanya hadir bila bangunannya ada **dan** petugasnya direkrut. Efek "+Rp" memetakan enam sumber pendapatan ke empat tempat transaksi (loket, bus parkir, lorong parkir, kios/toko); "+Rp" sewa kios harian dihapus.
+
 ## 13. Save & rilis
 
-- Skema save **3**. Belum ada pemain, jadi save 0.1/0.2 tidak dimigrasi: ekonomi dimulai baru, sedangkan nama terminal, profil, dan statistik sepanjang masa dipertahankan.
+- Skema save **3**. Belum ada pemain, jadi save 0.1/0.2 tidak dimigrasi (`migrasiKeV3`): ekonomi dimulai baru, dan hanya profil (nama terminal & persetujuan papan peringkat) serta benih cuaca yang dibawa. Statistik ikut mulai dari nol, karena uang idle tidak sebanding dengan Rupiah tycoon dan jam terminal kembali ke Senin 06.00.
 - `versiMinimal` dinaikkan ke versi rilis tycoon (mis. 0.3.0).
+- Papan peringkat: batas kenaikan skor di server kini 100 penumpang per detik main (`ARUS_WAJAR_MAKS`, terminal terbesar ±26). Server ikut `npm run deploy:web`, dan klien lama dipaksa memperbarui lewat `versiMinimal`.
 
 ## 14. Kalibrasi & target tempo
 
@@ -317,7 +323,7 @@ Catatan kalibrasi:
 - **Akhir permainan** sempat mentok karena peron maksimal di 5 jalur. Perluasan 4 & 5 kini menambah jalur.
 - Permintaan di akhir permainan masih ±1,6× kapasitas (kelancaran rendah). Biaya layanan yang lebih tinggi (bagian 6.4) dan Jalur 8–9 adalah jalan keluarnya; pemain serakah memakai tarif bawaan.
 
-Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.ts`, `operasi.test.ts` (termasuk pasar mutlak: membangun melebihi permintaan tidak menambah arus), `keuangan.test.ts` (termasuk overbuild merugi dan kas tidak pernah minus). Tes offline menyusul bersama peralihan state (langkah 2).
+Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.ts`, `operasi.test.ts` (termasuk pasar mutlak: membangun melebihi permintaan tidak menambah arus), `keuangan.test.ts` (termasuk overbuild merugi dan kas tidak pernah minus). Tes offline (Manajer Operasional, batas 8 jam, jam mundur, tarif ekstrem tidak menggelembungkan laba offline, kas habis) ada di `tests/state.test.ts` sejak langkah 2.
 
 ## 15. Rencana implementasi bertahap
 
@@ -326,19 +332,22 @@ Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.t
    - kapasitas area, pasar mutlak per jurusan, pendapatan & biaya, kas tidak minus;
    - harga tiket = harga normal PO, tarif terminal, kepuasan mitra PO;
    - kalibrasi lewat pemain serakah & tes tempo.
-2. **Peralihan state & save**:
+2. ✓ **Peralihan state & save**:
    - `GameState` memakai bangunan, petugas (urut rekrut), tarif, kas (Rupiah `number`), dan buku harian (pendapatan & biaya per hari);
    - aksi bangun / bongkar / rekrut / berhentikan / atur tarif; offline dengan Manajer Operasional;
    - hapus tahap, Kepala, Renovasi, milestone, bonus level, harga per PO;
    - save skema 3 & cloud save (ekonomi lama dimulai baru, profil tetap).
-3. **UI**: tab Bangun / Petugas, tarif & laporan keuangan di tab Terminal, kartu PO tanpa harga per jurusan, HUD laba, popup offline baru; tab Tahap & rel chip dihapus.
-4. **Adegan 3D**: blok kursi, petugas sesuai rekrutan, lahan parkir & pos retribusi, label area yang bisa diketuk, penanda bottleneck per area.
-5. **Tutorial**, target harian, tantangan, penghargaan, notifikasi, analitik. Tutorial usulan:
+3. ✓ **UI**: tab Bangun / Petugas, tarif & laporan keuangan di tab Terminal, kartu PO tanpa harga per jurusan, HUD laba, popup offline baru; tab Tahap & rel chip dihapus. Dikerjakan bersama langkah 2 supaya game tetap bisa dikompilasi.
+4. **Adegan 3D** (berikutnya): blok kursi, petugas peron, gerbang, kebersihan, & satpam sesuai rekrutan, lahan parkir & pos retribusi, label area yang bisa diketuk. Penanda bottleneck per area dan petugas fasilitas sudah ikut langkah 2 (bagian 12).
+5. ✓ **Tutorial**, target harian, tantangan, penghargaan, notifikasi, analitik. Tutorial (sesuai usulan):
    - bangun jendela loket;
    - daftarkan PO kedua;
    - rekrut petugas peron;
    - bangun Jalur 2.
-6. **README & dokumen**, lalu rilis 0.3.0.
+6. **README & dokumen** (✓ README & dokumen ini), lalu **rilis 0.3.0**:
+   - `version` 0.3.0 di `package.json`, `catatan` baru dan `versiMinimal` 0.3.0 di `src/config/rilis.config.ts`;
+   - judul "Bustation: Idle Bus" masih menyebut idle: diputuskan sebelum rilis (nama, `index.html`, manifest PWA, og-image);
+   - gabung `tycoon` ke `main`, `npm run deploy:web`, dan `npm run cap:sync` sebelum build APK.
 
 ## 16. Keputusan terbuka
 

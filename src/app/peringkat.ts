@@ -25,8 +25,12 @@ export const BATAS_PERINGKAT = 1000;
 export const SELANG_KIRIM_MS = 3 * 60_000;
 /** Server menolak kiriman satu akun yang lebih rapat dari ini. */
 export const SELANG_MIN_SERVER_MS = 20_000;
-/** Arus penumpang tertinggi yang masih masuk akal (pnp/dtk); terminal terbesar pun jauh di bawahnya. */
-export const ARUS_WAJAR_MAKS = 100_000;
+/**
+ * Arus penumpang tertinggi yang masih masuk akal (pnp per detik main). Terminal
+ * terbesar (semua slot & modernisasi) sekitar 1.600 pnp per jam terminal = ±26 per
+ * detik main; batas ini memberi kelonggaran ±4×.
+ */
+export const ARUS_WAJAR_MAKS = 100;
 /** Kecepatan waktu tercepat (penumpang bertambah sekian kali lebih cepat per detik nyata). */
 export const KECEPATAN_MAKS = Math.max(...PILIHAN_KECEPATAN);
 /** Skor akhir minggu lalu masih diterima sebentar setelah Senin 00.00 WIB. */

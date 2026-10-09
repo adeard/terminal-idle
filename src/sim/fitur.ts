@@ -1,39 +1,37 @@
 /**
- * Daftar fitur pengelolaan terminal di luar tiga tahap: fasilitas pendapatan
- * sampingan, modernisasi (teknologi), target harian, dan pencapaian.
- * Angka tuning-nya ada di economy.config.ts.
+ * Daftar id fitur pengelolaan terminal: modernisasi, target harian,
+ * pencapaian, mitra PO, kelas bus, event, dan (tycoon) bangunan, petugas,
+ * tarif. Angka tuning-nya ada di economy.config.ts.
  */
 
-/** Fasilitas penunjang: tiap level menambah pendapatan per penumpang yang berangkat. */
-export const FASILITAS_IDS = ['kios', 'parkir', 'toilet', 'retribusi'] as const;
-export type FasilitasId = (typeof FASILITAS_IDS)[number];
-
-/** Modernisasi: pembelian sekali, menambah kapasitas satu tahap (dua per tahap, berurutan). */
+/** Modernisasi: pembelian sekali, menambah kapasitas satu area (dua per area, berurutan). */
 export const TEKNOLOGI_IDS = ['rambuHalte', 'pengaturBus', 'mesinTiket', 'eTiket', 'jadwalDigital', 'gateOtomatis'] as const;
 export type TeknologiId = (typeof TEKNOLOGI_IDS)[number];
 
-/** Jenis target harian (bergantian tiap hari terminal). */
-export type JenisTarget = 'upgrade' | 'penumpang';
+/** Jenis target harian (bergantian tiap hari terminal): berangkatkan penumpang, atau raih laba bersih. */
+export type JenisTarget = 'penumpang' | 'laba';
 
 /** Pencapaian (penghargaan terminal), urut kira-kira dari yang paling awal diraih. */
 export const PENCAPAIAN_IDS = [
-  'kepalaPertama',
+  'petugasPertama',
   'fasilitasPertama',
-  'semuaOtomatis',
   'targetPertama',
-  'level25',
-  'penumpang100rb',
+  'manajerOperasional',
   'sepekan',
-  'fasilitasLengkap',
-  'jalurLengkap',
+  'jalurLima',
   'jurusanSemua',
-  'antarpulau',
   'kelasB',
+  'tanpaRugi',
+  'penumpang100rb',
+  'antarpulau',
+  'fasilitasLengkap',
   'modernLengkap',
-  'level100',
+  'kasMiliar',
   'kelasA',
   'armadaLengkap',
-  'penumpang10jt',
+  'loketPenuh',
+  'terpadu',
+  'penumpangSejuta',
   'lintasNusantara',
 ] as const;
 export type PencapaianId = (typeof PENCAPAIAN_IDS)[number];
@@ -91,10 +89,6 @@ export function isPoId(nilai: unknown): nilai is PoId {
   return typeof nilai === 'string' && (PO_IDS as readonly string[]).includes(nilai);
 }
 
-export function isFasilitasId(nilai: unknown): nilai is FasilitasId {
-  return typeof nilai === 'string' && (FASILITAS_IDS as readonly string[]).includes(nilai);
-}
-
 export function isTeknologiId(nilai: unknown): nilai is TeknologiId {
   return typeof nilai === 'string' && (TEKNOLOGI_IDS as readonly string[]).includes(nilai);
 }
@@ -104,7 +98,7 @@ export function isPencapaianId(nilai: unknown): nilai is PencapaianId {
 }
 
 // ---------------------------------------------------------------------------
-// Tycoon (documents/13-rancangan-tycoon.md)
+// Bangunan, petugas, tarif (documents/13-rancangan-tycoon.md)
 
 /**
  * Bangunan yang dibangun di slot denah: jalur = halte kedatangan + gerbang
@@ -121,3 +115,15 @@ export type PetugasId = (typeof PETUGAS_IDS)[number];
 /** Tarif terminal yang diatur pemain (harga tiket diatur PO sendiri). */
 export const TARIF_IDS = ['layanan', 'sewaLoket', 'retribusiBus', 'parkir', 'toilet', 'sewaKios'] as const;
 export type TarifId = (typeof TARIF_IDS)[number];
+
+export function isBangunanId(nilai: unknown): nilai is BangunanId {
+  return typeof nilai === 'string' && (BANGUNAN_IDS as readonly string[]).includes(nilai);
+}
+
+export function isPetugasId(nilai: unknown): nilai is PetugasId {
+  return typeof nilai === 'string' && (PETUGAS_IDS as readonly string[]).includes(nilai);
+}
+
+export function isTarifId(nilai: unknown): nilai is TarifId {
+  return typeof nilai === 'string' && (TARIF_IDS as readonly string[]).includes(nilai);
+}

@@ -1,4 +1,3 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { peristiwaAksi } from '../src/app/analitik';
 import { EKONOMI } from '../src/config/economy.config';
@@ -6,92 +5,52 @@ import { DuniaVisual } from '../src/game/dunia-visual';
 import { hitungLajuVisual } from '../src/game/laju';
 import { GERBANG_X, HALTE_BERANGKAT_X, HALTE_DATANG_X } from '../src/game/tata-letak';
 import { terapkanAksi } from '../src/sim/aksi';
-import { deserialisasi, serialisasi } from '../src/sim/save';
-import {
-  biayaJalurBerikutnya,
-  bisaBukaJalur,
-  bukaJalur,
-  jumlahJalurMaks,
-  kapasitasTahap,
-  multJalur,
-  renovasi,
-  tick,
-  type GameState,
-} from '../src/sim/state';
+import { slotBangunan } from '../src/sim/bangunan';
+import { bangun, biayaBangunState, operasiState, pengembalianBongkarState } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
-import { denganPo, stateOtomatis, T0 } from './helpers';
+import { denganBangunan, denganPo, kaya, stateOtomatis } from './helpers';
 
-const kaya = (s: GameState, uang = 1e12): GameState => ({ ...s, uang: new Decimal(uang) });
+const J = EKONOMI.tycoon.bangunan.jalur;
 
 describe('jalur bus (sim)', () => {
-  it('game baru: satu jalur, tanpa bonus; jumlah jalur = jumlah halte di adegan', () => {
+  it('game baru: satu jalur; slot jalur sebanyak halte di adegan sampai Gedung Antarpulau', () => {
     const s = stateOtomatis();
-    expect(s.terminal.jalur).toBe(1);
-    expect(multJalur(s, 'peron')).toBe(1);
-    expect(jumlahJalurMaks()).toBe(HALTE_DATANG_X.length);
-    expect(jumlahJalurMaks()).toBe(HALTE_BERANGKAT_X.length);
-    expect(jumlahJalurMaks()).toBe(GERBANG_X.length);
+    expect(s.terminal.bangunan.jalur).toBe(1);
+    expect(slotBangunan('jalur', 0)).toBe(HALTE_DATANG_X.length);
+    expect(HALTE_BERANGKAT_X.length).toBe(HALTE_DATANG_X.length);
+    expect(GERBANG_X.length).toBe(HALTE_BERANGKAT_X.length);
   });
 
-  it('dibangun berurutan: uang dipotong, Peron & Keberangkatan naik, Loket tetap', () => {
-    let s = kaya(stateOtomatis({ peron: 10, loket: 10, keberangkatan: 10 }));
-    const kap = { peron: kapasitasTahap(s, 'peron'), loket: kapasitasTahap(s, 'loket'), keberangkatan: kapasitasTahap(s, 'keberangkatan') };
-    const uang = s.uang.toNumber();
-    s = bukaJalur(s);
-    expect(s.terminal.jalur).toBe(2);
-    expect(s.uang.toNumber()).toBeCloseTo(uang - EKONOMI.jalur.biaya[0]!, 0);
-    const bonus = 1 + EKONOMI.jalur.bonusKapasitas;
-    expect(kapasitasTahap(s, 'peron')).toBeCloseTo(kap.peron * bonus, 9);
-    expect(kapasitasTahap(s, 'keberangkatan')).toBeCloseTo(kap.keberangkatan * bonus, 9);
-    expect(kapasitasTahap(s, 'loket')).toBeCloseTo(kap.loket, 9);
-    for (let i = 0; i < 10; i++) s = bukaJalur(s);
-    expect(s.terminal.jalur).toBe(jumlahJalurMaks());
-    expect(biayaJalurBerikutnya(s)).toBeNull();
-    expect(bisaBukaJalur(s)).toBe(false);
-    expect(bukaJalur(s)).toBe(s);
-    expect(tick(s, 0.1).pencapaian.tercapai).toContain('jalurLengkap');
+  it('dibangun berurutan: kas dipotong, Peron & Keberangkatan naik, Loket tetap; tiap jalur makin mahal', () => {
+    let s = kaya(stateOtomatis());
+    const op = operasiState(s);
+    s = bangun(s, 'jalur');
+    expect(s.terminal.bangunan.jalur).toBe(2);
+    expect(s.kas).toBe(1e15 - J.biaya[0]!);
+    const op2 = operasiState(s);
+    expect(op2.kapasitas.peron).toBeCloseTo(2 * op.kapasitas.peron, 6);
+    expect(op2.kapasitas.keberangkatan).toBeCloseTo(2 * op.kapasitas.keberangkatan, 6);
+    expect(op2.kapasitas.loket).toBe(op.kapasitas.loket);
+    expect(biayaBangunState(s, 'jalur')).toBe(J.biaya[1]);
+    for (let i = 1; i < J.biaya.length; i++) expect(J.biaya[i]!).toBeGreaterThan(J.biaya[i - 1]!);
   });
 
-  it('uang kurang: tidak terjadi apa-apa; biaya naik tiap jalur', () => {
-    const s = stateOtomatis({}, EKONOMI.jalur.biaya[0]! - 1);
-    expect(bukaJalur(s)).toBe(s);
-    for (let i = 1; i < EKONOMI.jalur.biaya.length; i++) expect(EKONOMI.jalur.biaya[i]!).toBeGreaterThan(EKONOMI.jalur.biaya[i - 1]!);
+  it('kas kurang: tidak terjadi apa-apa; jalur permanen (tidak bisa dibongkar); slot penuh sampai perluasan', () => {
+    const miskin = { ...stateOtomatis(), kas: J.biaya[0]! - 1 };
+    expect(bangun(miskin, 'jalur')).toBe(miskin);
+    expect(pengembalianBongkarState(denganBangunan(stateOtomatis(), { jalur: 3 }), 'jalur')).toBeNull();
+    const penuh = denganBangunan(kaya(stateOtomatis()), { jalur: slotBangunan('jalur', 0) });
+    expect(biayaBangunState(penuh, 'jalur')).toBeNull();
   });
 
-  it('jalur bus permanen: tidak dibongkar saat Renovasi', () => {
-    let s = bukaJalur(bukaJalur(kaya(stateOtomatis())));
-    s = { ...s, statistik: { ...s.statistik, totalPendapatanRun: new Decimal(1e9) } };
-    const r = renovasi(s);
-    expect(r.renovasi.jumlah).toBe(1);
-    expect(r.terminal.jalur).toBe(3);
-  });
-
-  it('tersimpan; save lama tanpa jalur mendapat jalur sesuai tonggak level (terminal tidak menyusut)', () => {
-    const s = bukaJalur(kaya(stateOtomatis()));
-    expect(deserialisasi(serialisasi(s), T0).terminal.jalur).toBe(2);
-    const lama = (level: number): number => {
-      const mentah = JSON.parse(serialisasi(stateOtomatis({ peron: level, loket: level, keberangkatan: level }))) as { terminal: Record<string, unknown> };
-      delete mentah.terminal['jalur'];
-      return deserialisasi(JSON.stringify(mentah), T0).terminal.jalur;
-    };
-    expect(lama(1)).toBe(1);
-    expect(lama(30)).toBe(2);
-    expect(lama(120)).toBe(4);
-    expect(lama(250)).toBe(5);
-    const mentah = JSON.parse(serialisasi(s)) as { terminal: Record<string, unknown> };
-    mentah.terminal['jalur'] = 99;
-    expect(deserialisasi(JSON.stringify(mentah), T0).terminal.jalur).toBe(jumlahJalurMaks());
-  });
-
-  it('aksi, analitik, dan model tab Fasilitas', () => {
+  it('aksi, analitik, dan model tab Bangun', () => {
     const s = kaya(stateOtomatis());
-    const baru = terapkanAksi(s, { jenis: 'bukaJalur' });
-    expect(peristiwaAksi({ jenis: 'bukaJalur' }, s, baru)).toEqual([{ nama: 'buka_jalur', data: { jalur: 2 } }]);
-    const m = buatModel(baru).jalur;
-    expect(m).toMatchObject({ jumlah: 2, maks: jumlahJalurMaks(), bisa: true });
-    expect(m.mult).toBeCloseTo(1 + EKONOMI.jalur.bonusKapasitas, 9);
-    expect(m.multBerikut).toBeCloseTo(1 + 2 * EKONOMI.jalur.bonusKapasitas, 9);
-    expect(m.biaya?.toNumber()).toBe(EKONOMI.jalur.biaya[1]);
+    const aksi = { jenis: 'bangun', bangunan: 'jalur' } as const;
+    const b = terapkanAksi(s, aksi);
+    expect(b.terminal.bangunan.jalur).toBe(2);
+    expect(peristiwaAksi(aksi, s, b)).toEqual([{ nama: 'bangun', data: { bangunan: 'jalur', jumlah: 2 } }]);
+    const m = buatModel(b).bangun.bangunan.jalur;
+    expect(m).toMatchObject({ jumlah: 2, slot: slotBangunan('jalur', 0), biaya: J.biaya[1], bongkar: null });
   });
 });
 
@@ -109,9 +68,9 @@ describe('jalur bus di adegan', () => {
   it('bus hanya memakai halte & jalur keberangkatan yang sudah dibangun; bus lain menunggu', () => {
     for (const jalur of [1, 2, 3]) {
       // Semua jurusan Jawa-Bali dilayani (empat PO di Lv 12), jadi semua kelompok parkir terbuka.
-      let dasar = stateOtomatis({ peron: 40, loket: 40, keberangkatan: 40 });
-      for (const id of ['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa'] as const) dasar = denganPo(dasar, id, { level: 12 });
-      const s = { ...dasar, terminal: { ...dasar.terminal, jalur } };
+      let dasar = stateOtomatis({ jalur: 5 });
+      for (const id of ['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa'] as const) dasar = denganPo(dasar, id, { level: 12, loket: 2 });
+      const s = denganBangunan(dasar, { jalur });
       const laju = hitungLajuVisual(s);
       expect(laju.jalur).toBe(jalur);
       const dunia = new DuniaVisual({ acak: acakBerbenih(7 + jalur) });

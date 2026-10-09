@@ -1,46 +1,47 @@
-import Decimal from 'break_infinity.js';
 import { EKONOMI } from '../src/config/economy.config';
 import { WAKTU } from '../src/config/waktu.config';
-import type { PoId } from '../src/sim/fitur';
+import type { BangunanId, PetugasId, PoId } from '../src/sim/fitur';
 import { xpKumulatifTerminal } from '../src/sim/level-terminal';
 import { tingkatPo, xpKumulatifPo } from '../src/sim/mitra';
-import { aturLevelLoket, buatPoTerdaftar, buatStateBaru, tick, type GameState } from '../src/sim/state';
-import { TAHAP_IDS, type TahapId } from '../src/sim/tahap';
+import { rapikanPetugas } from '../src/sim/petugas';
+import { buatPoTerdaftar, buatStateBaru, tick, type GameState } from '../src/sim/state';
 
 export const T0 = Date.UTC(2026, 0, 1);
 export const DT = 0.1;
 
-/** Reputasi netral: faktor reputasi 1, jadi pendapatan sama dengan rumus dasar (v1). */
+/** Reputasi netral: faktor reputasi 1 (lihat faktorReputasi). */
 export const REPUTASI_NETRAL = 50;
 
 /**
- * State baru dengan level tertentu dan semua Kepala sudah direkrut (gratis, untuk setup test).
- * Level Loket = banyaknya loket: semuanya disewa PO awal (tetap Lv 1, reputasi netral),
- * jadi kapasitas & pendapatannya sama dengan rumus dasar satu PO.
+ * Terminal baru yang berjalan untuk setup tes: PO awal bereputasi netral, ditambah
+ * bangunan tertentu (tanpa biaya & slot) dan, bila diminta, petugas (urut rekrut).
  */
-export function stateOtomatis(level: Partial<Record<TahapId, number>> = {}, uang: number = EKONOMI.uangAwal): GameState {
+export function stateOtomatis(bangunan: Partial<Record<BangunanId, number>> = {}, kas: number = EKONOMI.tycoon.modalAwal, petugas: readonly PetugasId[] = []): GameState {
   const s = buatStateBaru(T0);
-  const tahap = { ...s.terminal.tahap };
-  for (const id of TAHAP_IDS) {
-    tahap[id] = { ...tahap[id], level: level[id] ?? 1, kepala: { direkrut: true } };
-  }
-  const loket = level.loket ?? 1;
-  const mitra = {
-    ...s.mitra,
-    terdaftar: s.mitra.terdaftar.map((p, i) => (i === 0 ? { ...p, loket, rekorLoket: Math.max(p.rekorLoket, loket), reputasi: REPUTASI_NETRAL } : p)),
-  };
-  return { ...s, uang: new Decimal(uang), mitra, terminal: aturLevelLoket({ ...s.terminal, tahap }, mitra) };
+  const mitra = { ...s.mitra, terdaftar: s.mitra.terdaftar.map((p) => ({ ...p, reputasi: REPUTASI_NETRAL })) };
+  return denganPetugas(denganBangunan({ ...s, kas, mitra }, bangunan), petugas);
 }
 
-/** Uang berlimpah untuk setup tes. */
-export function kaya(state: GameState, uang = 1e15): GameState {
-  return { ...state, uang: new Decimal(uang) };
+/** Kas berlimpah untuk setup tes. */
+export function kaya(state: GameState, kas = 1e15): GameState {
+  return { ...state, kas };
+}
+
+/** Ganti jumlah bangunan langsung (tanpa biaya & slot); petugas yang melebihi batas barunya keluar. */
+export function denganBangunan(state: GameState, b: Partial<Record<BangunanId, number>>): GameState {
+  const bangunan = { ...state.terminal.bangunan, ...b };
+  return { ...state, terminal: { ...state.terminal, bangunan, petugas: rapikanPetugas(state.terminal.petugas, bangunan) } };
+}
+
+/** Ganti petugas langsung (urut rekrut, dirapikan ke batas bangunan). */
+export function denganPetugas(state: GameState, petugas: readonly PetugasId[]): GameState {
+  return { ...state, terminal: { ...state.terminal, petugas: rapikanPetugas(petugas, state.terminal.bangunan) } };
 }
 
 /**
  * Daftarkan (atau ubah) PO langsung, tanpa syarat & biaya (setup tes): level lewat
- * XP kumulatifnya, loket (bawaan: loket bawaan tingkatnya), reputasi (bawaan: netral).
- * Level Loket terminal dihitung ulang.
+ * XP kumulatifnya, jendela loket (bawaan: loket bawaan tingkatnya), reputasi
+ * (bawaan: netral). Jendela terminal ditambah bila kurang untuk semua PO.
  */
 export function denganPo(state: GameState, id: PoId, o: { readonly level?: number; readonly loket?: number; readonly reputasi?: number } = {}): GameState {
   const lama = state.mitra.terdaftar.find((p) => p.id === id);
@@ -49,12 +50,12 @@ export function denganPo(state: GameState, id: PoId, o: { readonly level?: numbe
     ...dasar,
     xp: o.level !== undefined ? xpKumulatifPo(o.level) : dasar.xp,
     loket: o.loket ?? dasar.loket,
-    rekorLoket: Math.max(dasar.rekorLoket, o.loket ?? dasar.loket),
     reputasi: o.reputasi ?? (lama ? lama.reputasi : REPUTASI_NETRAL),
   };
   const terdaftar = lama ? state.mitra.terdaftar.map((x) => (x.id === id ? p : x)) : [...state.mitra.terdaftar, p];
-  const mitra = { ...state.mitra, terdaftar };
-  return { ...state, mitra, terminal: aturLevelLoket(state.terminal, mitra) };
+  const disewa = terdaftar.reduce((a, x) => a + x.loket, 0);
+  const s = { ...state, mitra: { ...state.mitra, terdaftar } };
+  return disewa > s.terminal.bangunan.jendela ? denganBangunan(s, { jendela: disewa }) : s;
 }
 
 /** Terminal dengan sekian tahap perluasan sudah selesai dibangun (tanpa proyek berjalan). */
@@ -67,10 +68,15 @@ export function denganLevelTerminal(state: GameState, level: number): GameState 
   return { ...state, perkembangan: { ...state.perkembangan, xpTerminal: xpKumulatifTerminal(level) } };
 }
 
-/** State yang sama pada jam terminal `jam` di hari ke-`hariKe` (0 = Senin; waktu main disesuaikan). */
+/** State yang sama pada jam terminal `jam` di hari ke-`hariKe` (0 = Senin; waktu main & buku hari ini disesuaikan). */
 export function padaJam(state: GameState, jam: number, hariKe = 1): GameState {
   const waktuMainDetik = (hariKe * 24 + jam - WAKTU.jamAwal) * WAKTU.detikPerJam;
-  return { ...state, statistik: { ...state.statistik, waktuMainDetik } };
+  return {
+    ...state,
+    statistik: { ...state.statistik, waktuMainDetik },
+    keuangan: { ...state.keuangan, hariIni: { ...state.keuangan.hariIni, hariKe } },
+    harian: { ...state.harian, hariKe },
+  };
 }
 
 /** Jalankan tick fixed timestep selama `detik`. */
@@ -79,14 +85,6 @@ export function jalankan(state: GameState, detik: number): GameState {
   const n = Math.round(detik / DT);
   for (let i = 0; i < n; i++) s = tick(s, DT);
   return s;
-}
-
-export function levelSemua(state: GameState): Record<TahapId, number> {
-  return {
-    peron: state.terminal.tahap.peron.level,
-    loket: state.terminal.tahap.loket.level,
-    keberangkatan: state.terminal.tahap.keberangkatan.level,
-  };
 }
 
 type Titik2 = readonly [number, number];

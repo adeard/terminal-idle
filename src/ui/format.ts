@@ -6,8 +6,6 @@
  * Pemotongan bersifat monoton, jadi kalau uang ≥ biaya maka uang yang
  * tampil juga ≥ biaya yang tampil: tidak pernah terlihat "cukup" padahal kurang.
  */
-import Decimal, { type DecimalSource } from 'break_infinity.js';
-
 const SATUAN: ReadonlyArray<{ readonly nilai: number; readonly label: string }> = [
   { nilai: 1e12, label: 'T' },
   { nilai: 1e9, label: 'M' },
@@ -27,13 +25,12 @@ export interface OpsiFormat {
   readonly desimalKecil?: number;
 }
 
-export function formatAngka(nilai: DecimalSource, opsi: OpsiFormat = {}): string {
-  const d = nilai instanceof Decimal ? nilai : new Decimal(nilai);
-  if (!Number.isFinite(d.mantissa)) return '–';
-  if (d.lt(0)) return `-${formatAngka(d.neg(), opsi)}`;
-  if (d.gte(BATAS_ILMIAH)) return formatIlmiah(d);
+export function formatAngka(nilai: number | string, opsi: OpsiFormat = {}): string {
+  const x = typeof nilai === 'number' ? nilai : Number(nilai);
+  if (!Number.isFinite(x)) return '–';
+  if (x < 0) return `-${formatAngka(-x, opsi)}`;
+  if (x >= BATAS_ILMIAH) return formatIlmiah(x);
 
-  const x = d.toNumber();
   if (x < 100) return desimalId(potong(x, opsi.desimalKecil ?? 1));
   if (x < BATAS_SINGKATAN) return ribuan(Math.floor(x + EPS));
 
@@ -52,8 +49,14 @@ export function formatBulat(nilai: number): string {
 }
 
 /** Uang: bilangan bulat di bawah 100 (tidak ada "Rp 20,4"). */
-export function formatUang(nilai: DecimalSource): string {
+export function formatUang(nilai: number | string): string {
   return `Rp ${formatAngka(nilai, { desimalKecil: 0 })}`;
+}
+
+/** Uang bertanda untuk laba: "+Rp 1,2 jt", "−Rp 300 rb" (nol tanpa tanda). */
+export function formatUangBertanda(nilai: number): string {
+  if (!(Math.abs(nilai) >= 1)) return formatUang(0);
+  return `${nilai > 0 ? '+' : '−'}${formatUang(Math.abs(nilai))}`;
 }
 
 /** Durasi dipotong ke bawah: "45 detik", "12 menit", "2 jam", "2 jam 15 menit". */
@@ -67,9 +70,18 @@ export function formatDurasi(detik: number): string {
   return menit === 0 ? `${jam} jam` : `${jam} jam ${menit} menit`;
 }
 
-function formatIlmiah(d: Decimal): string {
-  const m = potong(d.mantissa, 2);
-  return `${desimalId(m)}e${d.exponent}`;
+function formatIlmiah(x: number): string {
+  let e = Math.floor(Math.log10(x));
+  let m = x / 10 ** e;
+  // Pembulatan log10 di dekat pangkat sepuluh: jaga 1 ≤ mantissa < 10.
+  if (m >= 10) {
+    m /= 10;
+    e++;
+  } else if (m < 1) {
+    m *= 10;
+    e--;
+  }
+  return `${desimalId(potong(m, 2))}e${e}`;
 }
 
 function potong(x: number, desimal: number): number {

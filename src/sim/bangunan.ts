@@ -1,8 +1,8 @@
 /**
- * Tycoon, bangunan di slot denah (murni): berapa slot tiap jenis bangunan
- * setelah tahap perluasan, biaya membangun unit berikutnya, pengembalian saat
+ * Bangunan di slot denah (murni): berapa slot tiap jenis bangunan setelah
+ * tahap perluasan, biaya membangun unit berikutnya, pengembalian saat
  * dibongkar, petak parkir bus, dan biaya perawatan harian. Rancangan: bagian 4
- * documents/13-rancangan-tycoon.md; angka di EKONOMI.tycoon. Belum dipakai game.
+ * documents/13-rancangan-tycoon.md; angka di EKONOMI.tycoon.
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { BANGUNAN_IDS, TEKNOLOGI_IDS, type BangunanId, type TeknologiId } from './fitur';
@@ -66,7 +66,7 @@ export function perawatanHarian(bangunan: JumlahBangunan, teknologi: Readonly<Re
   const t = cfg.tycoon;
   let total = 0;
   for (const id of BANGUNAN_IDS) total += Math.max(0, bangunan[id]) * t.bangunan[id].perawatan;
-  for (const id of TEKNOLOGI_IDS) if (teknologi[id]) total += t.teknologi[id].perawatan;
+  for (const id of TEKNOLOGI_IDS) if (teknologi[id]) total += cfg.teknologi[id].perawatan;
   return total;
 }
 
@@ -75,7 +75,7 @@ export function perawatanHarian(bangunan: JumlahBangunan, teknologi: Readonly<Re
  * Tidak ikut pengali kelas terminal: angkanya sudah menurut ukuran gedungnya.
  */
 export function operasionalGedung(perluasan: number, cfg: KonfigEkonomi = EKONOMI): number {
-  return cfg.tycoon.perluasan.slice(0, Math.max(0, Math.floor(perluasan))).reduce((a, p) => a + p.operasional, 0);
+  return cfg.mitra.perluasan.slice(0, Math.max(0, Math.floor(perluasan))).reduce((a, p) => a + p.operasional, 0);
 }
 
 /** Pengali gaji, perawatan & listrik menurut kelas terminal. */

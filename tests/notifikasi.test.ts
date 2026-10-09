@@ -1,15 +1,12 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
-import { pendapatanUntukPoin } from '../src/sim/economy';
 import type { PoId } from '../src/sim/fitur';
-import { daftarPo, DETIK_SEHARI, mulaiPerluasan, putusPo, renovasi, type GameState } from '../src/sim/state';
+import { aturTarif, bangun, daftarPo, DETIK_SEHARI, mulaiPerluasan, putusPo, type GameState } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
 import { notifikasiPerubahan } from '../src/ui/notifikasi';
 import { NAMA_KELAS_BUS, namaKelas, NAMA_PERLUASAN, NAMA_PO, TEKS } from '../src/ui/teks';
-import { denganLevelTerminal, denganPo, kaya, stateOtomatis } from './helpers';
+import { denganLevelTerminal, denganPetugas, denganPo, kaya, stateOtomatis } from './helpers';
 
 const notif = (lalu: GameState, sekarang: GameState, diputus?: ReadonlySet<PoId>): string | null => notifikasiPerubahan(buatModel(lalu), buatModel(sekarang), diputus);
-const denganRun = (s: GameState, run: Decimal): GameState => ({ ...s, statistik: { ...s.statistik, totalPendapatanRun: run } });
 
 describe('notifikasi perubahan', () => {
   it('tanpa perubahan: tidak ada notifikasi', () => {
@@ -33,15 +30,21 @@ describe('notifikasi perubahan', () => {
     expect(notif(s, denganLevelTerminal(s, 10))).toBe(TEKS.notifNaikKelas(namaKelas(1)));
   });
 
-  it('Renovasi siap & selesai; perluasan diresmikan', () => {
-    const s = stateOtomatis({ peron: 20, loket: 20, keberangkatan: 20 });
-    const siap = denganRun(s, pendapatanUntukPoin(4));
-    expect(notif(s, siap)).toBe(TEKS.notifSiapRenovasi);
-    const r = renovasi(siap);
-    expect(notif(siap, r)).toBe(TEKS.notifRenovasi(Math.round(buatModel(r).terminal.renovasi.bonus * 100)));
+  it('perluasan diresmikan; jalur baru dibuka', () => {
+    const s = stateOtomatis();
     const p = mulaiPerluasan(denganLevelTerminal(kaya(s), 3));
     const selesai = { ...p, perkembangan: { ...p.perkembangan, perluasan: 1, proyekDetik: 0 } };
     expect(notif(p, selesai)).toBe(TEKS.notifPerluasan(NAMA_PERLUASAN[0]!.nama));
+    expect(notif(kaya(s), bangun(kaya(s), 'jalur'))).toBe(TEKS.notifJalur(2));
+  });
+
+  it('kas: peringatan kas menipis, lalu petugas yang berhenti karena gajinya tak terbayar', () => {
+    const s = aturTarif(denganPetugas(stateOtomatis({ jalur: 2 }, 0), ['manajerOperasional', 'kebersihan', 'satpam']), 'layanan', 0);
+    const aman = { ...s, kas: 1e9 };
+    expect(buatModel(s).hud.kasMenipis).toBe(true);
+    expect(notif(aman, s)).toBe(TEKS.notifKasMenipis);
+    const berhenti = { ...s, keuangan: { ...s.keuangan, petugasBerhenti: 1 } };
+    expect(notif(s, berhenti)).toBe(TEKS.notifPetugasBerhenti);
   });
 
   it('rute antarpulau, kelas bus baru, kontrak tinggal sehari, dan PO naik level', () => {

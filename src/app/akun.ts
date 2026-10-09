@@ -13,11 +13,9 @@
  * - Saat login, save tamu dipindah ke akun (slot tamu dikosongkan), jadi
  *   logout = mulai sebagai tamu baru. Save akun tetap tersimpan di perangkat.
  */
-import type Decimal from 'break_infinity.js';
 import { SIMULASI, type KonfigSimulasi } from '../config/economy.config';
 import { deserialisasi } from '../sim/save';
 import { kelasTerminal, levelTerminal, type GameState } from '../sim/state';
-import { TAHAP_IDS } from '../sim/tahap';
 import { KUNCI_SAVE, type AlasanSimpan, type Logger, type Penyimpanan, type SlotSave } from './sesi';
 
 /** uid akun yang sedang login; tidak ada = tamu. Firebase cukup dimuat kalau ini ada. */
@@ -59,13 +57,12 @@ export interface PenyimpananAwan {
 
 /** Yang ditampilkan dialog pilihan save. */
 export interface RingkasanSave {
-  readonly uang: Decimal;
-  readonly totalPendapatan: Decimal;
-  readonly poinRenovasi: Decimal;
+  /** Kas & total pendapatan operasi sepanjang permainan (Rp). */
+  readonly kas: number;
+  readonly totalPendapatan: number;
   /** Level terminal & kelas yang mengikutinya. */
   readonly levelTerminal: number;
   readonly kelasTerminal: number;
-  readonly totalLevel: number;
   readonly waktuMainDetik: number;
   readonly waktuTerakhirMs: number;
 }
@@ -115,12 +112,10 @@ export function ringkasSave(isi: string | null): RingkasanSave | null {
     return null;
   }
   return {
-    uang: s.uang,
-    totalPendapatan: s.statistik.totalPendapatanSepanjangMasa,
-    poinRenovasi: s.renovasi.poin,
+    kas: s.kas,
+    totalPendapatan: s.statistik.totalPendapatan,
     levelTerminal: levelTerminal(s),
     kelasTerminal: kelasTerminal(s),
-    totalLevel: TAHAP_IDS.reduce((n, id) => n + s.terminal.tahap[id].level, 0),
     waktuMainDetik: s.statistik.waktuMainDetik,
     waktuTerakhirMs: s.waktuTerakhirMs,
   };
@@ -128,7 +123,7 @@ export function ringkasSave(isi: string | null): RingkasanSave | null {
 
 /** Save tanpa pendapatan sama sekali (baru, kosong, atau korup) boleh ditimpa tanpa bertanya. */
 export function adaProgres(r: RingkasanSave | null): r is RingkasanSave {
-  return r !== null && (r.totalPendapatan.gt(0) || r.levelTerminal > 1);
+  return r !== null && (r.totalPendapatan > 0 || r.levelTerminal > 1);
 }
 
 /** Dua save berbeda: pilih otomatis kalau salah satunya tanpa progres, selain itu tanya. */

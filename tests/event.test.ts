@@ -1,4 +1,3 @@
-import Decimal from 'break_infinity.js';
 import { describe, expect, it } from 'vitest';
 import { peristiwaAksi } from '../src/app/analitik';
 import { KUNCI_SAVE, SesiGame, slotLokal, type Penyimpanan } from '../src/app/sesi';
@@ -10,15 +9,14 @@ import {
   bisaKlaimEvent,
   hadiahTahapEvent,
   klaimEvent,
-  pendapatanPerDetikState,
+  operasiState,
   pengaliEvent,
   perbaruiEvent,
-  rincianPendapatan,
   tandaiWaktu,
   tick,
   type GameState,
 } from '../src/sim/state';
-import { stateOtomatis } from './helpers';
+import { denganPo, stateOtomatis } from './helpers';
 
 const wib = (tahun: number, bulan: number, tanggal: number, jam = 12): number => tengahMalamWib(tahun, bulan, tanggal) + jam * 3_600_000;
 const edisiPada = (ms: number): string | null => eventPada(ms)?.edisi ?? null;
@@ -61,9 +59,9 @@ describe('kalender event musiman (WIB)', () => {
 describe('event musiman di game', () => {
   const SIANG_BIASA = wib(2026, 10, 1);
   const MUDIK = wib(2027, 3, 5);
-  const siap = (): GameState => stateOtomatis({ peron: 20, loket: 20, keberangkatan: 20 });
+  const siap = (): GameState => denganPo(stateOtomatis({ jalur: 3 }), 'ondelOndel', { loket: 6 });
 
-  it('dimulai dari jam nyata: pendapatan naik, target tahap ditetapkan dari arus saat itu', () => {
+  it('dimulai dari jam nyata: calon penumpang naik, target tahap ditetapkan dari arus saat itu', () => {
     const s = siap();
     expect(perbaruiEvent(s, SIANG_BIASA)).toBe(s);
     const e = perbaruiEvent(s, MUDIK);
@@ -71,9 +69,9 @@ describe('event musiman di game', () => {
     expect(e.event.edisi).toBe('mudikLebaran-2027');
     expect(e.event.target).toHaveLength(EKONOMI.event.mudikLebaran.targetDetik.length);
     expect([...e.event.target]).toEqual([...e.event.target].sort((a, b) => a - b));
-    expect(pengaliEvent(e)).toBe(EKONOMI.event.mudikLebaran.pengaliPendapatan);
-    expect(rincianPendapatan(e).tiket.toNumber()).toBeCloseTo(rincianPendapatan(s).tiket.toNumber() * EKONOMI.event.mudikLebaran.pengaliPendapatan, 9);
-    expect(pendapatanPerDetikState(e).toNumber()).toBeCloseTo(pendapatanPerDetikState(s).toNumber() * 1.5, 9);
+    expect(pengaliEvent(e)).toBe(EKONOMI.event.mudikLebaran.pengaliPasar);
+    expect(operasiState(e).permintaan).toBeCloseTo(operasiState(s).permintaan * EKONOMI.event.mudikLebaran.pengaliPasar, 6);
+    expect(operasiState(e).arus).toBeGreaterThan(operasiState(s).arus);
     // Jam yang sama lagi: tidak berubah.
     expect(perbaruiEvent(e, MUDIK + 60_000)).toBe(e);
   });
@@ -98,7 +96,7 @@ describe('event musiman di game', () => {
   });
 
   it('klaim tiap tahap: hadiah uang, tahap terakhir membawa PO eksklusif; boleh diklaim setelah event selesai', () => {
-    let s = perbaruiEvent({ ...siap(), uang: new Decimal(0) }, MUDIK);
+    let s = perbaruiEvent({ ...siap(), kas: 0 }, MUDIK);
     expect(bisaKlaimEvent(s)).toBe(false);
     expect(klaimEvent(s)).toBe(s);
     const target = s.event.target;
@@ -108,11 +106,11 @@ describe('event musiman di game', () => {
       // Tahap terakhir diklaim setelah event selesai.
       if (terakhir) s = perbaruiEvent(s, wib(2027, 4, 1));
       expect(bisaKlaimEvent(s)).toBe(true);
-      const hadiah = hadiahTahapEvent(s).toNumber();
+      const hadiah = hadiahTahapEvent(s);
       expect(hadiah).toBeGreaterThan(0);
-      const sebelum = s.uang.toNumber();
+      const sebelum = s.kas;
       s = klaimEvent(s);
-      expect(s.uang.toNumber()).toBeCloseTo(sebelum + hadiah, 6);
+      expect(s.kas).toBeCloseTo(sebelum + hadiah, 6);
       // PO eksklusif jadi bisa didaftarkan (gratis), belum langsung terdaftar.
       expect(s.mitra.hadiahEvent.includes('mudikCeria')).toBe(terakhir);
     }

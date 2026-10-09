@@ -7,7 +7,8 @@ import type { KeadaanKelompokParkir } from '../src/game/perluasan-adegan';
 import { MEJA_TUNGGU, Y_MEJA_TUNGGU } from '../src/game/gedung3d';
 import { BLOK_KURSI, BUS, CUCI, diGedung, GERBANG_KELUAR_X, GERBANG_X, JUMLAH_ORANG_LABIRIN, JUMLAH_SLOT_LABIRIN, KECEPATAN_JALAN, KIOS_TUNGGU, KURSI_TUNGGU, LAJUR, LEBAR_GERBANG_PAGAR, LOKET, LORONG_PARKIR, MAKS_ORANG, maskAwal, PARKIR_SERONG, PERON, PERON_BERANGKAT, PINTU_BUS, PINTU_RUANG_TUNGGU, RUANG_TUNGGU, TALI_LABIRIN, VARIASI_JALAN, X_LOKET, Y_PAGAR } from '../src/game/tata-letak';
 import { buatStateBaru, kepuasanTerminal } from '../src/sim/state';
-import { denganPerluasan, denganPo, jarakPoligon, jarakTitikPoligon, jejakBus, ruasBerpotongan, stateOtomatis, T0 } from './helpers';
+import { denganBangunan, denganPerluasan, denganPetugas, denganPo, jarakPoligon, jarakTitikPoligon, jejakBus, ruasBerpotongan, stateOtomatis, T0 } from './helpers';
+import { EKONOMI } from '../src/config/economy.config';
 
 /** Rata-rata orang yang berdiri diam di antrean selama `detik` berikutnya. */
 function rataBerdiri(dunia: DuniaVisual, detik: number, laju: LajuVisual): number {
@@ -72,7 +73,7 @@ describe('lintasan bus', () => {
 });
 
 describe('laju visual dari state sim', () => {
-  it('game baru (tanpa Kepala): semua tahap langsung berjalan & bus datang', () => {
+  it('game baru: semua area langsung berjalan & bus datang', () => {
     const laju = hitungLajuVisual(buatStateBaru(T0));
     expect(laju.turun).toBeGreaterThan(0);
     expect(laju.layanLoket).toBeGreaterThan(0);
@@ -80,10 +81,11 @@ describe('laju visual dari state sim', () => {
     expect(laju.busDatang).toBeGreaterThan(0);
   });
 
-  it('makin puas, makin banyak bus & calon penumpang datang; kapasitas tahap tetap', () => {
-    const s = buatStateBaru(T0);
-    // Kios & Toilet menaikkan kepuasan (komponen fasilitas) tanpa mengubah kapasitas.
-    const puas = { ...s, terminal: { ...s.terminal, fasilitas: { ...s.terminal.fasilitas, kios: 3, toilet: 3 } } };
+  it('makin puas, makin banyak bus & calon penumpang datang; kapasitas area tetap', () => {
+    // Kapasitas melebihi pasar: banyaknya penumpang mengikuti permintaan.
+    const s = denganPo(stateOtomatis({ jalur: 3, jendela: 6 }), 'ondelOndel', { loket: 6 });
+    // Kios, toilet, petugas kebersihan & satpam menaikkan kepuasan tanpa mengubah kapasitas.
+    const puas = denganPetugas(denganBangunan(s, { kios: 3, toilet: 1 }), ['kebersihan', 'kebersihan', 'satpam', 'satpam', 'satpam']);
     expect(kepuasanTerminal(puas).nilai).toBeGreaterThan(kepuasanTerminal(s).nilai);
     const biasa = hitungLajuVisual(s);
     const ramai = hitungLajuVisual(puas);
@@ -92,30 +94,29 @@ describe('laju visual dari state sim', () => {
     expect(ramai.layanLoket).toBe(biasa.layanLoket);
   });
 
-  it('bottleneck berjalan paling lambat, tahap lain lebih cepat', () => {
+  it('bottleneck berjalan paling lambat, area lain lebih cepat', () => {
     const s = stateOtomatis();
-    const laju = hitungLajuVisual(s); // loket 0,8 bottleneck
-    expect(laju.layanLoket).toBeCloseTo(Math.min(lajuDasar(0.8), batasArusLoket(laju.jendela)), 10);
+    const laju = hitungLajuVisual(s); // satu jendela loket (50 pnp/jam) yang paling lambat
+    expect(laju.layanLoket).toBeCloseTo(Math.min(lajuDasar(EKONOMI.tycoon.kapasitas.jendela / 60), batasArusLoket(laju.jendela)), 10);
     expect(laju.turun).toBeGreaterThan(laju.layanLoket);
     expect(laju.naik).toBeGreaterThan(laju.layanLoket);
   });
 
   it('arus visual dibatasi jendela loket yang dipakai: makin banyak loket disewa PO (sebatas jendela yang dibangun), makin ramai', () => {
-    // Satu loket disewa: satu jendela. Kapasitas tahap lain berlimpah.
-    const satu = stateOtomatis({ peron: 120, loket: 1, keberangkatan: 120 });
+    // Satu jendela disewa. Kapasitas area lain berlimpah.
+    const satu = stateOtomatis({ jalur: 5 });
     const a = hitungLajuVisual(satu);
     expect(a.jendela).toBe(1);
     expect(a.maskJurusan).toBe(maskAwal(1));
     expect(a.layanLoket).toBeLessThanOrEqual(batasArusLoket(1) * 2 + 1e-9);
-    // Banyak loket disewa: di terminal awal hanya 4 jendela yang sudah dibangun, setelah tahap 2 semuanya.
-    const banyak = stateOtomatis({ peron: 120, loket: 120, keberangkatan: 120 });
+    // Banyak jendela disewa: di adegan awal hanya 4 jendela yang sudah dibangun, setelah tahap 2 semuanya.
+    const banyak = denganPo(stateOtomatis({ jalur: 5 }), 'ondelOndel', { loket: 20 });
     const b = hitungLajuVisual(banyak);
     const c = hitungLajuVisual(denganPerluasan(banyak, 2));
     expect(b.jendela).toBe(4);
     expect(c.jendela).toBe(X_LOKET.length);
-    expect(b.turun).toBeGreaterThan(a.turun * 2);
+    expect(b.turun).toBeGreaterThan(a.turun * 1.5);
     expect(c.turun).toBeGreaterThan(b.turun);
-    expect(b.busDatang).toBeGreaterThan(a.busDatang);
     for (let n = 2; n <= X_LOKET.length; n++) expect(batasArusLoket(n)).toBeGreaterThan(batasArusLoket(n - 1));
     expect(batasArusLoket()).toBe(batasArusLoket(X_LOKET.length));
     // Jurusan tidak lagi menentukan jendela: PO kedua menambah jurusan, jendelanya ikut loketnya.
@@ -515,8 +516,8 @@ describe('model keramaian dekoratif', () => {
   }, 40_000);
 
   it('laju tinggi dari state nyata: loket lambat tetap memicu antrean', () => {
-    // Dua jurusan dilayani (PO kedua sudah bergabung), Loket jauh lebih lambat dari tahap lain.
-    const laju = hitungLajuVisual(denganPo(stateOtomatis({ peron: 120, loket: 60, keberangkatan: 120 }), 'peuyeumKilat'));
+    // Dua jurusan dilayani (PO kedua sudah bergabung), Loket jauh lebih lambat dari area lain.
+    const laju = hitungLajuVisual(denganPo(stateOtomatis({ jalur: 5 }), 'peuyeumKilat'));
     const dunia = new DuniaVisual({ acak: acakBerbenih(8) });
     jalankan(dunia, 150, laju);
     expect(dunia.jumlahAntrean).toBeGreaterThan(JUMLAH_SLOT_LABIRIN * 0.7);

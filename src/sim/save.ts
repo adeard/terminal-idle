@@ -3,115 +3,114 @@
  * storage sama sekali (itu tugas platform/), hanya string ⇄ state.
  *
  * Aturan kompatibilitas:
- * - Field wajib (uang, terminal.tahap) yang hilang/salah tipe → save ditolak.
+ * - Field wajib (kas, terminal) yang hilang/salah tipe → save ditolak.
  * - Blok opsional yang HILANG diisi default (supaya fitur baru bisa menambah
  *   field tanpa naik versi). Blok yang ADA tapi salah tipe → save ditolak.
- * - Field tak dikenal diabaikan.
+ * - Field tak dikenal diabaikan; id tak dikenal (mis. dari versi lain) dibuang.
  * - Perubahan bentuk yang tidak additive: naikkan VERSI_SKEMA dan tambah
  *   fungsi di MIGRASI.
  *
- * Versi 2 = ekonomi mitra PO (documents/12-rancangan-ekonomi-po.md, bagian 13
- * untuk migrasi dari versi 1).
+ * Versi 3 = ekonomi tycoon (documents/13-rancangan-tycoon.md). Save versi 1 & 2
+ * (ekonomi idle) tidak dimigrasi: ekonominya dimulai baru, hanya profil pemain
+ * (nama terminal, papan peringkat) dan benih cuaca yang dibawa (bagian 13).
  */
-import Decimal from 'break_infinity.js';
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
-import { FASILITAS_IDS, isEventId, isPencapaianId, isPoId, KELAS_BUS_IDS, PO_IDS, TEKNOLOGI_IDS, type FasilitasId, type PencapaianId, type PoId, type TeknologiId } from './fitur';
-import { kelasDariLevel, levelMinimalKelas, levelTerminalDariXp, slotPo, xpKumulatifTerminal } from './level-terminal';
-import { tingkatPo, xpKumulatifPo } from './mitra';
-import { bonusJatahPerluasan } from './perluasan';
+import { slotBangunan } from './bangunan';
 import {
-  aturLevelLoket,
+  BANGUNAN_IDS,
+  isEventId,
+  isPencapaianId,
+  isPetugasId,
+  isPoId,
+  TARIF_IDS,
+  TEKNOLOGI_IDS,
+  type BangunanId,
+  type PencapaianId,
+  type PetugasId,
+  type PoId,
+  type TarifId,
+  type TeknologiId,
+} from './fitur';
+import type { RincianBiaya, RincianPendapatan } from './keuangan';
+import { tingkatPo } from './mitra';
+import { rapikanPetugas } from './petugas';
+import { rapikanNamaTerminal } from './profil';
+import {
+  buatBukuHarian,
+  buatKeuanganAwal,
   buatMitraAwal,
   buatRekorAwal,
   buatStateBaru,
-  buatTahapAwal,
   buatTantanganAwal,
   DETIK_SEHARI,
   ID_TERMINAL_AWAL,
-  rapikanHarga,
+  type BukuHarian,
   type EventState,
   type GameState,
   type HadiahState,
-  type HargaPo,
   type HarianState,
+  type KeuanganState,
   type MitraState,
   type PencapaianState,
   type PerkembanganState,
   type PoTerdaftar,
   type ProfilState,
   type RekorState,
-  type RenovasiState,
   type RiwayatPo,
-  type SewaKiosState,
-  type TahapState,
+  type StatistikState,
   type TantanganAktif,
   type TantanganState,
-  type TransaksiState,
 } from './state';
-import { rapikanNamaTerminal } from './profil';
 import { isJenisTantangan } from './tantangan';
-import { TAHAP_IDS, type TahapId } from './tahap';
+import { jepitTarif } from './tarif';
 import { waktuTerminal } from './waktu';
 
-export const VERSI_SKEMA = 2;
+export const VERSI_SKEMA = 3;
 
 /** PO terdaftar di save. */
 export interface SimpanPo {
   readonly id: string;
   readonly xp: number;
   readonly loket: number;
-  readonly rekorLoket: number;
   readonly reputasi: number;
-  /** Indeks jurusan → persen harga normal. */
-  readonly harga: Readonly<Record<string, number>>;
   readonly kontrakDetik: number;
 }
 
-/** Bentuk JSON save versi 2. Semua Decimal disimpan sebagai string "<mantissa>e<exponent>". */
-export interface SaveV2 {
-  readonly schemaVersion: 2;
+/** Bentuk JSON save versi 3. Uang dalam Rupiah (number). */
+export interface SaveV3 {
+  readonly schemaVersion: 3;
   readonly waktuTerakhirMs: number;
-  readonly uang: string;
+  readonly kas: number;
   readonly terminal: {
     readonly id: string;
-    /** Level Loket dihitung ulang dari loket PO + loket kosong saat dimuat. */
-    readonly tahap: Record<TahapId, { readonly level: number; readonly kepala: { readonly direkrut: boolean } }>;
-    readonly fasilitas: Record<FasilitasId, number>;
-    readonly teknologi: Record<TeknologiId, boolean>;
-    readonly jalur: number;
-    readonly loketKosong: number;
+    readonly bangunan: Readonly<Record<BangunanId, number>>;
+    /** Urut rekrut. */
+    readonly petugas: readonly PetugasId[];
+    readonly tarif: Readonly<Record<TarifId, number>>;
+    readonly teknologi: Readonly<Record<TeknologiId, boolean>>;
   };
   readonly mitra: {
     readonly terdaftar: readonly SimpanPo[];
-    readonly riwayat: Readonly<Record<string, Omit<SimpanPo, 'id' | 'loket' | 'kontrakDetik'>>>;
+    readonly riwayat: Readonly<Record<string, RiwayatPo>>;
     readonly jedaSampai: Readonly<Record<string, number>>;
     readonly hadiahEvent: readonly string[];
   };
   readonly perkembangan: PerkembanganState;
-  readonly renovasi: { readonly poin: string; readonly jumlah: number };
-  readonly statistik: {
-    readonly totalPendapatanRun: string;
-    readonly totalPendapatanSepanjangMasa: string;
-    readonly waktuMainDetik: number;
-    readonly totalPenumpang: number;
-  };
+  readonly keuangan: KeuanganState;
+  readonly statistik: StatistikState;
   readonly harian: HarianState;
   readonly pencapaian: { readonly tercapai: readonly string[]; readonly diklaim: readonly string[] };
-  /** Benih jadwal hujan. Save lama tanpa field ini diberi benih baru saat dimuat. */
+  /** Benih jadwal hujan. */
   readonly benihCuaca: number;
-  /** Sewa kios yang terkumpul hari ini & sewa terakhir. Save lama tanpa blok ini mulai dari 0. */
-  readonly sewaKios?: { readonly terkumpul: string; readonly terakhir: string; readonly hariTerakhir: number };
-  /** Boost & Bus Emas yang sedang berjalan. Save lama tanpa blok ini mulai tanpa boost. */
+  /** Boost & Bus Emas yang sedang berjalan. */
   readonly hadiah?: { readonly boostDetik: number; readonly busEmas: { readonly tungguDetik: number; readonly aktifDetik: number; readonly jumlah: number } };
-  /** Sisa penumpang/bus yang belum jadi transaksi utuh. Save lama tanpa blok ini: nol. */
-  readonly transaksi?: { readonly sisaPenumpang: number; readonly sisaBus: number };
-  /** Rekor pribadi & hitungan hari ini. Save lama tanpa blok ini mulai dari nol. */
+  /** Rekor pribadi. */
   readonly rekor?: RekorState;
-  /** Tantangan mingguan. Save lama tanpa blok ini: tantangan dimulai saat sesi berjalan. */
+  /** Tantangan mingguan. Tanpa blok ini: tantangan dimulai saat sesi berjalan. */
   readonly tantangan?: { readonly minggu: string | null; readonly selesaiMs: number; readonly daftar: readonly TantanganAktif[]; readonly penumpang?: number };
-  /** Profil pemain (nama terminal). Save lama tanpa blok ini: nama bawaan. */
+  /** Profil pemain (nama terminal). Tanpa blok ini: nama bawaan. */
   readonly profil?: { readonly namaTerminal: string; readonly ikutPeringkat?: boolean };
-  /** Event musiman: edisi yang sedang/terakhir diikuti, progres & tahap yang diklaim. Save lama tanpa blok ini mulai tanpa event. */
+  /** Event musiman: edisi yang sedang/terakhir diikuti, progres & tahap yang diklaim. */
   readonly event?: {
     readonly aktif: { readonly id: string; readonly edisi: string; readonly selesaiMs: number } | null;
     readonly edisi: string | null;
@@ -126,7 +125,9 @@ export type FungsiMigrasi = (data: DataMentah) => DataMentah;
 
 /** MIGRASI[n] mengubah data mentah versi n menjadi versi n + 1. */
 export const MIGRASI: Readonly<Record<number, FungsiMigrasi>> = {
-  1: (d) => migrasiV1keV2(d),
+  // Versi 1 & 2 sama-sama ekonomi idle: keduanya dimulai baru di migrasi ke versi 3.
+  1: (d) => d,
+  2: (d) => migrasiKeV3(d),
 };
 
 export class SaveTidakValidError extends Error {
@@ -142,92 +143,49 @@ export type HasilMuat =
   | { readonly status: 'korup'; readonly state: GameState; readonly error: unknown };
 
 // ---------------------------------------------------------------------------
-// Decimal ⇄ string
-
-/**
- * `Decimal.toString()` tidak selalu round-trip persis (sudah dicek: ±1 ulp
- * di mantissa), jadi mantissa & exponent ditulis langsung.
- */
-export function decimalKeString(d: Decimal): string {
-  return `${d.mantissa}e${d.exponent}`;
-}
-
-const POLA_ANGKA = /^-?\d+(\.\d+)?(e[+-]?\d+)?$/i;
-
-export function stringKeDecimal(nilai: unknown, jalur: string): Decimal {
-  if (typeof nilai !== 'string' || !POLA_ANGKA.test(nilai)) {
-    throw new SaveTidakValidError(`${jalur}: bukan string angka`);
-  }
-  const d = new Decimal(nilai);
-  if (!Number.isFinite(d.mantissa) || !Number.isFinite(d.exponent) || d.lt(0)) {
-    throw new SaveTidakValidError(`${jalur}: angka tidak valid (${nilai})`);
-  }
-  return d;
-}
-
-// ---------------------------------------------------------------------------
 // Serialisasi
 
-const simpanHarga = (h: HargaPo): Record<string, number> => {
-  const hasil: Record<string, number> = {};
-  for (const [j, persen] of Object.entries(h)) if (persen !== undefined) hasil[j] = persen;
-  return hasil;
-};
-
-export function keSaveV2(state: GameState): SaveV2 {
-  const tahap = {} as Record<TahapId, { level: number; kepala: { direkrut: boolean } }>;
-  for (const id of TAHAP_IDS) {
-    const t = state.terminal.tahap[id];
-    tahap[id] = { level: t.level, kepala: { direkrut: t.kepala.direkrut } };
-  }
-  const riwayat: Record<string, Omit<SimpanPo, 'id' | 'loket' | 'kontrakDetik'>> = {};
-  for (const [id, r] of Object.entries(state.mitra.riwayat)) {
-    if (r) riwayat[id] = { xp: r.xp, reputasi: r.reputasi, rekorLoket: r.rekorLoket, harga: simpanHarga(r.harga) };
-  }
+export function keSaveV3(state: GameState): SaveV3 {
+  const riwayat: Record<string, RiwayatPo> = {};
+  for (const [id, r] of Object.entries(state.mitra.riwayat)) if (r) riwayat[id] = { xp: r.xp, reputasi: r.reputasi };
   const jedaSampai: Record<string, number> = {};
   for (const [id, detik] of Object.entries(state.mitra.jedaSampai)) if (detik !== undefined) jedaSampai[id] = detik;
+  const k = state.keuangan;
+  const buku = (b: BukuHarian): BukuHarian => ({ hariKe: b.hariKe, pendapatan: { ...b.pendapatan }, biaya: { ...b.biaya }, penumpang: b.penumpang });
   return {
     schemaVersion: VERSI_SKEMA,
     waktuTerakhirMs: state.waktuTerakhirMs,
-    uang: decimalKeString(state.uang),
+    kas: state.kas,
     terminal: {
       id: state.terminal.id,
-      tahap,
-      fasilitas: { ...state.terminal.fasilitas },
+      bangunan: { ...state.terminal.bangunan },
+      petugas: [...state.terminal.petugas],
+      tarif: { ...state.terminal.tarif },
       teknologi: { ...state.terminal.teknologi },
-      jalur: state.terminal.jalur,
-      loketKosong: state.terminal.loketKosong,
     },
     mitra: {
-      terdaftar: state.mitra.terdaftar.map((p) => ({ id: p.id, xp: p.xp, loket: p.loket, rekorLoket: p.rekorLoket, reputasi: p.reputasi, harga: simpanHarga(p.harga), kontrakDetik: p.kontrakDetik })),
+      terdaftar: state.mitra.terdaftar.map((p) => ({ id: p.id, xp: p.xp, loket: p.loket, reputasi: p.reputasi, kontrakDetik: p.kontrakDetik })),
       riwayat,
       jedaSampai,
       hadiahEvent: [...state.mitra.hadiahEvent],
     },
     perkembangan: { ...state.perkembangan },
-    renovasi: { poin: decimalKeString(state.renovasi.poin), jumlah: state.renovasi.jumlah },
-    statistik: {
-      totalPendapatanRun: decimalKeString(state.statistik.totalPendapatanRun),
-      totalPendapatanSepanjangMasa: decimalKeString(state.statistik.totalPendapatanSepanjangMasa),
-      waktuMainDetik: state.statistik.waktuMainDetik,
-      totalPenumpang: state.statistik.totalPenumpang,
-    },
+    keuangan: { hariIni: buku(k.hariIni), kemarin: k.kemarin ? buku(k.kemarin) : null, tunggakanJam: k.tunggakanJam, hariTanpaRugi: k.hariTanpaRugi, petugasBerhenti: k.petugasBerhenti },
+    statistik: { ...state.statistik },
     harian: { ...state.harian },
     pencapaian: { tercapai: [...state.pencapaian.tercapai], diklaim: [...state.pencapaian.diklaim] },
     benihCuaca: state.benihCuaca,
     hadiah: { boostDetik: state.hadiah.boostDetik, busEmas: { ...state.hadiah.busEmas } },
-    sewaKios: { terkumpul: decimalKeString(state.sewaKios.terkumpul), terakhir: decimalKeString(state.sewaKios.terakhir), hariTerakhir: state.sewaKios.hariTerakhir },
-    transaksi: { ...state.transaksi },
-    event: { ...state.event, aktif: state.event.aktif ? { ...state.event.aktif } : null, target: [...state.event.target] },
-    profil: { namaTerminal: state.profil.namaTerminal, ikutPeringkat: state.profil.ikutPeringkat },
     rekor: { ...state.rekor },
     tantangan: { ...state.tantangan, daftar: state.tantangan.daftar.map((x) => ({ ...x })) },
+    profil: { namaTerminal: state.profil.namaTerminal, ikutPeringkat: state.profil.ikutPeringkat },
+    event: { ...state.event, aktif: state.event.aktif ? { ...state.event.aktif } : null, target: [...state.event.target] },
   };
 }
 
 /** Panggil `tandaiWaktu(state, sekarang)` dulu supaya timestamp offline akurat. */
 export function serialisasi(state: GameState): string {
-  return JSON.stringify(keSaveV2(state));
+  return JSON.stringify(keSaveV3(state));
 }
 
 // ---------------------------------------------------------------------------
@@ -235,7 +193,7 @@ export function serialisasi(state: GameState): string {
 
 /**
  * @param sekarangMs dipakai sebagai waktuTerakhirMs kalau field itu tidak ada
- *   (artinya: tidak ada penghasilan offline untuk sesi itu).
+ *   (artinya: tidak ada laba offline untuk sesi itu).
  * @throws SaveTidakValidError kalau data korup atau versinya tidak didukung.
  */
 export function deserialisasi(json: string, sekarangMs: number, cfg: KonfigEkonomi = EKONOMI): GameState {
@@ -253,18 +211,14 @@ export function deserialisasi(json: string, sekarangMs: number, cfg: KonfigEkono
   if (versi > VERSI_SKEMA) {
     throw new SaveTidakValidError(`schemaVersion ${versi} lebih baru dari yang didukung (${VERSI_SKEMA})`);
   }
-  return dariSaveV2(migrasikan(akar, versi), sekarangMs, cfg);
+  return dariSaveV3(migrasikan(akar, versi), sekarangMs, cfg);
 }
 
 /**
  * Parse string save mentah dari storage. Tidak pernah throw: save kosong →
  * game baru, save korup → game baru + error (pemanggil yang me-log).
  */
-export function muatAtauBaru(
-  raw: string | null | undefined,
-  sekarangMs: number,
-  cfg: KonfigEkonomi = EKONOMI,
-): HasilMuat {
+export function muatAtauBaru(raw: string | null | undefined, sekarangMs: number, cfg: KonfigEkonomi = EKONOMI): HasilMuat {
   if (raw == null || raw === '') return { status: 'baru', state: buatStateBaru(sekarangMs, cfg) };
   try {
     return { status: 'dimuat', state: deserialisasi(raw, sekarangMs, cfg) };
@@ -289,157 +243,104 @@ export function migrasikan(
 }
 
 // ---------------------------------------------------------------------------
-// Migrasi v1 → v2 (ekonomi mitra PO)
+// Migrasi ke v3 (ekonomi tycoon)
 
 const objekAtauNull = (v: unknown): DataMentah | null => (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as DataMentah) : null);
-const angkaAtau = (v: unknown, bawaan: number): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : bawaan);
 
 /**
- * Save v1 (prestige naik kelas, jurusan & kelas bus dibeli, harga per jurusan)
- * → v2. Pemain lama tidak boleh dirugikan:
- * - level terminal = dari total penumpang, tapi minimal setara kelasnya (Tipe B → 10, …);
- *   tahap perluasan sampai level itu langsung jadi;
- * - mitra PO yang sudah bergabung: yang nilainya tertinggi menempati slot, sisanya riwayat;
- *   level awal PO cukup untuk kelas bus yang sudah dibeli DAN untuk menampung loket lama,
- *   jadi kapasitas Loket tidak turun;
- * - poin & jumlah prestige → poin & jumlah Renovasi (bonusnya sama);
- * - harga tiket kembali normal; kontrak baru 14 hari terminal.
- * Data mentah yang aneh dibiarkan; dariSaveV2 yang memvalidasi hasilnya.
+ * Save ekonomi idle (versi 1 & 2) → game tycoon baru. Belum ada pemain saat
+ * peralihan, jadi ekonominya tidak dikonversi; yang dibawa hanya profil
+ * pemain (nama terminal, persetujuan papan peringkat) dan benih cuaca. Nilai
+ * yang tidak sah diganti bawaan game baru.
  */
-export function migrasiV1keV2(d: DataMentah, cfg: KonfigEkonomi = EKONOMI): DataMentah {
-  const terminal = objekAtauNull(d['terminal']) ?? {};
-  const tahap = objekAtauNull(terminal['tahap']) ?? {};
-  const levelLoketV1 = Math.max(1, Math.floor(angkaAtau(objekAtauNull(tahap['loket'])?.['level'], 1)));
-  const prestige = objekAtauNull(d['prestige']);
-  const kelasV1 = Math.floor(angkaAtau(prestige?.['jumlahReset'], 0));
-  const totalPenumpang = angkaAtau(objekAtauNull(d['statistik'])?.['totalPenumpang'], 0);
-
-  const xpTerminal = Math.max(totalPenumpang, xpKumulatifTerminal(levelMinimalKelas(kelasV1, cfg), cfg));
-  const level = levelTerminalDariXp(xpTerminal, cfg);
-  const perluasan = cfg.mitra.perluasan.filter((t) => t.level <= level).length;
-  const kelasTerminal = kelasDariLevel(level, cfg);
-
-  const armada = objekAtauNull(d['armada']);
-  const poV1 = Array.isArray(armada?.['po']) ? [...new Set((armada['po'] as unknown[]).filter(isPoId))] : [];
-  const hadiahEvent = poV1.filter((id) => cfg.mitra.po[id].sumber === 'hadiahEvent');
-  const calon: PoId[] = poV1.length > 0 ? poV1 : PO_IDS.filter((id) => cfg.mitra.po[id].sumber === 'awal');
-  // PO bernilai tertinggi (biaya daftar sebagai patokan tingkatnya) menempati slot lebih dulu.
-  const urut = [...calon].sort((a, b) => cfg.mitra.po[b].biayaDaftar - cfg.mitra.po[a].biayaDaftar);
-  const slot = Math.max(1, slotPo(level, perluasan, cfg));
-  const terdaftarId = urut.slice(0, slot);
-
-  const kelasBusV1 = objekAtauNull(terminal['kelasBus']);
-  const levelKelasBus = (id: PoId): number => {
-    let lv = 1;
-    KELAS_BUS_IDS.forEach((k, i) => {
-      if (i < tingkatPo(id, cfg).kelasMaks && kelasBusV1?.[k] === true && cfg.kelasBus[k].kelasTerminal <= kelasTerminal) lv = Math.max(lv, cfg.mitra.kelas[k].levelPo);
-    });
-    return lv;
-  };
-  const bonus = bonusJatahPerluasan(perluasan, cfg);
-  const m = cfg.mitra;
-  const levelUntukJatah = (n: number): number => (n <= m.jatahAwal + bonus ? 1 : 1 + Math.ceil((n - m.jatahAwal - bonus) / m.jatahPerLevel));
-  const totalLoket = Math.max(levelLoketV1, terdaftarId.length);
-  const terdaftar: SimpanPo[] = terdaftarId.map((id, i) => {
-    const loket = Math.floor(totalLoket / terdaftarId.length) + (i < totalLoket % terdaftarId.length ? 1 : 0);
-    const lv = Math.max(levelKelasBus(id), levelUntukJatah(loket));
-    return { id, xp: xpKumulatifPo(lv, cfg), loket, rekorLoket: loket, reputasi: tingkatPo(id, cfg).reputasiAwal, harga: {}, kontrakDetik: m.kontrak.hariHadiah * DETIK_SEHARI };
-  });
-  const riwayat: Record<string, Omit<SimpanPo, 'id' | 'loket' | 'kontrakDetik'>> = {};
-  for (const id of urut.slice(slot)) riwayat[id] = { xp: xpKumulatifPo(levelKelasBus(id), cfg), reputasi: tingkatPo(id, cfg).reputasiAwal, rekorLoket: 0, harga: {} };
-
-  const { jurusanBuka: _jurusan, kelasBus: _kelasBus, ...terminalBaru } = terminal;
-  const { armada: _armada, harga: _harga, prestige: _prestige, ...sisa } = d;
+export function migrasiKeV3(d: DataMentah, cfg: KonfigEkonomi = EKONOMI): DataMentah {
+  const terakhir = d['waktuTerakhirMs'];
+  const sekarang = typeof terakhir === 'number' && Number.isFinite(terakhir) && terakhir >= 0 ? terakhir : 0;
+  const baru = keSaveV3(buatStateBaru(sekarang, cfg));
+  const benih = d['benihCuaca'];
+  const profil = objekAtauNull(d['profil']);
+  const nama = profil?.['namaTerminal'];
+  const ikut = profil?.['ikutPeringkat'];
   return {
-    ...sisa,
-    terminal: { ...terminalBaru, loketKosong: 0 },
-    mitra: { terdaftar, riwayat, jedaSampai: {}, hadiahEvent },
-    perkembangan: { xpTerminal, perluasan, proyekDetik: 0 },
-    renovasi: { poin: typeof prestige?.['poin'] === 'string' ? prestige['poin'] : '0e0', jumlah: kelasV1 },
+    ...baru,
+    benihCuaca: typeof benih === 'number' && Number.isSafeInteger(benih) && benih >= 0 ? benih : baru.benihCuaca,
+    profil: { namaTerminal: typeof nama === 'string' ? nama : '', ikutPeringkat: ikut === true },
   };
 }
 
 // ---------------------------------------------------------------------------
-// Baca save v2
+// Baca save v3
 
-function dariSaveV2(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): GameState {
+function dariSaveV3(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): GameState {
   const awal = buatStateBaru(sekarangMs, cfg);
-
-  const terminalMentah = wajibObjek(akar['terminal'], 'terminal');
-  const tahapMentah = wajibObjek(terminalMentah['tahap'], 'terminal.tahap');
-  const tahap = {} as Record<TahapId, TahapState>;
-  for (const id of TAHAP_IDS) {
-    // Tahap yang belum ada di save lama (mis. tahap baru di masa depan) mulai dari awal.
-    tahap[id] = tahapMentah[id] === undefined ? buatTahapAwal() : bacaTahap(tahapMentah[id], `terminal.tahap.${id}`);
-  }
-
-  const statistikMentah = opsionalObjek(akar['statistik'], 'statistik');
-  const fasilitasMentah = opsionalObjek(terminalMentah['fasilitas'], 'terminal.fasilitas');
-  const teknologiMentah = opsionalObjek(terminalMentah['teknologi'], 'terminal.teknologi');
-  const fasilitas = { ...awal.terminal.fasilitas };
-  for (const id of FASILITAS_IDS) fasilitas[id] = opsional(fasilitasMentah?.[id], 0, wajibIntegerNonNegatif, `terminal.fasilitas.${id}`);
-  const teknologi = { ...awal.terminal.teknologi };
-  for (const id of TEKNOLOGI_IDS) teknologi[id] = opsional(teknologiMentah?.[id], false, wajibBoolean, `terminal.teknologi.${id}`);
-  // Save dari sebelum ada jalur: terminalnya tidak menyusut, jalur mengikuti tonggak level yang sudah dicapai.
-  const jalurMaks = 1 + cfg.jalur.biaya.length;
-  const jalurSimpan = terminalMentah['jalur'];
-  const jalur =
-    jalurSimpan === undefined
-      ? Math.min(jalurMaks, 1 + cfg.milestone.filter((m) => Math.min(tahap.peron.level, tahap.keberangkatan.level) >= m).length)
-      : Math.min(jalurMaks, Math.max(1, wajibIntegerNonNegatif(jalurSimpan, 'terminal.jalur')));
-  const mitra = bacaMitra(akar['mitra'], cfg);
   const perkembangan = bacaPerkembangan(akar['perkembangan'], cfg);
-
-  const waktuMainDetik = statistikMentah ? opsional(statistikMentah['waktuMainDetik'], 0, wajibAngkaNonNegatif, 'statistik.waktuMainDetik') : 0;
+  const terminalMentah = wajibObjek(akar['terminal'], 'terminal');
+  const mitra = bacaMitra(akar['mitra'], cfg);
+  const bangunan = bacaBangunan(terminalMentah['bangunan'], perkembangan.perluasan, mitra, cfg);
+  const statistik = bacaStatistik(akar['statistik'], awal.statistik);
+  const hariKe = waktuTerminal(statistik.waktuMainDetik).hariKe;
   return {
-    uang: stringKeDecimal(akar['uang'], 'uang'),
-    terminal: aturLevelLoket(
-      {
-        id: opsional(terminalMentah['id'], ID_TERMINAL_AWAL, wajibString, 'terminal.id'),
-        tahap,
-        fasilitas,
-        teknologi,
-        jalur,
-        loketKosong: opsional(terminalMentah['loketKosong'], 0, wajibIntegerNonNegatif, 'terminal.loketKosong'),
-      },
-      mitra,
-    ),
+    kas: wajibAngkaNonNegatif(akar['kas'], 'kas'),
+    terminal: {
+      id: opsional(terminalMentah['id'], ID_TERMINAL_AWAL, wajibString, 'terminal.id'),
+      bangunan,
+      petugas: rapikanPetugas(bacaPetugas(terminalMentah['petugas']), bangunan),
+      tarif: bacaTarif(terminalMentah['tarif'], awal.terminal.tarif, cfg),
+      teknologi: bacaTeknologi(terminalMentah['teknologi'], awal.terminal.teknologi),
+    },
     mitra,
     perkembangan,
-    renovasi: bacaRenovasi(akar['renovasi'], awal.renovasi),
-    statistik: statistikMentah
-      ? {
-          totalPendapatanRun: opsional(statistikMentah['totalPendapatanRun'], awal.statistik.totalPendapatanRun, stringKeDecimal, 'statistik.totalPendapatanRun'),
-          totalPendapatanSepanjangMasa: opsional(statistikMentah['totalPendapatanSepanjangMasa'], awal.statistik.totalPendapatanSepanjangMasa, stringKeDecimal, 'statistik.totalPendapatanSepanjangMasa'),
-          waktuMainDetik,
-          totalPenumpang: opsional(statistikMentah['totalPenumpang'], 0, wajibAngkaNonNegatif, 'statistik.totalPenumpang'),
-        }
-      : awal.statistik,
+    keuangan: bacaKeuangan(akar['keuangan'], hariKe),
+    statistik,
     harian: bacaHarian(akar['harian'], awal.harian),
     pencapaian: bacaPencapaian(akar['pencapaian']),
     benihCuaca: opsional(akar['benihCuaca'], awal.benihCuaca, wajibIntegerNonNegatif, 'benihCuaca'),
     hadiah: bacaHadiah(akar['hadiah'], awal.hadiah),
-    sewaKios: bacaSewaKios(akar['sewaKios'], awal.sewaKios),
-    transaksi: bacaTransaksi(akar['transaksi'], cfg),
     event: bacaEvent(akar['event'], awal.event),
     profil: bacaProfil(akar['profil']),
-    rekor: bacaRekor(akar['rekor'], waktuMainDetik),
+    rekor: bacaRekor(akar['rekor']),
     tantangan: bacaTantangan(akar['tantangan']),
     waktuTerakhirMs: opsional(akar['waktuTerakhirMs'], sekarangMs, wajibAngkaNonNegatif, 'waktuTerakhirMs'),
   };
 }
 
-/** Harga PO: kunci = indeks jurusan; di luar daftar jurusan dibuang, nilainya dirapikan (config bisa berubah), 100 tidak disimpan. */
-function bacaHargaPo(nilai: unknown, jalur: string, cfg: KonfigEkonomi): HargaPo {
-  const o = opsionalObjek(nilai, jalur);
-  if (!o) return {};
-  const hasil: Record<number, number> = {};
-  for (const [kunci, v] of Object.entries(o)) {
-    const j = Number(kunci);
-    if (!Number.isInteger(j) || j < 0 || j >= cfg.jurusan.length) continue;
-    const h = rapikanHarga(wajibAngkaNonNegatif(v, `${jalur}.${kunci}`), cfg);
-    if (h !== 100) hasil[j] = h;
+/**
+ * Bangunan: tiap jenis bilangan bulat dalam slot tahap perluasan sekarang (save
+ * dari versi lain / diubah tangan). Jalur permanen (paling sedikit unit
+ * awalnya), jendela loket paling sedikit satu dan sebanyak yang disewa PO.
+ */
+function bacaBangunan(nilai: unknown, perluasan: number, mitra: MitraState, cfg: KonfigEkonomi): Record<BangunanId, number> {
+  const o = opsionalObjek(nilai, 'terminal.bangunan');
+  const hasil = {} as Record<BangunanId, number>;
+  for (const id of BANGUNAN_IDS) {
+    const b = cfg.tycoon.bangunan[id];
+    const n = opsional(o?.[id], b.awal, wajibIntegerNonNegatif, `terminal.bangunan.${id}`);
+    const min = id === 'jalur' ? b.awal : id === 'jendela' ? 1 : 0;
+    hasil[id] = Math.max(min, Math.min(slotBangunan(id, perluasan, cfg), n));
   }
+  hasil.jendela = Math.max(hasil.jendela, mitra.terdaftar.reduce((a, p) => a + p.loket, 0));
+  return hasil;
+}
+
+/** Urutan rekrut; peran yang tidak dikenal dibuang (batas tiap peran dirapikan pemanggil). */
+function bacaPetugas(nilai: unknown): PetugasId[] {
+  if (nilai === undefined) return [];
+  if (!Array.isArray(nilai)) throw new SaveTidakValidError('terminal.petugas: harus array');
+  return nilai.filter(isPetugasId);
+}
+
+/** Tarif dirapikan lagi ke rentang & langkahnya (config bisa berubah). */
+function bacaTarif(nilai: unknown, bawaan: Readonly<Record<TarifId, number>>, cfg: KonfigEkonomi): Record<TarifId, number> {
+  const o = opsionalObjek(nilai, 'terminal.tarif');
+  const hasil = {} as Record<TarifId, number>;
+  for (const id of TARIF_IDS) hasil[id] = jepitTarif(id, opsional(o?.[id], bawaan[id], wajibAngkaNonNegatif, `terminal.tarif.${id}`), cfg);
+  return hasil;
+}
+
+function bacaTeknologi(nilai: unknown, bawaan: Readonly<Record<TeknologiId, boolean>>): Record<TeknologiId, boolean> {
+  const o = opsionalObjek(nilai, 'terminal.teknologi');
+  const hasil = { ...bawaan };
+  for (const id of TEKNOLOGI_IDS) hasil[id] = opsional(o?.[id], false, wajibBoolean, `terminal.teknologi.${id}`);
   return hasil;
 }
 
@@ -450,15 +351,13 @@ function bacaPoTerdaftar(nilai: unknown, jalur: string, cfg: KonfigEkonomi): PoT
   const id = o['id'];
   // PO yang tidak dikenal (mis. dari versi lain) diabaikan.
   if (!isPoId(id)) return null;
-  const loket = wajibIntegerNonNegatif(o['loket'], `${jalur}.loket`);
   return {
     id,
     xp: wajibAngkaNonNegatif(o['xp'], `${jalur}.xp`),
-    loket,
-    rekorLoket: Math.max(loket, opsional(o['rekorLoket'], loket, wajibIntegerNonNegatif, `${jalur}.rekorLoket`)),
+    // PO selalu menyewa minimal satu jendela.
+    loket: Math.max(1, wajibIntegerNonNegatif(o['loket'], `${jalur}.loket`)),
     reputasi: reputasiAman(opsional(o['reputasi'], tingkatPo(id, cfg).reputasiAwal, wajibAngkaNonNegatif, `${jalur}.reputasi`)),
-    harga: bacaHargaPo(o['harga'], `${jalur}.harga`, cfg),
-    kontrakDetik: opsional(o['kontrakDetik'], cfg.mitra.kontrak.hari * DETIK_SEHARI, wajibAngkaNonNegatif, `${jalur}.kontrakDetik`),
+    kontrakDetik: Math.min(cfg.mitra.kontrak.hariMaks * DETIK_SEHARI, opsional(o['kontrakDetik'], cfg.mitra.kontrak.hari * DETIK_SEHARI, wajibAngkaNonNegatif, `${jalur}.kontrakDetik`)),
   };
 }
 
@@ -482,8 +381,6 @@ function bacaMitra(nilai: unknown, cfg: KonfigEkonomi): MitraState {
     riwayat[id] = {
       xp: wajibAngkaNonNegatif(r['xp'], `mitra.riwayat.${id}.xp`),
       reputasi: reputasiAman(opsional(r['reputasi'], tingkatPo(id, cfg).reputasiAwal, wajibAngkaNonNegatif, `mitra.riwayat.${id}.reputasi`)),
-      rekorLoket: opsional(r['rekorLoket'], 0, wajibIntegerNonNegatif, `mitra.riwayat.${id}.rekorLoket`),
-      harga: bacaHargaPo(r['harga'], `mitra.riwayat.${id}.harga`, cfg),
     };
   }
   const jedaMentah = opsionalObjek(o['jedaSampai'], 'mitra.jedaSampai');
@@ -507,12 +404,40 @@ function bacaPerkembangan(nilai: unknown, cfg: KonfigEkonomi): PerkembanganState
   };
 }
 
-function bacaRenovasi(nilai: unknown, bawaan: RenovasiState): RenovasiState {
-  const o = opsionalObjek(nilai, 'renovasi');
+function bacaStatistik(nilai: unknown, bawaan: StatistikState): StatistikState {
+  const o = opsionalObjek(nilai, 'statistik');
   if (!o) return bawaan;
+  const angka = (k: keyof StatistikState): number => opsional(o[k], bawaan[k], wajibAngkaNonNegatif, `statistik.${k}`);
+  return { totalPendapatan: angka('totalPendapatan'), totalBiaya: angka('totalBiaya'), waktuMainDetik: angka('waktuMainDetik'), totalPenumpang: angka('totalPenumpang') };
+}
+
+function bacaBuku(nilai: unknown, jalur: string, hariKe: number): BukuHarian {
+  const o = wajibObjek(nilai, jalur);
+  const awal = buatBukuHarian(hariKe);
+  const p = opsionalObjek(o['pendapatan'], `${jalur}.pendapatan`);
+  const b = opsionalObjek(o['biaya'], `${jalur}.biaya`);
+  const pendapatan = {} as Record<keyof RincianPendapatan, number>;
+  for (const k of Object.keys(awal.pendapatan) as (keyof RincianPendapatan)[]) pendapatan[k] = opsional(p?.[k], 0, wajibAngkaNonNegatif, `${jalur}.pendapatan.${k}`);
+  const biaya = {} as Record<keyof RincianBiaya, number>;
+  for (const k of Object.keys(awal.biaya) as (keyof RincianBiaya)[]) biaya[k] = opsional(b?.[k], 0, wajibAngkaNonNegatif, `${jalur}.biaya.${k}`);
   return {
-    poin: opsional(o['poin'], bawaan.poin, stringKeDecimal, 'renovasi.poin'),
-    jumlah: opsional(o['jumlah'], 0, wajibIntegerNonNegatif, 'renovasi.jumlah'),
+    hariKe: opsional(o['hariKe'], hariKe, wajibIntegerNonNegatif, `${jalur}.hariKe`),
+    pendapatan,
+    biaya,
+    penumpang: opsional(o['penumpang'], 0, wajibAngkaNonNegatif, `${jalur}.penumpang`),
+  };
+}
+
+/** Buku keuangan; tanpa blok ini mulai dari nol di hari terminal sekarang. */
+function bacaKeuangan(nilai: unknown, hariKe: number): KeuanganState {
+  const o = opsionalObjek(nilai, 'keuangan');
+  if (!o) return buatKeuanganAwal(hariKe);
+  return {
+    hariIni: o['hariIni'] === undefined ? buatBukuHarian(hariKe) : bacaBuku(o['hariIni'], 'keuangan.hariIni', hariKe),
+    kemarin: o['kemarin'] === undefined || o['kemarin'] === null ? null : bacaBuku(o['kemarin'], 'keuangan.kemarin', Math.max(0, hariKe - 1)),
+    tunggakanJam: Math.min(0.999999, opsional(o['tunggakanJam'], 0, wajibAngkaNonNegatif, 'keuangan.tunggakanJam')),
+    hariTanpaRugi: opsional(o['hariTanpaRugi'], 0, wajibIntegerNonNegatif, 'keuangan.hariTanpaRugi'),
+    petugasBerhenti: opsional(o['petugasBerhenti'], 0, wajibIntegerNonNegatif, 'keuangan.petugasBerhenti'),
   };
 }
 
@@ -520,7 +445,7 @@ function bacaHarian(nilai: unknown, bawaan: HarianState): HarianState {
   const o = opsionalObjek(nilai, 'harian');
   if (!o) return bawaan;
   const jenis = o['jenis'];
-  if (jenis !== 'upgrade' && jenis !== 'penumpang') throw new SaveTidakValidError('harian.jenis tidak dikenal');
+  if (jenis !== 'penumpang' && jenis !== 'laba') throw new SaveTidakValidError('harian.jenis tidak dikenal');
   return {
     hariKe: wajibIntegerNonNegatif(o['hariKe'], 'harian.hariKe'),
     jenis,
@@ -528,16 +453,6 @@ function bacaHarian(nilai: unknown, bawaan: HarianState): HarianState {
     progres: wajibAngkaNonNegatif(o['progres'], 'harian.progres'),
     diklaim: wajibBoolean(o['diklaim'], 'harian.diklaim'),
     jumlahSelesai: opsional(o['jumlahSelesai'], 0, wajibIntegerNonNegatif, 'harian.jumlahSelesai'),
-  };
-}
-
-function bacaSewaKios(nilai: unknown, bawaan: SewaKiosState): SewaKiosState {
-  const o = opsionalObjek(nilai, 'sewaKios');
-  if (!o) return bawaan;
-  return {
-    terkumpul: opsional(o['terkumpul'], bawaan.terkumpul, stringKeDecimal, 'sewaKios.terkumpul'),
-    terakhir: opsional(o['terakhir'], bawaan.terakhir, stringKeDecimal, 'sewaKios.terakhir'),
-    hariTerakhir: typeof o['hariTerakhir'] === 'number' && Number.isSafeInteger(o['hariTerakhir']) ? o['hariTerakhir'] : bawaan.hariTerakhir,
   };
 }
 
@@ -558,29 +473,13 @@ function bacaHadiah(nilai: unknown, bawaan: HadiahState): HadiahState {
   };
 }
 
-/** Sisa transaksi yang belum utuh (lihat TransaksiState); save lama mulai dari nol. */
-function bacaTransaksi(nilai: unknown, cfg: KonfigEkonomi): TransaksiState {
-  const o = opsionalObjek(nilai, 'transaksi');
-  return {
-    sisaPenumpang: Math.min(0.999999, opsional(o?.['sisaPenumpang'], 0, wajibAngkaNonNegatif, 'transaksi.sisaPenumpang')),
-    sisaBus: Math.min(cfg.penumpangPerBus - 1e-6, opsional(o?.['sisaBus'], 0, wajibAngkaNonNegatif, 'transaksi.sisaBus')),
-  };
-}
-
-/** Rekor; save lama mulai dari nol di hari terminal sekarang. */
-function bacaRekor(nilai: unknown, waktuMainDetik: number): RekorState {
+/** Rekor; tanpa blok ini mulai dari nol. */
+function bacaRekor(nilai: unknown): RekorState {
   const o = opsionalObjek(nilai, 'rekor');
-  const awal = buatRekorAwal(waktuTerminal(waktuMainDetik).hariKe);
+  const awal = buatRekorAwal();
   if (!o) return awal;
   const angka = (k: keyof RekorState): number => opsional(o[k], awal[k], wajibAngkaNonNegatif, `rekor.${k}`);
-  return {
-    hariKe: opsional(o['hariKe'], awal.hariKe, wajibIntegerNonNegatif, 'rekor.hariKe'),
-    penumpangHariIni: angka('penumpangHariIni'),
-    pendapatanHariIni: angka('pendapatanHariIni'),
-    penumpangHarian: angka('penumpangHarian'),
-    pendapatanHarian: angka('pendapatanHarian'),
-    arusTertinggi: angka('arusTertinggi'),
-  };
+  return { penumpangHarian: angka('penumpangHarian'), labaHarian: angka('labaHarian'), arusTertinggi: angka('arusTertinggi') };
 }
 
 /** Tantangan mingguan; jenis yang tidak dikenal (mis. dari versi lain) dibuang. */
@@ -606,7 +505,7 @@ function bacaTantangan(nilai: unknown): TantanganState {
   };
 }
 
-/** Profil: nama terminal dirapikan lagi (save dari versi lain / diubah tangan). Save lama: belum ikut papan peringkat. */
+/** Profil: nama terminal dirapikan lagi (save dari versi lain / diubah tangan). Tanpa blok ini: belum ikut papan peringkat. */
 function bacaProfil(nilai: unknown): ProfilState {
   const o = opsionalObjek(nilai, 'profil');
   const nama = o?.['namaTerminal'];
@@ -644,15 +543,6 @@ function bacaPencapaian(nilai: unknown): PencapaianState {
     return [...new Set(v.filter(isPencapaianId))];
   };
   return { tercapai: daftar(o?.['tercapai'], 'pencapaian.tercapai'), diklaim: daftar(o?.['diklaim'], 'pencapaian.diklaim') };
-}
-
-function bacaTahap(nilai: unknown, jalur: string): TahapState {
-  const o = wajibObjek(nilai, jalur);
-  const level = wajibIntegerNonNegatif(o['level'], `${jalur}.level`);
-  if (level < 1) throw new SaveTidakValidError(`${jalur}.level harus ≥ 1`);
-  const kepalaMentah = opsionalObjek(o['kepala'], `${jalur}.kepala`);
-  const direkrut = kepalaMentah ? opsional(kepalaMentah['direkrut'], false, wajibBoolean, `${jalur}.kepala.direkrut`) : false;
-  return { level, kepala: { direkrut } };
 }
 
 // ---------------------------------------------------------------------------

@@ -6,11 +6,13 @@ import { BAGASI, BUS, PINTU_BUS } from '../src/game/tata-letak';
 import { KELAS_BUS_IDS, type KelasBusId } from '../src/sim/fitur';
 import { levelMinimalKelas } from '../src/sim/level-terminal';
 import { kelasAktif } from '../src/sim/mitra';
-import { kelasBusBeroperasi, nilaiPerPenumpangState, tick } from '../src/sim/state';
+import { kelasBusBeroperasi, keuanganSekarang, operasiState, tick, type GameState } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
 import { denganLevelTerminal, denganPo, stateOtomatis } from './helpers';
 
 const lv = EKONOMI.mitra.kelas;
+/** Biaya layanan rata-rata per penumpang: ikut harga tiket (kelas bus yang lebih tinggi lebih mahal). */
+const layananPerPenumpang = (s: GameState): number => keuanganSekarang(s).pendapatan.layanan / operasiState(s).arus;
 
 describe('kelas bus (sim): dioperasikan mitra PO', () => {
   it('game baru: hanya ekonomi; kelas berikutnya terbuka seiring level PO dan menaikkan nilai tiket', () => {
@@ -19,7 +21,7 @@ describe('kelas bus (sim): dioperasikan mitra PO', () => {
     const patas = denganPo(s, 'ondelOndel', { level: lv.patas.levelPo });
     expect(kelasBusBeroperasi(patas)).toEqual(['ekonomi', 'patas']);
     expect(kelasBusBeroperasi(denganPo(s, 'ondelOndel', { level: lv.patas.levelPo - 1 }))).toEqual(['ekonomi']);
-    expect(nilaiPerPenumpangState(patas)).toBeGreaterThan(nilaiPerPenumpangState(s));
+    expect(layananPerPenumpang(patas)).toBeGreaterThan(layananPerPenumpang(s));
   });
 
   it('dibatasi tingkat PO: lokal sampai Eksekutif, regional sampai Sleeper, nasional & premium sampai Double Decker', () => {

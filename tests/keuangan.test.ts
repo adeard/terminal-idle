@@ -56,7 +56,7 @@ describe('keuangan tycoon', () => {
     expect(siang.biaya.gaji).toBeCloseTo((T.gaji.peron + T.gaji.satpam) / 24, 6);
     expect(malam.biaya.listrik).toBeCloseTo(siang.biaya.listrik * T.listrik.pengaliMalam, 6);
     expect(siang.biaya.gedung).toBe(0);
-    expect(keu({ ...k, perluasan: 1 }).biaya.gedung).toBeCloseTo(T.perluasan[0]!.operasional / 24, 6);
+    expect(keu({ ...k, perluasan: 1 }).biaya.gedung).toBeCloseTo(EKONOMI.mitra.perluasan[0]!.operasional / 24, 6);
     const tipeB = keu({ ...k, kelasTerminal: 1 });
     expect(tipeB.biaya.gaji).toBeCloseTo(siang.biaya.gaji * T.pengaliBiayaKelas[1]!, 6);
     expect(siang.laba).toBeCloseTo(siang.totalPendapatan - siang.totalBiaya, 6);

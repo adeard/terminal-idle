@@ -25,7 +25,7 @@ import {
   type Titik,
   type TitikSinggah,
 } from '../src/game/tata-letak';
-import { denganLevelTerminal, denganPerluasan, denganPo, ruasBerpotongan, stateOtomatis } from './helpers';
+import { denganBangunan, denganLevelTerminal, denganPerluasan, denganPo, ruasBerpotongan, stateOtomatis } from './helpers';
 
 const JK: readonly JenisKelamin[] = ['pria', 'wanita'];
 type Ruas = readonly [number, number, number, number];
@@ -225,9 +225,10 @@ describe('penumpang mampir', () => {
   }, 30_000);
 
   it('Kios & Minimarket belum dibangun: tidak ada yang belanja di kios, minimarket, atau apotek; toilet, musholla & ATM tetap', () => {
-    const s = stateOtomatis({ peron: 10, loket: 10, keberangkatan: 10 });
+    const s = stateOtomatis();
     expect(hitungLajuVisual(s).kiosDibangun).toBe(false);
-    expect(hitungLajuVisual({ ...s, terminal: { ...s.terminal, fasilitas: { ...s.terminal.fasilitas, kios: 1 } } }).kiosDibangun).toBe(true);
+    expect(hitungLajuVisual(denganBangunan(s, { kios: 1 })).kiosDibangun).toBe(true);
+    expect(hitungLajuVisual(denganBangunan(s, { toko: 1 })).kiosDibangun).toBe(true);
     const dunia = new DuniaVisual({ acak: acakBerbenih(41), wanita });
     const tempat = new Set<string>();
     let belanja = 0;
@@ -243,7 +244,7 @@ describe('penumpang mampir', () => {
 
   it('beli tiket tidak instan: beberapa detik per pembeli, dan jendela yang buka tetap bukan hambatan palsu', () => {
     // Beberapa benih: antrean dua baris yang bergerombol per baris dulu hanya menumpuk pada sebagian benih.
-    const awal = stateOtomatis({ peron: 120, loket: 200, keberangkatan: 120 });
+    const awal = denganPo(stateOtomatis({ jalur: 5 }), 'ondelOndel', { loket: 20 });
     // Semua jurusan dilayani: delapan PO Lv 12 di terminal Terpadu yang aula loketnya sudah diperluas (8 jendela).
     let semua = denganPerluasan(denganLevelTerminal(awal, 30), 2);
     for (const id of ['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa', 'sigerSakti', 'rinjaniIndah', 'rumahGadang', 'danauToba'] as const) semua = denganPo(semua, id, { level: 12 });

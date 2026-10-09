@@ -1,8 +1,8 @@
 /**
- * Ekonomi v2, level terminal (murni): XP = penumpang yang diberangkatkan,
- * kelas terminal (Tipe C → B → A → Terpadu ★n) mengikuti level tanpa reset,
- * slot PO, dan bonus pendapatan per level. Rancangan:
- * documents/12-rancangan-ekonomi-po.md. Belum dipakai game.
+ * Level terminal (murni): XP = penumpang yang diberangkatkan, kelas terminal
+ * (Tipe C → B → A → Terpadu ★n) mengikuti level tanpa reset, dan slot PO.
+ * Level tidak memberi bonus pendapatan: ia membuka slot PO, kelas, dan
+ * perluasan (documents/13-rancangan-tycoon.md bagian 8).
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 
@@ -32,7 +32,7 @@ export function kelasDariLevel(level: number, cfg: KonfigEkonomi = EKONOMI): num
   return 3 + Math.floor((level - terpadu) / cfg.mitra.terminal.levelPerBintang);
 }
 
-/** Level terminal paling rendah dengan kelas ini (kebalikan kelasDariLevel; dipakai migrasi save v1). */
+/** Level terminal paling rendah dengan kelas ini (kebalikan kelasDariLevel). */
 export function levelMinimalKelas(kelas: number, cfg: KonfigEkonomi = EKONOMI): number {
   const [b, a, terpadu] = cfg.mitra.terminal.levelKelas;
   if (kelas <= 0) return 1;
@@ -42,9 +42,8 @@ export function levelMinimalKelas(kelas: number, cfg: KonfigEkonomi = EKONOMI): 
 }
 
 /**
- * Slot PO di level ini. Aula loket sekarang hanya punya 8 jendela, jadi slot
- * di atas `slotTanpaAulaKedua` baru bisa dipakai setelah tahap perluasan aula
- * kedua selesai.
+ * Slot PO di level ini. Slot di atas `slotTanpaAulaKedua` baru bisa dipakai
+ * setelah tahap perluasan aula loket kedua selesai.
  * @param tahapPerluasan banyaknya tahap perluasan yang sudah selesai dibangun
  */
 export function slotPo(level: number, tahapPerluasan: number, cfg: KonfigEkonomi = EKONOMI): number {
@@ -52,9 +51,4 @@ export function slotPo(level: number, tahapPerluasan: number, cfg: KonfigEkonomi
   let slot = 0;
   for (const [lv, n] of t.slot) if (level >= lv) slot = n;
   return tahapPerluasan >= t.tahapAulaKedua ? slot : Math.min(slot, t.slotTanpaAulaKedua);
-}
-
-/** Pengali semua pendapatan dari level terminal (menggantikan sebagian bonus prestige v1). */
-export function pengaliLevelTerminal(level: number, cfg: KonfigEkonomi = EKONOMI): number {
-  return 1 + cfg.mitra.terminal.bonusPerLevel * (Math.max(1, level) - 1);
 }

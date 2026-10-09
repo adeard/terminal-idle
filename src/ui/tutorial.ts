@@ -3,7 +3,7 @@
  * adegan dan sorotan berkedip pada tombol yang dituju. Tidak pernah
  * menghalangi: pemain boleh melakukan apa saja, dan langkah maju sendiri
  * begitu syaratnya terpenuhi. Sambutan di awal, "Lewati" kapan saja.
- * Sasarannya dicari di DOM overlay (data-tahap, data-tab, data-po, data-jalur),
+ * Sasarannya dicari di DOM overlay (data-tab, data-bangunan, data-po, data-petugas),
  * jadi ikut berpindah bila pemain berganti tab atau meringkas panel.
  */
 import type { Analitik } from '../app/analitik';
@@ -19,7 +19,7 @@ import {
 } from '../app/tutorial';
 import type { GameState } from '../sim/state';
 import { formatUang } from './format';
-import { NAMA_PO, NAMA_TAHAP, TEKS } from './teks';
+import { NAMA_PO, TEKS } from './teks';
 
 export interface OpsiTutorial {
   /** Akar overlay (#ui): tempat mencari tombol yang disorot. */
@@ -37,12 +37,12 @@ const KELAS_SOROT = 'sorot-tutorial';
 
 function judulLangkah(s: SasaranTutorial): string {
   switch (s.jenis) {
-    case 'upgrade':
-      return s.tahap === 'loket' ? TEKS.tutorialLoketJudul : TEKS.tutorialUpgradeJudul;
+    case 'jendela':
+      return TEKS.tutorialJendelaJudul;
     case 'po':
       return TEKS.tutorialPoJudul;
-    case 'kepala':
-      return TEKS.tutorialKepalaJudul;
+    case 'petugas':
+      return TEKS.tutorialPetugasJudul;
     case 'jalur':
       return TEKS.tutorialJalurJudul;
   }
@@ -50,21 +50,21 @@ function judulLangkah(s: SasaranTutorial): string {
 
 function teksLangkah(s: SasaranTutorial): string {
   switch (s.jenis) {
-    case 'upgrade':
-      // Tahap Loket = loket milik mitra PO: tombolnya membangun loket untuk PO tujuan.
-      return s.tahap === 'loket' && s.po ? TEKS.tutorialLoket(NAMA_PO[s.po].nama) : TEKS.tutorialUpgrade(NAMA_TAHAP[s.tahap]);
+    case 'jendela':
+      return TEKS.tutorialJendela(s.po ? NAMA_PO[s.po].nama : '');
     case 'po':
       return TEKS.tutorialPo(NAMA_PO[s.po].nama);
-    case 'kepala':
-      return TEKS.tutorialKepala(NAMA_TAHAP[s.tahap]);
+    case 'petugas':
+      return TEKS.tutorialPetugas;
     case 'jalur':
       return TEKS.tutorialJalur;
   }
 }
 
-/** Kemajuan menuju biaya langkah ("Uang Rp 12 / Rp 22"); uang terus masuk dengan sendirinya. */
+/** Kemajuan menuju biaya langkah ("Kas Rp 1,2 jt / Rp 2 jt"); laba terus masuk dengan sendirinya. */
 function teksKemajuan(state: GameState, s: SasaranTutorial): string {
-  return state.uang.gte(s.biaya) ? TEKS.tutorialUangCukup : TEKS.tutorialUang(formatUang(state.uang), formatUang(s.biaya));
+  if (s.biaya <= 0) return TEKS.tutorialGaji;
+  return state.kas >= s.biaya ? TEKS.tutorialUangCukup : TEKS.tutorialUang(formatUang(Math.floor(state.kas)), formatUang(s.biaya));
 }
 
 /**
@@ -75,21 +75,19 @@ function teksKemajuan(state: GameState, s: SasaranTutorial): string {
 export function elemenSasaran(akar: HTMLElement, s: SasaranTutorial): HTMLElement[] {
   const q = (sel: string): HTMLElement[] => [...akar.querySelectorAll<HTMLElement>(sel)];
   const ringkas = akar.classList.contains('panel-ringkas');
-  const tab = akar.querySelector<HTMLElement>('.tab.aktif')?.dataset['tab'] ?? 'tahap';
+  const tab = akar.querySelector<HTMLElement>('.tab.aktif')?.dataset['tab'] ?? 'bangun';
+  if (ringkas) return q('.tombol-ringkas');
   switch (s.jenis) {
-    case 'upgrade':
-    case 'kepala':
-      if (ringkas) return q('.tombol-ringkas');
-      if (tab !== 'tahap') return q('.tab[data-tab="tahap"]');
-      return q(`.panel[data-tahap="${s.tahap}"] .tombol-${s.jenis}`);
+    case 'jendela':
+    case 'jalur':
+      if (tab !== 'bangun') return q('.tab[data-tab="bangun"]');
+      return q(`.item-bangun[data-bangunan="${s.jenis}"] .tombol-beli`);
     case 'po':
-      if (ringkas) return q('.tombol-ringkas');
       if (tab !== 'po') return q('.tab[data-tab="po"]');
       return q(`.item-po[data-po="${s.po}"] .tombol-beli`);
-    case 'jalur':
-      if (ringkas) return q('.tombol-ringkas');
-      if (tab !== 'fasilitas') return q('.tab[data-tab="fasilitas"]');
-      return q('[data-jalur] .tombol-beli');
+    case 'petugas':
+      if (tab !== 'petugas') return q('.tab[data-tab="petugas"]');
+      return q('.item-petugas[data-petugas="peron"] .tombol-tambah');
   }
 }
 

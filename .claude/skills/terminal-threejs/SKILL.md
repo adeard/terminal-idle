@@ -126,9 +126,10 @@ dihitung dari perpindahan posisi, jadi cukup gerakkan x/y. Rentang id:
 3. `npm run build`
 4. Screenshot: jalankan `npx vite --port 5199 --strictPort` di latar, lalu
    `node --experimental-websocket .claude/skills/terminal-threejs/shot.mjs <out.png> [tunggu] [aksi]`
-   (petunjuk variabel & aksi di kepala `shot.mjs`). Contoh landscape malam dengan save
-   level 60:
-   `W=900 H=420 SAVE=60,60,60 JAM=23.5 HARI=1 node --experimental-websocket .claude/skills/terminal-threejs/shot.mjs out/malam.png 12000`
+   (petunjuk variabel & aksi di kepala `shot.mjs`). Contoh landscape malam dengan save tycoon
+   5 jalur, 16 jendela loket, perluasan tahap 4, Terminal Lv 25 (`SAVE=jalur,jendela,perluasan,level`):
+   `W=900 H=420 SAVE=5,16,4,25 JAM=23.5 HARI=1 node --experimental-websocket .claude/skills/terminal-threejs/shot.mjs out/malam.png 12000`
+   Port lain (mis. 5199 sedang dipakai): jalankan vite di port itu dan beri `URL=http://localhost:<port>/?tingkat=1`.
    Simpan hasil di folder sementara (scratchpad), bukan di repo. Hentikan server dev setelah selesai.
 5. Untuk mengarahkan kamera ke titik tertentu (aksi `kamera`), pasang **sementara** di
    `src/main.ts` setelah `t.pasangSuara(suara);`:

@@ -4,17 +4,15 @@
  * Penyedia sungguhan (Google Analytics 4 lewat gtag.js) ada di
  * platform/analitik.ts; tanpa ID pengukuran semua peristiwa diabaikan.
  *
- * Tujuannya mengukur corong pemain baru (tutorial → loket → PO kedua →
- * Kepala → Jalur 2) dan hal yang membuat pemain bertahan. Retensi
+ * Tujuannya mengukur corong pemain baru (tutorial → jendela loket → PO kedua →
+ * petugas peron → Jalur 2) dan hal yang membuat pemain bertahan. Retensi
  * (kembali esok hari / minggu depan) dihitung GA4 sendiri dari kunjungan.
  * Kejadian yang sering (bus datang, penumpang naik, uang masuk) tidak dicatat
  * satu per satu: cukup ringkasan tiap sesi (ringkasanSesi). Error dilaporkan
  * sebagai peristiwa `exception` GA4. Tidak ada data pribadi yang dikirim.
  */
-import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import type { Aksi } from '../sim/aksi';
 import { jurusanDilayani, kelasTerminal, kepuasanTerminal, levelTerminal, type GameState } from '../sim/state';
-import { TAHAP_IDS } from '../sim/tahap';
 
 export type NilaiAnalitik = string | number | boolean;
 export type DataAnalitik = Readonly<Record<string, NilaiAnalitik>>;
@@ -30,14 +28,14 @@ export interface Analitik {
 
 export const TANPA_ANALITIK: Analitik = { catat: () => {} };
 
-/** Level tahap & fasilitas yang dicatat (bukan tiap upgrade, supaya data tidak banjir). */
-export const TONGGAK_LEVEL: ReadonlySet<number> = new Set([2, 5, 10, 25, 50, 100, 150, 200, 300, 400, 500]);
-
 /**
  * Peristiwa yang cukup dicatat sekali per sesi untuk data yang sama (mis. klakson telolet
- * pertama, harga tiket tiap jurusan/kelas: pemain biasanya mengetuk +/− berkali-kali).
+ * pertama, tarif terminal: pemain biasanya mengetuk +/− berkali-kali).
  */
-const SEKALI_PER_SESI: ReadonlySet<string> = new Set(['telolet', 'atur_harga']);
+const SEKALI_PER_SESI: ReadonlySet<string> = new Set(['telolet', 'atur_tarif', 'saran_tarif']);
+
+/** Rupiah → juta, satu desimal (angka besar tetap enak dibandingkan di dasbor). */
+const juta = (rp: number): number => Math.round(rp / 1e5) / 10;
 
 /** Nilai parameter GA4 paling panjang sekian karakter. */
 const MAKS_TEKS_GA4 = 100;
@@ -65,54 +63,51 @@ export function ringkasGalat(pesan: string, sumber?: string, baris?: number): st
 
 /**
  * Ringkasan satu sesi main (dari `awal` sampai `akhir`): lama, penumpang,
- * orde pendapatan (log10, angka besar tetap bisa dibandingkan), jumlah
- * upgrade, dan keadaan terminal di akhir sesi. Untuk dasbor GA4: penumpang &
- * pendapatan per sesi, sebaran kelas/jalur/kepuasan.
+ * pendapatan & laba (juta Rp), jumlah unit yang dibangun, dan keadaan terminal
+ * di akhir sesi. Untuk dasbor GA4: penumpang & laba per sesi, sebaran
+ * kelas/jalur/petugas/kepuasan.
  */
-export function ringkasanSesi(awal: GameState, akhir: GameState, upgrade: number, detikNyata: number): DataAnalitik {
-  const pendapatan = akhir.statistik.totalPendapatanSepanjangMasa.sub(awal.statistik.totalPendapatanSepanjangMasa);
-  const level = TAHAP_IDS.reduce((a, id) => a + akhir.terminal.tahap[id].level, 0) / TAHAP_IDS.length;
+export function ringkasanSesi(awal: GameState, akhir: GameState, bangun: number, detikNyata: number): DataAnalitik {
+  const a = awal.statistik;
+  const z = akhir.statistik;
+  const pendapatan = z.totalPendapatan - a.totalPendapatan;
   return {
     detik: Math.max(0, Math.round(detikNyata)),
-    detik_main: Math.max(0, Math.round(akhir.statistik.waktuMainDetik - awal.statistik.waktuMainDetik)),
-    penumpang: Math.max(0, Math.round(akhir.statistik.totalPenumpang - awal.statistik.totalPenumpang)),
-    pendapatan_log10: pendapatan.gt(1) ? Math.round(pendapatan.log10() * 10) / 10 : 0,
-    upgrade,
+    detik_main: Math.max(0, Math.round(z.waktuMainDetik - a.waktuMainDetik)),
+    penumpang: Math.max(0, Math.round(z.totalPenumpang - a.totalPenumpang)),
+    pendapatan_juta: juta(pendapatan),
+    laba_juta: juta(pendapatan - (z.totalBiaya - a.totalBiaya)),
+    bangun,
+    kas_juta: juta(akhir.kas),
     kelas: kelasTerminal(akhir),
     level_terminal: levelTerminal(akhir),
-    jalur: akhir.terminal.jalur,
+    jalur: akhir.terminal.bangunan.jalur,
     jurusan: jurusanDilayani(akhir).filter(Boolean).length,
     po: akhir.mitra.terdaftar.length,
-    level_rata: Math.round(level),
+    petugas: akhir.terminal.petugas.length,
     kepuasan: Math.round(kepuasanTerminal(akhir).nilai * 100),
   };
 }
 
 /** Peristiwa dari satu aksi pemain yang berlaku (state berubah). */
-export function peristiwaAksi(aksi: Aksi, lama: GameState, baru: GameState, cfg: KonfigEkonomi = EKONOMI): PeristiwaAnalitik[] {
+export function peristiwaAksi(aksi: Aksi, lama: GameState, baru: GameState): PeristiwaAnalitik[] {
   if (baru === lama) return [];
   switch (aksi.jenis) {
-    case 'upgrade': {
-      const level = baru.terminal.tahap[aksi.tahap].level;
-      return TONGGAK_LEVEL.has(level) ? [{ nama: 'upgrade_tahap', data: { tahap: aksi.tahap, level } }] : [];
-    }
-    case 'rekrutKepala': {
-      const jumlah = TAHAP_IDS.filter((id) => baru.terminal.tahap[id].kepala.direkrut).length;
-      return [{ nama: 'rekrut_kepala', data: { tahap: aksi.tahap, jumlah_kepala: jumlah } }];
-    }
-    case 'bangunFasilitas': {
-      const level = baru.terminal.fasilitas[aksi.fasilitas];
-      return level === 1 || TONGGAK_LEVEL.has(level) ? [{ nama: 'bangun_fasilitas', data: { fasilitas: aksi.fasilitas, level } }] : [];
-    }
-    case 'bukaJalur':
-      return [{ nama: 'buka_jalur', data: { jalur: baru.terminal.jalur } }];
+    case 'bangun':
+      return [{ nama: 'bangun', data: { bangunan: aksi.bangunan, jumlah: baru.terminal.bangunan[aksi.bangunan] } }];
+    case 'bongkar':
+      return [{ nama: 'bongkar', data: { bangunan: aksi.bangunan, jumlah: baru.terminal.bangunan[aksi.bangunan] } }];
+    case 'rekrut':
+      return [{ nama: 'rekrut', data: { petugas: aksi.petugas, jumlah: baru.terminal.petugas.filter((p) => p === aksi.petugas).length } }];
+    case 'berhentikan':
+      return [{ nama: 'berhentikan', data: { petugas: aksi.petugas } }];
+    case 'aturTarif':
+      return [{ nama: 'atur_tarif', data: { tarif: aksi.tarif } }];
+    case 'saranTarif':
+      return [{ nama: 'saran_tarif', data: { tarif: aksi.tarif } }];
     case 'beliTeknologi':
       return [{ nama: 'beli_teknologi', data: { teknologi: aksi.teknologi } }];
-    case 'bangunLoket': {
-      const level = baru.terminal.tahap.loket.level;
-      return TONGGAK_LEVEL.has(level) ? [{ nama: 'upgrade_tahap', data: { tahap: 'loket', level } }] : [];
-    }
-    case 'isiLoketKosong':
+    case 'isiJendelaKosong':
       return [];
     case 'daftarPo':
       return [{ nama: 'daftar_po', data: { po: aksi.po, jumlah: baru.mitra.terdaftar.length } }];
@@ -120,12 +115,8 @@ export function peristiwaAksi(aksi: Aksi, lama: GameState, baru: GameState, cfg:
       return [{ nama: 'putus_po', data: { po: aksi.po } }];
     case 'perpanjangPo':
       return [{ nama: 'perpanjang_po', data: { po: aksi.po } }];
-    case 'aturHargaPo':
-      return [{ nama: 'atur_harga', data: { po: aksi.po, jurusan: cfg.jurusan[aksi.jurusan]?.nama ?? String(aksi.jurusan) } }];
     case 'mulaiPerluasan':
       return [{ nama: 'mulai_perluasan', data: { tahap: baru.perkembangan.perluasan + 1 } }];
-    case 'renovasi':
-      return [{ nama: 'renovasi', data: { jumlah: baru.renovasi.jumlah, poin: baru.renovasi.poin.sub(lama.renovasi.poin).toNumber() } }];
     case 'klaimEvent':
       return [{ nama: 'klaim_event', data: { edisi: lama.event.edisi ?? '', tahap: baru.event.diklaim } }];
     case 'klaimTantangan':
@@ -155,13 +146,10 @@ export function peristiwaAksi(aksi: Aksi, lama: GameState, baru: GameState, cfg:
 export class PencatatAnalitik implements Analitik {
   private readonly sudah = new Set<string>();
   private readonly galat = new Set<string>();
-  /** Upgrade tahap sejak ringkasan sesi terakhir. */
-  private jumlahUpgrade = 0;
+  /** Unit & modernisasi yang dibangun sejak ringkasan sesi terakhir. */
+  private jumlahBangun = 0;
 
-  constructor(
-    private readonly tujuan: Analitik,
-    private readonly cfg: KonfigEkonomi = EKONOMI,
-  ) {}
+  constructor(private readonly tujuan: Analitik) {}
 
   catat(nama: string, data?: DataAnalitik): void {
     if (SEKALI_PER_SESI.has(nama)) {
@@ -173,8 +161,8 @@ export class PencatatAnalitik implements Analitik {
   }
 
   catatAksi(aksi: Aksi, lama: GameState, baru: GameState): void {
-    if ((aksi.jenis === 'upgrade' || aksi.jenis === 'bangunLoket') && baru !== lama) this.jumlahUpgrade++;
-    for (const p of peristiwaAksi(aksi, lama, baru, this.cfg)) this.catat(p.nama, p.data);
+    if ((aksi.jenis === 'bangun' || aksi.jenis === 'beliTeknologi') && baru !== lama) this.jumlahBangun++;
+    for (const p of peristiwaAksi(aksi, lama, baru)) this.catat(p.nama, p.data);
   }
 
   /** Laporkan error (peristiwa `exception` GA4): tiap pesan sekali, paling banyak MAKS_GALAT_PER_SESI per sesi. */
@@ -187,7 +175,7 @@ export class PencatatAnalitik implements Analitik {
 
   /** Kirim ringkasan sesi (lihat ringkasanSesi) lalu mulai menghitung sesi berikutnya. */
   catatRingkasanSesi(awal: GameState, akhir: GameState, detikNyata: number): void {
-    this.tujuan.catat('ringkasan_sesi', ringkasanSesi(awal, akhir, this.jumlahUpgrade, detikNyata));
-    this.jumlahUpgrade = 0;
+    this.tujuan.catat('ringkasan_sesi', ringkasanSesi(awal, akhir, this.jumlahBangun, detikNyata));
+    this.jumlahBangun = 0;
   }
 }

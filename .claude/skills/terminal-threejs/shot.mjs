@@ -2,16 +2,17 @@
 //
 //   node --experimental-websocket .claude/skills/terminal-threejs/shot.mjs <out.png> [tunggu_ms] [aksi-json]
 //
-// Butuh server dev berjalan: `npx vite --port 5199 --strictPort` (dari D:\html\terminal).
+// Butuh server dev berjalan: `npx vite --port 5199 --strictPort` (dari D:\html\terminal; port lain lewat URL).
 // Semua screenshot ("shot" di aksi) ditulis di folder yang sama dengan <out.png>.
 //
 // Variabel lingkungan:
 //   URL         halaman (bawaan http://localhost:5199/?tingkat=1; ?tingkat=0..4 mengunci kualitas grafis)
 //   W, H        ukuran jendela (bawaan 540×960 portrait; mis. 900×420 landscape)
-//   SAVE        "peron,loket,keberangkatan" → suntik save (format v1, dimigrasikan game ke v2) dengan level itu & semua Kepala
+//   SAVE        "jalur,jendela,perluasan,level" → suntik save tycoon (skema 3): sekian jalur, jendela loket
+//               (semua disewa PO awal), tahap perluasan selesai, dan level terminal; kas Rp 1 M, Manajer Operasional
 //   JAM, HARI   jam terminal (0–24) & hari ke- (0 = Senin) di save yang disuntik
-//   SAVE_EXTRA  JSON {"terminal": {...}} digabung ke terminal (fasilitas, teknologi, jalur); kunci lain menimpa
-//               blok save v1, mis. {"armada":{"po":["ondelOndel","peuyeumKilat"]},"prestige":{"poin":"0e0","jumlahReset":1}}
+//   SAVE_EXTRA  JSON {"terminal": {...}} digabung ke terminal (bangunan, petugas, tarif, teknologi); kunci lain
+//               menimpa blok save, mis. {"mitra":{"terdaftar":[{"id":"ondelOndel","xp":2000,"loket":4}, …]}}
 //   OFFLINE_MS  waktuTerakhirMs mundur sekian ms (memunculkan popup offline)
 //   PRA         skrip JS yang dijalankan sebelum halaman dimuat (mis. localStorage pilihan UI)
 //   CHROME      path chrome.exe (bawaan C:/Program Files/Google/Chrome/Application/chrome.exe)
@@ -86,18 +87,19 @@ await kirim('Page.enable');
 await kirim('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 1, mobile: false, screenWidth: 1920, screenHeight: 1080 });
 await kirim('Log.enable');
 if (process.env.SAVE) {
-  const [p, l, k] = process.env.SAVE.split(',').map(Number);
-  const tahap = (level) => ({ level, kepala: { direkrut: true } });
+  const [jalur = 1, jendela = 1, perluasan = 0, level = 1] = process.env.SAVE.split(',').map(Number);
   const jam = process.env.JAM ? ((Number(process.env.JAM) - 6 + 24) % 24) + 24 * Number(process.env.HARI ?? 0) : 0;
+  // XP terminal kumulatif level L = 50 × (L − 1)^2,75 (EKONOMI.mitra.terminal); slot berlebih dijepit game saat dimuat.
   const save = {
-    schemaVersion: 1,
-    uang: '1e3',
-    terminal: { id: 'tipe-c', tahap: { peron: tahap(p), loket: tahap(l), keberangkatan: tahap(k) } },
-    prestige: { poin: '0e0', jumlahReset: 0 },
-    statistik: { totalPendapatanRun: '0e0', totalPendapatanSepanjangMasa: '0e0', waktuMainDetik: jam * 60 },
+    schemaVersion: 3,
+    kas: 1e9,
+    terminal: { id: 'tipe-c', bangunan: { jalur, jendela, kursi: 1 }, petugas: ['manajerOperasional'] },
+    mitra: { terdaftar: [{ id: 'ondelOndel', xp: 0, loket: jendela, reputasi: 50, kontrakDetik: 20_000 }] },
+    perkembangan: { xpTerminal: 50 * Math.pow(Math.max(0, level - 1), 2.75), perluasan, proyekDetik: 0 },
+    statistik: { totalPendapatan: 0, totalBiaya: 0, waktuMainDetik: jam * 60, totalPenumpang: 0 },
   };
   if (process.env.SAVE_EXTRA) {
-    // {"terminal": {...}} digabung ke terminal; kunci lain (mis. "armada", "prestige", "statistik") menimpa bloknya.
+    // {"terminal": {...}} digabung ke terminal; kunci lain (mis. "mitra", "perkembangan") menimpa bloknya.
     const { terminal, ...lain } = JSON.parse(process.env.SAVE_EXTRA);
     Object.assign(save.terminal, terminal ?? {});
     Object.assign(save, lain);
