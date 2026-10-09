@@ -16,13 +16,14 @@ export const JALAN_BELAKANG = { y0: 20.4, y1: 21.8, lajurTimur: 20.75, lajurBara
 const PENUH = { u0: 0, v0: 0, u1: 1, v1: 1 } as const;
 
 /**
- * @param parkirBaris2 tempat mobil di baris kedua parkir mobil (dibangun di tahap
- *   perluasan 2; pemanggil menampilkannya setelah tahap itu selesai)
+ * @param parkirMobil tempat mobil pengunjung baris pertama (beserta deret motor)
+ *   & baris kedua parkir: pemanggil menampilkannya sesuai lahan parkir yang
+ *   dibangun (lihat fasilitasAdegan). Marka petak tetap di kumpulan utama.
  */
-export function bangunSekitar(k: Kumpulan, m: PustakaMaterial, garisListrik: THREE.Object3D, parkirBaris2: Kumpulan = k): void {
+export function bangunSekitar(k: Kumpulan, m: PustakaMaterial, garisListrik: THREE.Object3D, parkirMobil: readonly [Kumpulan, Kumpulan] = [k, k]): void {
   jalanBelakang(k, m);
   pagarKompleks(k, m);
-  parkir(k, m, parkirBaris2);
+  parkir(k, m, parkirMobil);
   ruko(k, m);
   kampung(k, m);
   spbu(k, m);
@@ -83,13 +84,13 @@ function gerbangPagar(k: Kumpulan, m: PustakaMaterial, x: number, tulisan: strin
   k.tambah(m.pavingGang, uvDunia(bidang(x - w - 0.05, 17.55, x + w + 0.05, 19.96, 0.016), SKALA_UV.paving), { bayangan: false });
 }
 
-function parkir(k: Kumpulan, m: PustakaMaterial, baris2: Kumpulan): void {
+function parkir(k: Kumpulan, m: PustakaMaterial, [baris1, baris2]: readonly [Kumpulan, Kumpulan]): void {
   const acak = acakBerbenih(61);
   const mobil = geometriMobil();
   const motor = geometriMotor();
-  // Dua baris petak mobil (menghadap ke utara/selatan bergantian); mobil baris kedua di kumpulan sendiri.
+  // Dua baris petak mobil (menghadap ke utara/selatan bergantian); mobil tiap baris di kumpulannya sendiri.
   for (const [yBaris, sudut, kMobil] of [
-    [14.95, Math.PI / 2, k],
+    [14.95, Math.PI / 2, baris1],
     [16.75, -Math.PI / 2, baris2],
   ] as const) {
     for (let i = 0; i < 30; i++) {
@@ -109,7 +110,7 @@ function parkir(k: Kumpulan, m: PustakaMaterial, baris2: Kumpulan): void {
     // Motor parkir tanpa pengendara: buang badan atas (y > 0.13).
     const pos = g.getAttribute('position');
     for (let i = 0; i < pos.count; i++) if (pos.getY(i) > 0.15) pos.setY(i, 0.13);
-    k.tambah(m.kendaraan, g);
+    baris1.tambah(m.kendaraan, g);
   }
 }
 

@@ -9,7 +9,7 @@ import { BANGUNAN_IDS, EVENT_IDS, KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, PO
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import { kelasDariLevel, levelMinimalKelas, xpKumulatifTerminal } from '../sim/level-terminal';
 import { biayaDaftarPo, jurusanAktif, kelasAktif, levelPoDariXp, nilaiJurusan, nilaiTiketPo, xpKumulatifPo, xpLevelPo } from '../sim/mitra';
-import { dayaTarikTycoon, type AreaId } from '../sim/operasi';
+import { AREA_IDS, dayaTarikTycoon, type AreaId } from '../sim/operasi';
 import { maksPetugas } from '../sim/petugas';
 import {
   acuanHarian,
@@ -57,7 +57,7 @@ import { keramaianTerminal, tingkatKeramaian, waktuTerminalState, type TingkatKe
 import { NAMA_HARI } from './teks';
 
 /** Urutan area di ringkasan kapasitas (alur penumpang & bus). */
-export const AREA_IDS: readonly AreaId[] = ['peron', 'loket', 'keberangkatan', 'pangkalan'];
+export { AREA_IDS };
 
 export interface ModelHud {
   readonly kas: number;

@@ -8,7 +8,10 @@ import {
   loketBuka,
   PATROLI_SATPAM,
   posisiPatroli,
+  RUTE_SAPU,
   SAPU_AULA,
+  SAPU_PERON,
+  SAPU_PLAZA,
   SAPU_TUNGGU,
   tokoBuka,
   type Patroli,
@@ -16,7 +19,25 @@ import {
 import type { LajuVisual } from '../src/game/laju';
 import { LuarTerminal, MOTOR_OJEK, MOTOR_OJOL } from '../src/game/luar3d';
 import { rutePulangPengantar, Rombongan } from '../src/game/rombongan';
-import { BLOK_KURSI, diGedung, GERBANG_KELUAR_X, GERBANG_MASUK_X, GERBANG_X, KURSI_TUNGGU, LEBAR_GERBANG_PAGAR, RUANG_TUNGGU, TALI_LABIRIN, URUTAN_LOKET, X_LOKET, Y_PAGAR } from '../src/game/tata-letak';
+import {
+  BLOK_KURSI,
+  BORDES,
+  diGedung,
+  GEDUNG,
+  GERBANG_KELUAR_X,
+  GERBANG_MASUK_X,
+  GERBANG_X,
+  KURSI_TUNGGU,
+  LEBAR_GERBANG_PAGAR,
+  MULUT_ANTREAN,
+  PERON,
+  POS_SATPAM,
+  RUANG_TUNGGU,
+  TALI_LABIRIN,
+  URUTAN_LOKET,
+  X_LOKET,
+  Y_PAGAR,
+} from '../src/game/tata-letak';
 import { ruasBerpotongan } from './helpers';
 
 const SEIMBANG: LajuVisual = { turun: 1.4, layanLoket: 1.4, naik: 1.4, busDatang: 0.12, muatanBus: 16, faktorKecepatanBus: 1 };
@@ -86,7 +107,7 @@ describe('rute mondar-mandir', () => {
   };
 
   it('berulang mulus, tidak pernah melompat atau lebih cepat dari lajunya', () => {
-    for (const p of [PATROLI_SATPAM, SAPU_AULA, SAPU_TUNGGU, ...ASONGAN]) periksaGerak(p);
+    for (const p of [PATROLI_SATPAM, ...RUTE_SAPU, ...ASONGAN]) periksaGerak(p);
     const t = 12.3;
     const a = posisiPatroli(PATROLI_SATPAM, t);
     const b = posisiPatroli(PATROLI_SATPAM, t + lamaPutaran(PATROLI_SATPAM));
@@ -102,6 +123,25 @@ describe('rute mondar-mandir', () => {
     for (const [x, y] of SAPU_TUNGGU.titik) {
       expect(x > RUANG_TUNGGU.x0 && x < RUANG_TUNGGU.x1 && y > RUANG_TUNGGU.y0 && y < RUANG_TUNGGU.y1).toBe(true);
       expect(menembusKursi(x, y)).toBe(false);
+    }
+  });
+
+  it('petugas kebersihan peron & plaza: di lantainya, di antara deret tiang kanopi, jauh dari bangku, air mancur, & jalur calon penumpang', () => {
+    expect(RUTE_SAPU).toEqual([SAPU_AULA, SAPU_TUNGGU, SAPU_PERON, SAPU_PLAZA]);
+    for (const [x, y] of SAPU_PERON.titik) {
+      expect(x > PERON.x0 && x < PERON.x1 && y > PERON.y0 && y < PERON.y1).toBe(true);
+      // Tiang kanopi berdiri di y 5,72 & 7,1.
+      expect(y).toBeGreaterThan(5.72 + 0.3);
+      expect(y).toBeLessThan(7.1 - 0.3);
+    }
+    for (const [x, y] of SAPU_PLAZA.titik) {
+      expect(y).toBeGreaterThan(GEDUNG.y1 + 0.3);
+      expect(x).toBeGreaterThan(BORDES.x1 + 0.5);
+      expect(x).toBeGreaterThan(MULUT_ANTREAN[0] + 0.8);
+      expect(Math.hypot(x - POS_SATPAM[0]![0], y - POS_SATPAM[0]![1])).toBeGreaterThan(0.6);
+      // Bangku (21,0 & 23,6; y 16,7), air mancur (24,9; 16,45; jari-jari 0,62).
+      expect(y).toBeLessThan(16.7 - 0.6);
+      expect(Math.hypot(x - 24.9, y - 16.45)).toBeGreaterThan(0.62 + 0.4);
     }
   });
 

@@ -11,7 +11,7 @@ import { LIVERY_PO, type Livery } from '../config/livery.config';
 import { KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import type { AreaId } from '../sim/operasi';
-import { keHexCss, WARNA_TAHAP } from '../config/tema';
+import { keHexCss, WARNA_AREA as WARNA_AREA_ANGKA, WARNA_TAHAP } from '../config/tema';
 import { formatAngka, formatDurasi, formatUang, formatUangBertanda } from './format';
 import type { ModelBuku, ModelMingguan, ModelMitra, ModelPoTerdaftar, ModelPoTersedia, ModelTampilan, ModelTantangan, ModelTarif } from './model';
 import {
@@ -37,6 +37,8 @@ import {
 export interface IsiTab {
   readonly elemen: HTMLElement;
   perbarui(m: ModelTampilan): void;
+  /** Gulir ke bagian untuk area ini & sorot barisnya sebentar (tab Bangun, saat label area di peta diketuk). */
+  sorot?(area: AreaId): void;
 }
 
 type Kirim = (aksi: Aksi) => void;
@@ -153,12 +155,12 @@ const IKON_PIALA = '<path d="M7 3h10v5a5 5 0 0 1-10 0z" fill="currentColor"/><pa
 const IKON_PENSIL =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="2"/></svg>';
 
-/** Warna area (kapasitas & bangunan): tiga area rantai penumpang mengikuti warna zonanya di adegan. */
+/** Warna area (kapasitas & bangunan), sama dengan label zonanya di adegan. */
 const WARNA_AREA: Readonly<Record<AreaId, string>> = {
-  peron: keHexCss(WARNA_TAHAP.peron),
-  loket: keHexCss(WARNA_TAHAP.loket),
-  keberangkatan: keHexCss(WARNA_TAHAP.keberangkatan),
-  pangkalan: '#a78bfa',
+  peron: keHexCss(WARNA_AREA_ANGKA.peron),
+  loket: keHexCss(WARNA_AREA_ANGKA.loket),
+  keberangkatan: keHexCss(WARNA_AREA_ANGKA.keberangkatan),
+  pangkalan: keHexCss(WARNA_AREA_ANGKA.pangkalan),
 };
 
 const persen = (x: number): number => Math.round(x * 100);
@@ -167,10 +169,10 @@ const arus = (x: number): string => formatAngka(Math.round(x));
 // ---------------------------------------------------------------------------
 // Bangun
 
-/** Kelompok bangunan di tab Bangun (per area), urut alur penumpang. */
-const GRUP_BANGUN: readonly { readonly judul: string; readonly warna: string; readonly bangunan: readonly BangunanId[] }[] = [
-  { judul: TEKS.grupPeron, warna: WARNA_AREA.peron, bangunan: ['jalur'] },
-  { judul: TEKS.grupLoket, warna: WARNA_AREA.loket, bangunan: ['jendela'] },
+/** Kelompok bangunan di tab Bangun (per area), urut alur penumpang. `area`: label peta yang membuka kelompok ini. */
+const GRUP_BANGUN: readonly { readonly judul: string; readonly warna: string; readonly bangunan: readonly BangunanId[]; readonly area?: readonly AreaId[] }[] = [
+  { judul: TEKS.grupPeron, warna: WARNA_AREA.peron, bangunan: ['jalur'], area: ['peron', 'keberangkatan'] },
+  { judul: TEKS.grupLoket, warna: WARNA_AREA.loket, bangunan: ['jendela'], area: ['loket'] },
   { judul: TEKS.grupRuangTunggu, warna: WARNA_AREA.keberangkatan, bangunan: ['kursi', 'kios', 'toko'] },
   { judul: TEKS.grupFasilitas, warna: '#14b8a6', bangunan: ['toilet', 'lahanParkir', 'posRetribusi'] },
 ];
@@ -234,17 +236,24 @@ export function buatTabBangun(kirim: Kirim): IsiTab {
   elemen.append(kartu);
 
   const baris: BarisBangunan[] = [];
+  /** Judul kelompok & baris pertamanya untuk tiap area (lihat sorot). */
+  const sasaran = {} as Record<AreaId, { readonly judul: HTMLElement; readonly baris: HTMLElement }>;
   for (const g of GRUP_BANGUN) {
-    elemen.append(el('div', 'judul-bagian', g.judul));
+    const judulGrup = el('div', 'judul-bagian', g.judul);
+    elemen.append(judulGrup);
     for (const id of g.bangunan) {
       const b = buatBarisBangunan(id, g.warna, kirim);
       baris.push(b);
       elemen.append(b.elemen);
+      for (const a of g.area ?? []) sasaran[a] ??= { judul: judulGrup, baris: b.elemen };
     }
   }
   // Pangkalan bus: petak dari perluasan (tidak dibeli satu-satu).
-  elemen.append(el('div', 'judul-bagian', TEKS.grupPangkalan));
+  const judulPangkalan = el('div', 'judul-bagian', TEKS.grupPangkalan);
+  elemen.append(judulPangkalan);
   const pangkalan = baris3(IKON_PANGKALAN, NAMA_AREA.pangkalan, 'bangun');
+  sasaran.pangkalan = { judul: judulPangkalan, baris: pangkalan.elemen };
+  let timerSorot = 0;
   pangkalan.elemen.style.setProperty('--warna', WARNA_AREA.pangkalan);
   setTeks(pangkalan.keterangan, TEKS.petakBusKet);
   pangkalan.tombol.hidden = true;
@@ -293,6 +302,18 @@ export function buatTabBangun(kirim: Kirim): IsiTab {
         b.elemen.classList.toggle('terkunci', t.syaratKurang !== null);
       }
       setTeks(catatan, `${TEKS.perawatanTotal(formatUang(bg.perawatanHarian))}. ${TEKS.bangunanCatatan(persen(EKONOMI.tycoon.bongkar))}`);
+    },
+    sorot(area) {
+      const s = sasaran[area];
+      const halus = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      // Gulir isi tab saja (bukan halaman) sampai judul kelompoknya di atas.
+      const geser = s.judul.getBoundingClientRect().top - elemen.getBoundingClientRect().top - 4;
+      elemen.scrollTo({ top: elemen.scrollTop + geser, behavior: halus ? 'smooth' : 'auto' });
+      s.baris.classList.remove('sorot-area');
+      void s.baris.offsetWidth; // mulai ulang animasi bila diketuk lagi
+      s.baris.classList.add('sorot-area');
+      window.clearTimeout(timerSorot);
+      timerSorot = window.setTimeout(() => s.baris.classList.remove('sorot-area'), 1700);
     },
   };
 }

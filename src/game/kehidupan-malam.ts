@@ -1,10 +1,11 @@
 /**
  * Kehidupan terminal menurut jam: jam buka toko & loket, satpam yang
- * berpatroli di malam hari, petugas kebersihan yang menyapu lantai, dan
- * pedagang asongan yang mondar-mandir di gerbang. Murni (tanpa three.js):
+ * berpatroli di malam hari, rute sapu petugas kebersihan (siang & malam,
+ * sebanyak yang direkrut; lihat fasilitas-adegan.ts), dan pedagang asongan
+ * yang mondar-mandir di gerbang. Murni (tanpa three.js):
  * posisi orang dihitung dari waktu saja, jadi deterministik dan bisa dites.
  */
-import { GERBANG_KELUAR_X, GERBANG_MASUK_X, URUTAN_LOKET, X_LOKET, Y_PAGAR, type Titik } from './tata-letak';
+import { GERBANG_KELUAR_X, GERBANG_MASUK_X, PERON, POS_SATPAM, URUTAN_LOKET, X_LOKET, Y_PAGAR, type Titik } from './tata-letak';
 
 // ---------------------------------------------------------------------------
 // Jam buka
@@ -57,8 +58,6 @@ export function loketBuka(jam: number, dipakai: number = X_LOKET.length): readon
 
 /** Satpam luar berpatroli keliling plaza (siang berjaga di posnya). */
 export const JAM_PATROLI: readonly [number, number] = [19, 5.5];
-/** Petugas kebersihan menyapu aula & ruang tunggu saat sepi. */
-export const JAM_KEBERSIHAN: readonly [number, number] = [21, 5];
 /** Pedagang asongan berjualan di gerbang. */
 export const JAM_ASONGAN: readonly [number, number] = [6, 22];
 
@@ -120,7 +119,7 @@ export function posisiPatroli(p: Patroli, t: number): PosisiPatroli {
  */
 export const PATROLI_SATPAM: Patroli = {
   titik: [
-    [18.95, 15.35],
+    POS_SATPAM[0]!,
     [19.3, 16.0],
     [19.3, 17.55],
     [29.5, 17.55],
@@ -156,6 +155,36 @@ export const SAPU_TUNGGU: Patroli = {
   laju: 0.16,
   jeda: [2, 2, 2, 2],
 };
+
+/**
+ * Petugas kebersihan peron kedatangan: menyapu bolak-balik di tengah peron,
+ * di antara dua deret tiang kanopi (penumpang turun menyeberanginya).
+ */
+export const SAPU_PERON: Patroli = {
+  titik: [
+    [PERON.x0 + 2.0, 6.42],
+    [PERON.x1 - 2.3, 6.42],
+    [PERON.x1 - 2.3, 6.68],
+    [PERON.x0 + 2.0, 6.68],
+  ],
+  laju: 0.16,
+  jeda: [2, 2, 2, 2],
+};
+
+/** Petugas kebersihan plaza: menyapu di depan fasad timur pintu masuk, di luar bangku, air mancur, & jalur calon penumpang. */
+export const SAPU_PLAZA: Patroli = {
+  titik: [
+    [19.7, 15.42],
+    [23.2, 15.42],
+    [23.2, 15.68],
+    [19.7, 15.68],
+  ],
+  laju: 0.16,
+  jeda: [2, 2, 2, 2],
+};
+
+/** Rute sapu urut petugas kebersihan yang direkrut (ke-1 di aula, ke-2 di ruang tunggu, …). */
+export const RUTE_SAPU: readonly Patroli[] = [SAPU_AULA, SAPU_TUNGGU, SAPU_PERON, SAPU_PLAZA];
 
 /** Pedagang asongan: mondar-mandir pelan di halaman, tepat di dalam gerbang pagar. */
 export const ASONGAN: readonly Patroli[] = [

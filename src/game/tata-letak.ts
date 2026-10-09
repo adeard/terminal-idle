@@ -31,7 +31,7 @@
  *     aula ke ruang tunggu → duduk → saat busnya berhenti, lewat gerbang lalu naik.
  */
 import { EKONOMI } from '../config/economy.config';
-import type { TahapId } from '../sim/tahap';
+import type { AreaId } from '../sim/operasi';
 
 export type Titik = readonly [number, number];
 
@@ -289,6 +289,13 @@ export const LAJU_BUS_LEWAT = 0.14;
 export const TINGGI_PERON = 0.15;
 export const PERON: Persegi = { x0: HALTE_DATANG_X[HALTE_DATANG_X.length - 1]! - 0.8, y0: 5.6, x1: HALTE_DATANG_X[0]! + 1.6, y1: 7.2 };
 export const PANGKALAN: Persegi = { x0: PULAU_JURUSAN[0]! - 1.0, y0: 5.6, x1: 26.4, y1: 10.4 };
+/**
+ * Tempat petugas peron tiap halte kedatangan (urut HALTE_DATANG_X): di tepi
+ * peron sedikit di belakang pintu bus, menghadap pintunya. Di luar lintasan
+ * penumpang turun (lurus dari pintu, menghindari tiang kanopi) dan rambu BUS
+ * di ujung depan peron.
+ */
+export const POS_PETUGAS_PERON: readonly Titik[] = HALTE_DATANG_X.map((x): Titik => [x + PINTU_BUS - 0.45, PERON.y0 + 0.3]);
 
 /**
  * Ruang tunggu keberangkatan: aula kaca di atas lantai setinggi peron. Dinding
@@ -384,6 +391,20 @@ export const SINGGAH_GERBANG_MASUK: Titik = [18.6, 17.3];
 
 /** Pos retribusi di samping pintu masuk. */
 export const POS_RETRIBUSI: Persegi = { x0: -31.5, y0: 3.6, x1: -30.5, y1: 4.4 };
+
+/**
+ * Pos jaga satpam, urut yang lebih dulu diisi (satpam ke-1, ke-2, …): pos luar
+ * di samping bordes (malam hari berpatroli keliling plaza, lihat
+ * PATROLI_SATPAM), di balik pintu masuk aula, ujung barat peron keberangkatan,
+ * dan ujung barat peron kedatangan. Semuanya di luar lintasan pejalan kaki,
+ * tong sampah, dan tiang kanopi.
+ */
+export const POS_SATPAM: readonly Titik[] = [
+  [18.95, 15.35],
+  [PINTU_MASUK[0] - 0.6, 14.55],
+  [RUANG_TUNGGU.x0 + 0.85, PERON_BERANGKAT.y0 + 0.35],
+  [PERON.x0 + 0.9, PERON.y1 - 0.25],
+];
 
 // ---------------------------------------------------------------------------
 // Aula loket di dalam gedung utama
@@ -752,7 +773,7 @@ export const KECEPATAN_JALAN = 0.45;
 export const VARIASI_JALAN = 0.12;
 
 // ---------------------------------------------------------------------------
-// Zona tiap tahap (sorotan bottleneck, label)
+// Zona tiap area (sorotan bottleneck, label)
 
 /** Balok (lantai + tinggi, unit) yang membentuk sebuah zona. Tinggi 0 = hanya lantai. */
 export interface BalokZona extends Persegi {
@@ -766,11 +787,11 @@ export interface BalokZona extends Persegi {
 export interface Zona {
   /** Area untuk sorotan bottleneck. */
   readonly balok: readonly BalokZona[];
-  /** Titik dunia (x, y, tinggi) tempat label nama tahap. */
+  /** Titik dunia (x, y, tinggi) tempat label nama area. */
   readonly label: readonly [number, number, number];
 }
 
-export const ZONA: Readonly<Record<TahapId, Zona>> = {
+export const ZONA: Readonly<Record<AreaId, Zona>> = {
   peron: {
     balok: [{ x0: PERON.x0 - 0.2, y0: 4.4, x1: PERON.x1 + 0.2, y1: 7.2, tinggi: 1.5 }],
     label: [(PERON.x0 + PERON.x1) / 2, 5.8, 1.9],
@@ -799,6 +820,11 @@ export const ZONA: Readonly<Record<TahapId, Zona>> = {
       { ...RUANG_TUNGGU, tinggi: 2.45, hLantai: TINGGI_PERON, sorot: true },
     ],
     label: [(RUANG_TUNGGU.x0 + RUANG_TUNGGU.x1) / 2, 6.0, 2.7],
+  },
+  // Pangkalan: label melayang di atas atap bus yang parkir (hanya tampil saat paling lambat, lihat zona3d.ts).
+  pangkalan: {
+    balok: [{ ...PANGKALAN, tinggi: 1.0 }],
+    label: [(PANGKALAN.x0 + PANGKALAN.x1) / 2, PARKIR_SERONG.pusatY, 1.3],
   },
 };
 

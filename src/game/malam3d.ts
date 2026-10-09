@@ -2,12 +2,13 @@
  * Rolling door yang turun saat toko/kios/loket tutup (lihat jam buka di
  * kehidupan-malam.ts): apotek di aula (minimarket buka 24 jam), tiga kios di
  * ruang tunggu, dan jendela loket yang tidak dipakai mitra PO atau tutup di
- * malam hari. Toko aula & kios juga tertutup selama fasilitas Kios &
- * Minimarket belum dibangun, dan gerbang ruang tunggu milik jalur yang belum
- * dibangun (dengan papan SEGERA DIBUKA di kedua sisi). Tiap pintu satu grup
- * mesh yang ditukar visibilitasnya.
+ * malam hari. Tiap toko aula & kios juga tertutup selama unitnya belum
+ * dibangun (lihat fasilitasAdegan), begitu juga gerbang ruang tunggu milik
+ * jalur yang belum dibangun (dengan papan SEGERA DIBUKA di kedua sisi). Tiap
+ * pintu satu grup mesh yang ditukar visibilitasnya.
  */
 import * as THREE from 'three';
+import { tokoDibangun, type FasilitasAdegan } from './fasilitas-adegan';
 import { kotak, Kumpulan, persegiTegak } from './geometri';
 import { loketBuka, tokoBuka, type JenisToko } from './kehidupan-malam';
 import type { PustakaMaterial } from './material3d';
@@ -41,7 +42,8 @@ interface KeadaanPintu {
   readonly jam: number;
   /** Jendela loket yang dipakai mitra PO di siang hari (lihat jendelaDipakai di perluasan-adegan.ts). */
   readonly jendela: number;
-  readonly kiosDibangun: boolean;
+  /** Kios & toko yang sudah dibangun (per unit). */
+  readonly fasilitas: Pick<FasilitasAdegan, 'kios' | 'toko'>;
   /** Jalur bus yang sudah dibangun (gerbang JALUR 1 … jalur terbuka). */
   readonly jalur: number;
 }
@@ -63,7 +65,7 @@ export class RollingDoor {
     for (const t of TOKO_AULA) {
       const jenis: JenisToko = t.nama === 'MINIMARKET' ? 'minimarket' : 'apotek';
       this.tambah(
-        (k) => !k.kiosDibangun || !tokoBuka(jenis, k.jam),
+        (k) => !tokoDibangun(k.fasilitas, jenis) || !tokoBuka(jenis, k.jam),
         (k) => {
           const y = Y_MUKA_TOKO + 0.035;
           k.tambah(this.material, persegiTegak([t.x0 + 0.01, y], [t.x1 - 0.01, y], h0, h0 + 0.61, PENUH, 0));
@@ -72,16 +74,16 @@ export class RollingDoor {
       );
     }
     // Kios di ruang tunggu (menghadap timur).
-    for (const [ya, yb] of KIOS_TUNGGU) {
+    KIOS_TUNGGU.forEach(([ya, yb], i) => {
       this.tambah(
-        (k) => !k.kiosDibangun || !tokoBuka('kios', k.jam),
+        (k) => k.fasilitas.kios <= i || !tokoBuka('kios', k.jam),
         (k) => {
           const x = X_MUKA_KIOS;
           k.tambah(this.material, persegiTegak([x, yb - 0.02], [x, ya + 0.02], TINGGI_PERON, TINGGI_PERON + 0.5, PENUH, 0));
           k.tambah(m.besiGelap, kotak(x - 0.03, ya, x + 0.02, yb, TINGGI_PERON + 0.49, TINGGI_PERON + 0.53));
         },
       );
-    }
+    });
     // Jendela loket: rolling door di balik kaca (sisi pembeli) dengan tulisan TUTUP.
     const tulisan = m.teks('TUTUP', { lebar: 128, tinggi: 48, latar: '#b91c1c', warna: '#ffffff', ukuranHuruf: 32 });
     X_LOKET.forEach((x, i) => {
@@ -121,11 +123,11 @@ export class RollingDoor {
   /**
    * @param jam jam terminal (0–24)
    * @param jendela jendela loket yang dipakai mitra PO di siang hari: jendela lain tertutup
-   * @param kiosDibangun fasilitas Kios & Minimarket sudah dibangun
+   * @param fasilitas kios & toko yang sudah dibangun: unit lain tertutup
    * @param jalur jalur bus yang sudah dibangun: gerbang jalur lain tertutup
    */
-  perbarui(jam: number, jendela: number, kiosDibangun: boolean, jalur = GERBANG_X.length): void {
-    const k: KeadaanPintu = { jam, jendela, kiosDibangun, jalur };
+  perbarui(jam: number, jendela: number, fasilitas: Pick<FasilitasAdegan, 'kios' | 'toko'>, jalur = GERBANG_X.length): void {
+    const k: KeadaanPintu = { jam, jendela, fasilitas, jalur };
     for (const p of this.pintu) p.grup.visible = p.tutup(k);
   }
 

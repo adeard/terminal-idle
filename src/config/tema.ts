@@ -2,12 +2,19 @@
  * Warna bersama untuk scene Phaser (angka 0xRRGGBB) dan overlay DOM (CSS).
  * Murni visual; angka ekonomi ada di economy.config.ts.
  */
+import type { AreaId } from '../sim/operasi';
 import type { TahapId } from '../sim/tahap';
 
 export const WARNA_TAHAP: Readonly<Record<TahapId, number>> = {
   peron: 0x2a9d8f,
   loket: 0xe9a23b,
   keberangkatan: 0x5b6ee1,
+};
+
+/** Warna tiap area (label di peta & kartu kapasitas): rantai penumpang mengikuti WARNA_TAHAP, pangkalan ungu. */
+export const WARNA_AREA: Readonly<Record<AreaId, number>> = {
+  ...WARNA_TAHAP,
+  pangkalan: 0xa78bfa,
 };
 
 export const WARNA = {

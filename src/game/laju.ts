@@ -16,6 +16,7 @@ import { KELAS_BUS_IDS, type KelasBusId, type PoId } from '../sim/fitur';
 import { dayaTarikTycoon } from '../sim/operasi';
 import { jurusanDilayani, loketTerisi, operasiState, pengaliEvent, type GameState } from '../sim/state';
 import type { TahapId } from '../sim/tahap';
+import { fasilitasAdegan, type FasilitasAdegan } from './fasilitas-adegan';
 import { loketBuka } from './kehidupan-malam';
 import { jendelaDipakai, kelompokParkirDibangun } from './perluasan-adegan';
 import { jurusanDiMask, maskJurusan, MUATAN_BUS, X_LOKET } from './tata-letak';
@@ -60,8 +61,11 @@ export interface LajuVisual {
   readonly loketBuka?: readonly number[];
   /** Jam terminal (0–24): jam buka toko & kios dan waktu sholat untuk penumpang yang mampir; bawaan: 12. */
   readonly jam?: number;
-  /** Kios atau toko sudah dibangun: kios ruang tunggu, minimarket, & apotek melayani penumpang; bawaan: true. */
-  readonly kiosDibangun?: boolean;
+  /**
+   * Bangunan yang dipakai penumpang (blok kursi, kios & toko per unit, toilet,
+   * lahan parkir; lihat fasilitas-adegan.ts); bawaan: semuanya ada.
+   */
+  readonly fasilitas?: FasilitasAdegan;
   /** Bagian penumpang tiap jurusan (indeks TUJUAN_BUS) & kelas bus (lihat sim/operasi.ts); bawaan: sama rata. */
   readonly bagianJurusan?: readonly number[];
   readonly bagianKelas?: Readonly<Record<KelasBusId, number>>;
@@ -154,7 +158,7 @@ export function hitungLajuVisual(state: GameState): LajuVisual {
     kelompokParkir: kelompokParkirDibangun(perluasan),
     jendela,
     po,
-    kiosDibangun: state.terminal.bangunan.kios + state.terminal.bangunan.toko > 0,
+    fasilitas: fasilitasAdegan(state.terminal.bangunan),
     ...(totalArus > 0 ? { bagianJurusan, bagianKelas } : {}),
   };
 }

@@ -52,6 +52,8 @@ export interface KapasitasArea {
   readonly pangkalan: number;
 }
 export type AreaId = keyof KapasitasArea;
+/** Urutan area: alur penumpang (peron, loket, keberangkatan) lalu pangkalan bus. */
+export const AREA_IDS: readonly AreaId[] = ['peron', 'loket', 'keberangkatan', 'pangkalan'];
 
 export interface KepuasanTycoon {
   /** 0–1: rata-rata berbobot komponen. */

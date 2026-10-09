@@ -24,6 +24,7 @@
  */
 import type { PoId } from '../sim/fitur';
 import { bezier, Jalur, lintasanS, sambung } from './jalur';
+import { FASILITAS_LENGKAP, tokoDibangun, type FasilitasAdegan } from './fasilitas-adegan';
 import type { LajuVisual, PoVisual } from './laju';
 import { keadaanKelompokParkir } from './perluasan-adegan';
 import { dalamRentang, JAM_LOKET_MALAM, tokoBuka, type JenisToko } from './kehidupan-malam';
@@ -224,11 +225,15 @@ export function gayaSinggah(gaya: GayaSinggah, sudah: number, sisa: number): Gay
 function pilihBerbobot<T>(pilihan: readonly (readonly [T, number])[], u: number): T {
   const total = pilihan.reduce((a, [, b]) => a + b, 0);
   let x = u * total;
+  // Pilihan berbobot 0 (mis. toilet yang belum dibangun) tidak pernah terpilih, juga saat pembulatan.
+  let terakhir = pilihan[0]![0];
   for (const [nilai, bobot] of pilihan) {
+    if (!(bobot > 0)) continue;
     if (x < bobot) return nilai;
     x -= bobot;
+    terakhir = nilai;
   }
-  return pilihan[0]![0];
+  return terakhir;
 }
 
 /**
@@ -504,8 +509,8 @@ export class DuniaVisual {
   private loketBuka: readonly number[] = SEMUA_LOKET;
   /** Jam terminal (jam buka toko & kios, waktu sholat). */
   private jam = 12;
-  /** Kios & toko aula baru melayani setelah fasilitas Kios & Minimarket dibangun. */
-  private kiosDibangun = true;
+  /** Bangunan yang dipakai penumpang: blok kursi, kios & toko per unit, toilet, lahan parkir. */
+  private fasilitas: FasilitasAdegan = FASILITAS_LENGKAP;
   private readonly wanita: (varian: number) => boolean;
   /** Titik singgah yang sedang dipakai atau dituju seseorang (satu orang per titik). */
   private readonly titikTerpakai = new Set<TitikSinggah>();
@@ -538,7 +543,7 @@ export class DuniaVisual {
     this.halteBerangkat.aktif = Math.max(1, Math.min(HALTE_BERANGKAT_X.length, laju.jalur ?? HALTE_BERANGKAT_X.length));
     this.loketBuka = laju.loketBuka && laju.loketBuka.length > 0 ? laju.loketBuka : SEMUA_LOKET;
     this.jam = laju.jam ?? 12;
-    this.kiosDibangun = laju.kiosDibangun ?? true;
+    this.fasilitas = laju.fasilitas ?? FASILITAS_LENGKAP;
 
     this.munculkanBus(dt, laju);
     for (const b of this.bus) this.perbaruiBus(b, dt);
@@ -1164,7 +1169,8 @@ export class DuniaVisual {
     this.jedaDatang = 0.08 + this.acak() * 0.3;
     this.menujuAntrean++;
     this.totalDatang++;
-    if (this.acak() < PELUANG_DARI_PARKIR) {
+    // Tanpa lahan parkir pengantar tidak bisa parkir: semua datang lewat gerbang pejalan kaki.
+    if (this.fasilitas.barisParkir > 0 && this.acak() < PELUANG_DARI_PARKIR) {
       const x = LORONG_PARKIR.x0 + this.acak() * (LORONG_PARKIR.x1 - LORONG_PARKIR.x0) * 0.6;
       const o = this.buatOrang(x, LORONG_PARKIR.y + (this.acak() - 0.5) * 0.3, 'keAntrean');
       o.rute = [...RUTE_DARI_PARKIR, MULUT_ANTREAN];
@@ -1507,9 +1513,9 @@ export class DuniaVisual {
     return hasil;
   }
 
-  /** Toko/kios ini bisa didatangi: fasilitasnya sudah dibangun dan sedang jam buka. */
+  /** Toko/kios ini bisa didatangi: unitnya sudah dibangun dan sedang jam buka. */
   private tokoMelayani(jenis: JenisToko): boolean {
-    return this.kiosDibangun && tokoBuka(jenis, this.jam);
+    return tokoDibangun(this.fasilitas, jenis) && tokoBuka(jenis, this.jam);
   }
 
   private dekatWaktuSholat(): boolean {
@@ -1529,8 +1535,9 @@ export class DuniaVisual {
     const jk: JenisKelamin = this.wanita(o.varian) ? 'wanita' : 'pria';
     const tempat = pilihBerbobot<TempatMampir>(
       [
-        ['toilet', 0.3],
-        ['musholla', this.dekatWaktuSholat() ? 0.6 : 0.12],
+        // Toilet & musholla di sayap barat baru dipakai setelah dibangun.
+        ['toilet', this.fasilitas.toilet ? 0.3 : 0],
+        ['musholla', this.fasilitas.toilet ? (this.dekatWaktuSholat() ? 0.6 : 0.12) : 0],
         ['atm', 0.25],
         ['minimarket', this.tokoMelayani('minimarket') ? 0.15 : 0],
         ['apotek', this.tokoMelayani('apotek') ? 0.07 : 0],
@@ -1569,7 +1576,9 @@ export class DuniaVisual {
   /** Penumpang sendirian yang sudah duduk bangun ke salah satu kios ruang tunggu (yang buka), lalu kembali ke kursinya. */
   private rencanaKeKios(o: OrangVisual): Kunjungan | null {
     if (o.slot < 0 || anggotaRombongan(o.id).length > 0 || !this.tokoMelayani('kios')) return null;
-    const p = this.pesanTitik([SINGGAH.kios[Math.floor(this.acak() * SINGGAH.kios.length)]!]);
+    // Hanya kios yang sudah dibangun (urut KIOS_TUNGGU).
+    const kios = Math.min(SINGGAH.kios.length, this.fasilitas.kios);
+    const p = this.pesanTitik([SINGGAH.kios[Math.floor(this.acak() * kios)]!]);
     if (!p) return null;
     const kursi = KURSI_TUNGGU[o.slot]!;
     const lorong = lorongDekat(o.slot, X_MUKA_KIOS);
@@ -1674,11 +1683,18 @@ export class DuniaVisual {
    * acak, pilih yang kiri-kanannya kosong dan barisnya lebih depan, jadi ruang
    * tunggu terisi menyebar seperti orang sungguhan. Rombongan dicarikan kursi
    * berdampingan di baris yang sama; kalau tidak ada, anggotanya berdiri di
-   * dekatnya. slot −1 kalau penuh.
+   * dekatnya. Kursi di blok yang terpasang lebih dulu; bila semuanya terisi
+   * (kursi kurang), penumpang berdiri menunggu di lantai blok yang belum
+   * dipasang (tempatnya sama, tanpa kursi). slot −1 kalau penuh.
    */
   private pilihKursi(jumlahAnggota = 0): { readonly slot: number; readonly rombongan: number[] } {
-    const kosong: number[] = [];
-    for (let i = 0; i < this.kursi.length; i++) if (this.kursi[i] === 0) kosong.push(i);
+    const duduk: number[] = [];
+    const berdiri: number[] = [];
+    for (let i = 0; i < this.kursi.length; i++) {
+      if (this.kursi[i] !== 0) continue;
+      (this.fasilitas.blokKursi[KURSI_TUNGGU[i]!.blok] !== false ? duduk : berdiri).push(i);
+    }
+    const kosong = duduk.length > 0 ? duduk : berdiri;
     if (kosong.length === 0) return { slot: -1, rombongan: [] };
     if (jumlahAnggota > 0) {
       for (let n = 0; n < 12; n++) {

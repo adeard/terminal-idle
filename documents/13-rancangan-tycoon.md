@@ -1,6 +1,6 @@
 # 13 · Rancangan Tycoon: dari idle ke tycoon
 
-> **Status: langkah 1, 2, 3, dan 5 selesai (9 Oktober 2026)** di cabang `tycoon` (bagian 15): modul murni & kalibrasi, lalu `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik sudah memakai ekonomi tycoon. Sisa: adegan 3D (bagian 12) dan rilis 0.3.0. Produksi masih rilis 0.2.0 (ekonomi mitra PO, dokumen 12, konsep idle). Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
+> **Status: langkah 1–5 selesai (9 Oktober 2026)** di cabang `tycoon` (bagian 15): modul murni & kalibrasi, lalu `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik memakai ekonomi tycoon, dan adegan 3D mengikuti bangunan & petugas (bagian 12). Sisa: rilis 0.3.0. Produksi masih rilis 0.2.0 (ekonomi mitra PO, dokumen 12, konsep idle). Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
 >
 > Angka di dokumen ini adalah hasil kalibrasi pertama (bagian 14), masih bisa digeser. Angka yang berlaku selalu yang di `EKONOMI.tycoon` (`src/config/economy.config.ts`).
 
@@ -278,7 +278,7 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
 - **HUD**: kas, laba hari ini (hijau/merah), arus, kepuasan, jam.
 - **Adegan**: label area (PERON, LOKET, KEBERANGKATAN, PANGKALAN) bisa diketuk untuk membuka kartu Bangun area itu. Penanda "PALING LAMBAT" tetap ada di area yang membatasi arus.
 - **Mode ringkas** hanya menyembunyikan panel. Rel chip tahap dihapus.
-- Semua di atas sudah diterapkan (langkah 3), kecuali label area yang bisa diketuk: menyusul bersama adegan 3D (bagian 12).
+- Semua di atas sudah diterapkan (langkah 3); label area yang bisa diketuk menyusul di langkah 4 (bagian 12). Label PANGKALAN hanya muncul saat pangkalan yang paling lambat, karena di sana sudah ada papan "PANGKALAN BUS".
 
 ## 12. Adegan 3D
 
@@ -289,7 +289,15 @@ Sebagian besar sudah menggambarkan benda nyata: halte & gerbang per jalur, jende
 - **Lahan parkir kendaraan** (baris 1, baris 2 di tahap 2) dan **pos retribusi** mengikuti yang dibangun.
 - **Label area** bisa diketuk (bagian 11).
 
-Yang sudah ikut langkah 2: lencana "K" dihapus dari label area, penanda "PALING LAMBAT" mengikuti area yang membatasi arus jam sibuk (`bottleneckState`), penjaga kios & toko hadir per unit yang dibangun, kios & toko tertutup rolling door sampai ada yang dibangun, dan juru parkir, petugas toilet, serta petugas retribusi hanya hadir bila bangunannya ada **dan** petugasnya direkrut. Efek "+Rp" memetakan enam sumber pendapatan ke empat tempat transaksi (loket, bus parkir, lorong parkir, kios/toko); "+Rp" sewa kios harian dihapus.
+Yang sudah ikut langkah 2: lencana "K" dihapus dari label area, penanda "PALING LAMBAT" mengikuti area yang membatasi arus jam sibuk (`bottleneckState`), penjaga kios & toko hadir per unit yang dibangun, dan juru parkir, petugas toilet, serta petugas retribusi hanya hadir bila bangunannya ada **dan** petugasnya direkrut. Efek "+Rp" memetakan enam sumber pendapatan ke empat tempat transaksi (loket, bus parkir, lorong parkir, kios/toko); "+Rp" sewa kios harian dihapus.
+
+Langkah 4 (9 Oktober 2026; logika murni di `src/game/fasilitas-adegan.ts`, posisi di `tata-letak.ts`):
+
+- **Blok kursi** terpasang sebanyak unit kursi (paling banyak empat di adegan; unit lantai 2 belum digambar), mulai dari blok terdekat gerbang Jalur 1. Penumpang memilih kursi di blok terpasang dulu; bila penuh, ia **berdiri** menunggu di lantai blok yang belum dipasang, jadi kursi yang kurang terlihat (dan loket tidak tertahan).
+- **Petugas** sebanyak yang direkrut: petugas peron di tepi peron tiap halte, petugas gerbang di tiap gerbang (urut jalur), satpam di empat pos (luar yang berpatroli malam, aula, peron keberangkatan, peron kedatangan), dan petugas kebersihan siang & malam di empat rute sapu (aula, ruang tunggu, peron, plaza). Sisanya bertugas di luar pandangan.
+- **Parkir**: baris mobil pertama (beserta deret motor) terisi setelah lahan parkir pertama, baris kedua setelah lahan parkir kedua; tanpa lahan parkir tidak ada calon penumpang dari parkir. **Pos retribusi** muncul setelah dibangun.
+- **Kios & toko per unit**: kios ruang tunggu urut KOPI, ROTI & KUE, OLEH-OLEH; toko aula urut minimarket lalu apotek. Yang belum dibangun tertutup rolling door dan tidak didatangi. Toilet & musholla baru didatangi setelah toilet dibangun.
+- **Label area** berpanah "›" bisa diketuk: membuka tab Bangun di bagian area itu (Peron & Keberangkatan → jalur, Loket → jendela, Pangkalan → petak bus) dan menyorot barisnya. Zona Pangkalan ikut disorot saat paling lambat.
 
 ## 13. Save & rilis
 
@@ -338,7 +346,7 @@ Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.t
    - hapus tahap, Kepala, Renovasi, milestone, bonus level, harga per PO;
    - save skema 3 & cloud save (ekonomi lama dimulai baru, profil tetap).
 3. ✓ **UI**: tab Bangun / Petugas, tarif & laporan keuangan di tab Terminal, kartu PO tanpa harga per jurusan, HUD laba, popup offline baru; tab Tahap & rel chip dihapus. Dikerjakan bersama langkah 2 supaya game tetap bisa dikompilasi.
-4. **Adegan 3D** (berikutnya): blok kursi, petugas peron, gerbang, kebersihan, & satpam sesuai rekrutan, lahan parkir & pos retribusi, label area yang bisa diketuk. Penanda bottleneck per area dan petugas fasilitas sudah ikut langkah 2 (bagian 12).
+4. ✓ **Adegan 3D**: blok kursi (penumpang berdiri bila kursi kurang), petugas peron, gerbang, kebersihan, & satpam sesuai rekrutan, lahan parkir & pos retribusi, kios & toko per unit, label area yang bisa diketuk, zona Pangkalan (bagian 12). Bangunan bertingkat tahap 3–5 (lantai 2, gedung parkir, Terpadu) masih di luar langkah ini.
 5. ✓ **Tutorial**, target harian, tantangan, penghargaan, notifikasi, analitik. Tutorial (sesuai usulan):
    - bangun jendela loket;
    - daftarkan PO kedua;

@@ -94,7 +94,7 @@ describe('DuniaVisual: transaksi di keramaian', () => {
   }, 60_000);
 
   it('jumlah semua "+Rp" = pendapatan yang masuk (sisanya menunggu transaksi berikutnya)', () => {
-    let s: GameState = denganPo(stateOtomatis({ jalur: 3, jendela: 6, kios: 2, toilet: 1, lahanParkir: 1, posRetribusi: 1 }), 'ondelOndel', { loket: 6, level: 12 });
+    let s: GameState = denganPo(stateOtomatis({ jalur: 3, jendela: 6, kios: 2, toko: 1, toilet: 1, lahanParkir: 1, posRetribusi: 1 }), 'ondelOndel', { loket: 6, level: 12 });
     const dunia = new DuniaVisual({ acak: acakBerbenih(9) });
     const kas = new KasVisual();
     const lajuVisual = { ...terapkanRitme(hitungLajuVisual(s), 1), jam: 12 };

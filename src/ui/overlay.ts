@@ -9,6 +9,7 @@
 import type { PengendaliGame } from '../app/pengendali';
 import { PILIHAN_KECEPATAN } from '../config/waktu.config';
 import type { Aksi } from '../sim/aksi';
+import type { AreaId } from '../sim/operasi';
 import type { PoId } from '../sim/fitur';
 import { formatAngka, formatUang, formatUangBertanda } from './format';
 import { buatTabBangun, buatTabPetugas, buatTabPo, buatTabTarget, buatTabTerminal, type IklanMenu, type IsiTab } from './menu';
@@ -27,6 +28,8 @@ export interface Overlay {
   aturKecepatan(kecepatan: number): void;
   /** Notifikasi singkat di atas adegan. */
   notif(teks: string): void;
+  /** Buka tab Bangun di bagian area ini (label area di peta diketuk); panel ringkas dibuka dulu. */
+  bukaArea(area: AreaId): void;
   lepas(): void;
 }
 
@@ -187,7 +190,13 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   });
   // Saat berpindah tab, isi tab langsung diperbarui dengan state terbaru.
   for (const id of ID_TAB) tombolTab[id].addEventListener('click', () => tab[id].perbarui(buatModel(pengendali.state)));
-  return { area, kontrol, aturKecepatan: hud.aturKecepatan, notif: tampilkanNotif, lepas };
+  const bukaArea = (id: AreaId): void => {
+    if (ringkas) ubahRingkas(false);
+    pilihTab('bangun');
+    tab.bangun.perbarui(buatModel(pengendali.state));
+    tab.bangun.sorot?.(id);
+  };
+  return { area, kontrol, aturKecepatan: hud.aturKecepatan, notif: tampilkanNotif, bukaArea, lepas };
 }
 
 // ---------------------------------------------------------------------------

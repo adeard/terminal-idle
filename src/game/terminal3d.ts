@@ -8,6 +8,8 @@ import * as THREE from 'three';
 import type { PembacaState } from '../app/pengendali';
 import { cuacaTerminal, cuacaTerminalState, kilatPada, type Cuaca } from '../sim/cuaca';
 import type { BangunanId, PetugasId, PoId, TeknologiId } from '../sim/fitur';
+import type { AreaId } from '../sim/operasi';
+import { hitungPetugas, type JumlahPetugas } from '../sim/petugas';
 import { busEmasAktif, kelasBusBeroperasi, kelasTerminal, loketTerisi, type GameState, type PoTerdaftar } from '../sim/state';
 import { keramaianTerminal, waktuTerminal, waktuTerminalState } from '../sim/waktu';
 import { URL_ATLAS } from './aset';
@@ -15,13 +17,14 @@ import { Adegan } from './adegan';
 import { CahayaMalam } from './cahaya3d';
 import { PencucianBus } from './cuci3d';
 import { DuniaVisual, posisiKenekBagasi, posisiPetugasCuci, type PeristiwaBus, type TransaksiVisual } from './dunia-visual';
-import { bangunGedung, DERET_KURSI_AULA, MEJA_INFO, MEJA_TUNGGU, posisiKursiAula, Y_MEJA_TUNGGU } from './gedung3d';
+import { blokKursiDi, FASILITAS_LENGKAP, stafAdegan, type FasilitasAdegan, type StafAdegan } from './fasilitas-adegan';
+import { bangunGedung, bangunKursiTunggu, DERET_KURSI_AULA, MEJA_INFO, MEJA_TUNGGU, posisiKursiAula, Y_MEJA_TUNGGU } from './gedung3d';
 import { Kumpulan } from './geometri';
 import { KasVisual, lajuUangState, type LajuUang } from './kas-visual';
 import { HiasanKelas } from './kelas3d';
 import { HiasanEvent, RAMAI_EVENT } from './event3d';
 import { PembangunanTerminal } from './pembangunan3d';
-import { jendelaDipakai, jendelaPo, kelompokParkirDibangun, posisiPekerja, TAHAP_PARKIR_MOBIL_PENUH } from './perluasan-adegan';
+import { jendelaDipakai, jendelaPo, kelompokParkirDibangun, posisiPekerja } from './perluasan-adegan';
 import { ArmadaKendaraan } from './kendaraan3d';
 import { hitungLajuVisual, maskJurusanState, terapkanRitme, type LajuVisual } from './laju';
 import { Hujan3D } from './hujan3d';
@@ -30,13 +33,11 @@ import {
   ASONGAN,
   dalamRentang,
   JAM_ASONGAN,
-  JAM_KEBERSIHAN,
   JAM_PATROLI,
   loketBuka,
   PATROLI_SATPAM,
   posisiPatroli,
-  SAPU_AULA,
-  SAPU_TUNGGU,
+  RUTE_SAPU,
   tokoBuka,
   type JenisToko,
 } from './kehidupan-malam';
@@ -62,13 +63,15 @@ import {
   GEDUNG,
   GERBANG_X,
   KIOS_TUNGGU,
+  KURSI_TUNGGU,
   LORONG_PARKIR,
   PERON,
   PERON_BERANGKAT,
   LOKET,
   MAKS_ORANG,
-  PINTU_MASUK,
+  POS_PETUGAS_PERON,
   POS_RETRIBUSI,
+  POS_SATPAM,
   RUANG_TUNGGU,
   TINGGI_LANTAI_GEDUNG,
   TINGGI_PERON,
@@ -82,7 +85,7 @@ import {
 import { AnakTelolet, ANAK_TELOLET, anakTeloletHadir, busDiKetuk, JEDA_TELOLET_BUS, melodiTelolet } from './telolet';
 import { SpandukTelolet } from './telolet3d';
 import { TEKS } from '../ui/teks';
-import { ZonaTahap } from './zona3d';
+import { ZonaArea } from './zona3d';
 
 /** Detik simulasi keramaian sebelum frame pertama, supaya terminal langsung hidup: orang berjalan dengan laju alami dan bus menunggu jadwal di pangkalan, jadi butuh beberapa menit sampai semua tahap terisi. */
 const PEMANASAN_DETIK = 150;
@@ -179,8 +182,8 @@ interface OrangStatis {
   readonly ambang: number;
   /** Hanya ada setelah unit ke-(ke + 1) bangunan ini dibangun (mis. penjaga kios, juru parkir). */
   readonly bangunan?: { readonly id: BangunanId; readonly ke: number };
-  /** Hanya ada bila petugas peran ini sudah direkrut (mis. juru parkir, petugas toilet). */
-  readonly petugas?: PetugasId;
+  /** Hanya ada bila petugas peran ini yang direkrut lebih dari `ke` (mis. petugas gerbang ke-2, satpam ke-3). */
+  readonly staf?: { readonly peran: PetugasId; readonly ke: number };
   /** Hanya ada setelah modernisasi ini dipasang (mis. petugas pengatur bus). */
   readonly teknologi?: TeknologiId;
   /** Penjaga toko: pulang saat tokonya tutup (lihat JAM_BUKA). */
@@ -192,10 +195,11 @@ interface OrangStatis {
 /**
  * Orang statis ini sedang bertugas/berada di terminal menurut state (bangunan, petugas, modernisasi, jam buka).
  * @param jendela banyaknya jendela loket yang dipakai mitra PO di siang hari (lihat jendelaDipakai)
+ * @param petugas banyaknya petugas tiap peran yang direkrut
  */
-function hadir(s: OrangStatis, state: GameState, jam: number, jendela: number): boolean {
+function hadir(s: OrangStatis, state: GameState, jam: number, jendela: number, petugas: JumlahPetugas): boolean {
   if (s.bangunan && state.terminal.bangunan[s.bangunan.id] <= s.bangunan.ke) return false;
-  if (s.petugas && !state.terminal.petugas.includes(s.petugas)) return false;
+  if (s.staf && petugas[s.staf.peran] <= s.staf.ke) return false;
   if (s.teknologi && !state.terminal.teknologi[s.teknologi]) return false;
   if (s.toko && !tokoBuka(s.toko, jam)) return false;
   if (s.loket !== undefined && !loketBuka(jam, jendela).includes(s.loket)) return false;
@@ -208,10 +212,11 @@ const diLuar = (o: DataOrang): boolean => !diBawahAtap(o.x, o.y);
 const ambangPengunjung = (i: number): number => 0.12 + 0.7 * ((i * 0.6180339887 + 0.3) % 1);
 
 /**
- * Orang yang diam di tempat: satpam, polisi di pos, orang duduk, anak di taman,
- * petugas loket, petugas informasi, penjaga toko aula, petugas gerbang ruang
- * tunggu, penjual kios, dan pengunjung yang makan. Petugas selalu ada;
- * pengunjung (makan, duduk di aula, anak di taman) berkurang saat sepi.
+ * Orang yang diam di tempat: satpam di posnya, polisi di pos, orang duduk,
+ * anak di taman, petugas loket, petugas informasi, penjaga toko aula, petugas
+ * peron & gerbang, penjual kios, dan pengunjung yang makan. Petugas hadir
+ * sesuai rekrutan & bangunannya; pengunjung (makan, duduk di aula, anak di
+ * taman) berkurang saat sepi.
  */
 function orangStatis(): OrangStatis[] {
   const seragam = (baju: number, celana: number, topi: boolean, skala = 1): Penampilan => ({
@@ -231,13 +236,16 @@ function orangStatis(): OrangStatis[] {
   };
   /** Orang yang bekerja di tempat (penjual, penjaga toko): tanpa koper & ransel. */
   const pekerja = (benih: number): Penampilan => ({ ...sipil(benih), ransel: null, koper: null });
-  const petugas = GERBANG_X.map((g, i): DataOrang => ({
-    id: ID_STATIS + 10 + i,
-    x: g + 0.3,
-    y: RUANG_TUNGGU.y0 + 0.16,
-    h: TINGGI_PERON,
-    penampilan: seragam(0x1e3a8a, 0x111827, true),
-    hadap: Math.PI,
+  // Petugas gerbang di samping tiap gerbang ruang tunggu & petugas peron di tiap halte kedatangan (urut jalur).
+  const petugasGerbang = GERBANG_X.map((g, i): OrangStatis => ({
+    orang: { id: ID_STATIS + 10 + i, x: g + 0.3, y: RUANG_TUNGGU.y0 + 0.16, h: TINGGI_PERON, penampilan: seragam(0x1e3a8a, 0x111827, true), hadap: Math.PI },
+    ambang: 0,
+    staf: { peran: 'gerbang', ke: i },
+  }));
+  const petugasPeron = POS_PETUGAS_PERON.map(([x, y], i): OrangStatis => ({
+    orang: { id: ID_STATIS + 100 + i, x, y, h: TINGGI_PERON, penampilan: seragam(0x1e3a8a, 0x111827, true), hadap: 0 },
+    ambang: 0,
+    staf: { peran: 'peron', ke: i },
   }));
   const penjual = KIOS_TUNGGU.map(([ya, yb], i): DataOrang => ({
     id: ID_STATIS + 20 + i,
@@ -266,17 +274,23 @@ function orangStatis(): OrangStatis[] {
   const penjagaToko = TOKO_AULA.map((t, i): DataOrang => ({ id: ID_STATIS + 70 + i, x: t.x1 - 0.27, y: 11.62, h: hAula, penampilan: pekerja(40 + i), hadap: Math.PI / 2 }));
   const dudukAula = DUDUK_AULA.map(([d, c], i): DataOrang => {
     const [x, y] = posisiKursiAula(DERET_KURSI_AULA[d]!, c);
-    return { id: ID_STATIS + 80 + i, x, y, h: hAula + 0.005, penampilan: sipil(50 + i), pose: 'duduk', hadap: Math.PI / 2 };
+    return { id: ID_STATIS + 110 + i, x, y, h: hAula + 0.005, penampilan: sipil(50 + i), pose: 'duduk', hadap: Math.PI / 2 };
   });
-  const petugasLain: DataOrang[] = [
-    { id: ID_STATIS + 60, x: MEJA_INFO[0] + 0.1, y: MEJA_INFO[1] - 0.25, h: hAula, penampilan: seragam(0x1d4ed8, 0x1f2937, false), hadap: Math.PI / 2 },
-    { id: ID_STATIS + 61, x: PINTU_MASUK[0] - 0.6, y: 14.55, h: hAula, penampilan: seragam(0xdbe4ee, 0x1e293b, true), hadap: Math.PI / 2 },
-    { id: ID_STATIS, x: 18.95, y: 15.35, h: H_LANTAI, penampilan: seragam(0xdbe4ee, 0x1e293b, true), hadap: Math.PI / 2 },
-  ];
-  const selalu = (orang: DataOrang): OrangStatis => ({ orang, ambang: 0 });
+  // Satpam mengisi pos urut POS_SATPAM: luar (id ID_STATIS, berpatroli malam), aula, peron keberangkatan, peron kedatangan.
+  const H_POS_SATPAM = [H_LANTAI, hAula, TINGGI_PERON, TINGGI_PERON];
+  const HADAP_POS_SATPAM = [Math.PI / 2, Math.PI / 2, 0, 0];
+  const satpam = POS_SATPAM.map(([x, y], i): OrangStatis => ({
+    orang: { id: i === 0 ? ID_STATIS : ID_STATIS + 60 + i, x, y, h: H_POS_SATPAM[i]!, penampilan: seragam(0xdbe4ee, 0x1e293b, true), hadap: HADAP_POS_SATPAM[i]! },
+    ambang: 0,
+    staf: { peran: 'satpam', ke: i },
+  }));
+  const petugasInfo: DataOrang = { id: ID_STATIS + 60, x: MEJA_INFO[0] + 0.1, y: MEJA_INFO[1] - 0.25, h: hAula, penampilan: seragam(0x1d4ed8, 0x1f2937, false), hadap: Math.PI / 2 };
   const rompi = (warnaRompi: number): Penampilan => seragam(warnaRompi, 0x1f2937, true);
   return [
-    ...[...petugas, ...petugasLain].map(selalu),
+    { orang: petugasInfo, ambang: 0 },
+    ...petugasGerbang,
+    ...petugasPeron,
+    ...satpam,
     ...petugasLoket.map((orang, i): OrangStatis => ({ orang, ambang: 0, loket: i })),
     // Fasilitas: penjaga kios & toko (pulang saat tokonya tutup), juru parkir, petugas toilet, petugas retribusi.
     ...penjual.map((orang, i): OrangStatis => ({ orang, ambang: 0, bangunan: { id: 'kios', ke: i }, toko: 'kios' })),
@@ -284,10 +298,10 @@ function orangStatis(): OrangStatis[] {
     // Pangkalan ojek: satu duduk di bangku gubuk, satu menawarkan ojek di mulut gang (siang).
     { orang: { id: ID_STATIS + 94, x: GUBUK_OJEK.x - 0.02, y: (GUBUK_OJEK.y0 + GUBUK_OJEK.y1) / 2, h: 0.055, penampilan: seragam(0x7f1d1d, 0x1f2937, false), pose: 'duduk', hadap: 0 }, ambang: 0 },
     { orang: { id: ID_STATIS + 95, x: GUBUK_OJEK.x + 0.55, y: 19.75, h: H_TROTOAR, penampilan: seragam(0x1f2937, 0x334155, true), hadap: -Math.PI / 2 }, ambang: 0.35 },
-    { orang: { id: ID_STATIS + 90, x: LORONG_PARKIR.x0 - 0.3, y: LORONG_PARKIR.y + 0.6, h: H_LANTAI, penampilan: rompi(0xf97316), hadap: Math.PI }, ambang: 0, bangunan: { id: 'lahanParkir', ke: 0 }, petugas: 'juruParkir' },
+    { orang: { id: ID_STATIS + 90, x: LORONG_PARKIR.x0 - 0.3, y: LORONG_PARKIR.y + 0.6, h: H_LANTAI, penampilan: rompi(0xf97316), hadap: Math.PI }, ambang: 0, bangunan: { id: 'lahanParkir', ke: 0 }, staf: { peran: 'juruParkir', ke: 0 } },
     // Petugas kebersihan toilet berjaga di lorong sayap barat, di sisi dinding aula (tidak menghalangi jalan).
-    { orang: { id: ID_STATIS + 91, x: GEDUNG.x0 - 0.15, y: 12.3, h: hAula, penampilan: seragam(0x16a34a, 0x1f2937, false), hadap: Math.PI }, ambang: 0, bangunan: { id: 'toilet', ke: 0 }, petugas: 'petugasToilet' },
-    { orang: { id: ID_STATIS + 1, x: POS_RETRIBUSI.x0 - 0.5, y: POS_RETRIBUSI.y1 + 0.3, h: 0, penampilan: seragam(0x8b6b3d, 0x4a3b24, true), hadap: Math.PI / 4 }, ambang: 0, bangunan: { id: 'posRetribusi', ke: 0 }, petugas: 'petugasRetribusi' },
+    { orang: { id: ID_STATIS + 91, x: GEDUNG.x0 - 0.15, y: 12.3, h: hAula, penampilan: seragam(0x16a34a, 0x1f2937, false), hadap: Math.PI }, ambang: 0, bangunan: { id: 'toilet', ke: 0 }, staf: { peran: 'petugasToilet', ke: 0 } },
+    { orang: { id: ID_STATIS + 1, x: POS_RETRIBUSI.x0 - 0.5, y: POS_RETRIBUSI.y1 + 0.3, h: 0, penampilan: seragam(0x8b6b3d, 0x4a3b24, true), hadap: Math.PI / 4 }, ambang: 0, bangunan: { id: 'posRetribusi', ke: 0 }, staf: { peran: 'petugasRetribusi', ke: 0 } },
     // Modernisasi: petugas pengatur bus berompi di peron kedatangan & keberangkatan.
     { orang: { id: ID_STATIS + 92, x: PERON.x0 + 0.45, y: PERON.y0 + 0.4, h: TINGGI_PERON, penampilan: rompi(0xfacc15), hadap: -Math.PI / 2 }, ambang: 0, teknologi: 'pengaturBus' },
     { orang: { id: ID_STATIS + 93, x: RUANG_TUNGGU.x1 - 0.45, y: PERON_BERANGKAT.y0 + 0.3, h: TINGGI_PERON, penampilan: rompi(0xfacc15), hadap: -Math.PI / 2 }, ambang: 0, teknologi: 'pengaturBus' },
@@ -348,6 +362,8 @@ export class Terminal3D {
   tampilkanBusEmas: () => boolean = () => false;
   /** Dipanggil tiap pemain membunyikan klakson telolet (untuk analitik; diatur dari main.ts). */
   saatTelolet: () => void = () => {};
+  /** Dipanggil saat pemain mengetuk label area di peta (membuka tab Bangun; diatur dari main.ts). */
+  saatKetukArea: (area: AreaId) => void = () => {};
   /** Mode sinema (lihat aturSinema); null = tampilan biasa. */
   private sinema: OpsiSinema | null = null;
   /** Selisih jam tampilan terhadap jam main selama mode sinema (detik main). */
@@ -387,6 +403,10 @@ export class Terminal3D {
   private jam = 0;
   /** Jendela loket yang dipakai mitra PO di siang hari (lihat jendelaDipakai), diperbarui tiap frame dari state. */
   private jendela = X_LOKET.length;
+  /** Bangunan yang dipakai penumpang frame ini (blok kursi, kios & toko, parkir, pos retribusi). */
+  private fasilitas: FasilitasAdegan = FASILITAS_LENGKAP;
+  /** Petugas tiap peran yang direkrut & yang terlihat, dihitung ulang hanya bila daftar rekrutnya berganti. */
+  private petugas: { readonly urutan: readonly PetugasId[]; readonly jumlah: JumlahPetugas; readonly staf: StafAdegan } | null = null;
   /** Pemilik tiap jendela loket untuk daftar PO & banyaknya jendela terakhir (lihat pemilikJendela). */
   private pemilik: { readonly terdaftar: readonly PoTerdaftar[]; readonly jendela: number; readonly po: readonly (PoId | null)[] } | null = null;
   /** Tahap perluasan frame lalu: kembang api peresmian saat bertambah (bukan saat memuat save). */
@@ -403,7 +423,7 @@ export class Terminal3D {
     private readonly pembaca: PembacaState,
     private readonly armada: ArmadaKendaraan,
     private readonly kerumunan: Kerumunan3D,
-    private readonly zona: ZonaTahap,
+    private readonly zona: ZonaArea,
     private readonly labelBus: LabelBus,
     private readonly papanJurusan: PapanJurusan,
     private readonly modernisasi: Modernisasi,
@@ -423,8 +443,11 @@ export class Terminal3D {
     private readonly hiasanEvent: HiasanEvent,
     private readonly pembangunan: PembangunanTerminal,
     private readonly proyek: ProyekPerluasan,
-    /** Mobil pengunjung di baris kedua parkir: baru terisi setelah pangkalan diperluas (TAHAP_PARKIR_MOBIL_PENUH). */
-    private readonly parkirBaris2: THREE.Group,
+    /** Mobil (& motor) pengunjung tiap baris parkir: terisi sesuai lahan parkir yang dibangun. */
+    private readonly parkirMobil: readonly THREE.Group[],
+    /** Blok kursi ruang tunggu (urut BLOK_KURSI): terpasang sesuai kursi yang dibangun. */
+    private readonly blokKursi: readonly THREE.Group[],
+    private readonly posRetribusi: THREE.Group,
   ) {
     this.pasangKetuk(adegan.renderer.domElement);
     // 40 = kelipatan jumlah bus terminal (8) & kendaraan lewat (5), jadi keduanya merata.
@@ -450,15 +473,19 @@ export class Terminal3D {
     const aniso = Math.min(8, adegan.renderer.capabilities.getMaxAnisotropy());
 
     const k = new Kumpulan();
-    const { bendera } = bangunLingkungan(k, m);
+    const { bendera, posRetribusi } = bangunLingkungan(k, m);
     bangunGedung(k, m);
+    const blokKursi = bangunKursiTunggu(m);
     const kabel = new THREE.Group();
-    const baris2 = new Kumpulan();
-    bangunSekitar(k, m, kabel, baris2);
+    const parkir = [new Kumpulan(), new Kumpulan()] as const;
+    bangunSekitar(k, m, kabel, parkir);
     k.bangun(adegan.scene);
-    const parkirBaris2 = new THREE.Group();
-    baris2.bangun(parkirBaris2);
-    adegan.scene.add(bendera, kabel, parkirBaris2);
+    const parkirMobil = parkir.map((kp) => {
+      const g = new THREE.Group();
+      kp.bangun(g);
+      return g;
+    });
+    adegan.scene.add(bendera, kabel, posRetribusi, ...parkirMobil, ...blokKursi);
 
     const laluLintas = new LaluLintas({ x0: -64, x1: 100, lajurTimur: JALAN_BELAKANG.lajurTimur, lajurBarat: JALAN_BELAKANG.lajurBarat, jumlahPerLajur: 25 });
     const laluLintas3D = new LaluLintas3D(48);
@@ -466,13 +493,15 @@ export class Terminal3D {
     const trotoar = new Trotoar({ x0: -48, x1: 76, jalur: [-0.5, Y_TROTOAR_BELAKANG, 22.05], jumlahPerJalur: 20, jumlahVarian: JUMLAH_PENAMPILAN });
 
     const armada = new ArmadaKendaraan(atlas.image as CanvasImageSource, aniso, adegan.renderer);
-    // Penumpang + anggota rombongannya (±30 %) + pejalan kaki, petugas, orang diam.
-    const kerumunan = new Kerumunan3D(Math.round(MAKS_ORANG * 1.3) + 200);
+    // Penumpang + anggota rombongannya (±30 %) + pejalan kaki trotoar (±60), kenek & sopir (±50),
+    // orang statis & petugas (±65), petugas kebersihan, asongan, pekerja proyek, anak telolet.
+    // Kelebihan dibuang diam-diam (orang statis ditambahkan belakangan), jadi cadangannya longgar.
+    const kerumunan = new Kerumunan3D(Math.round(MAKS_ORANG * 1.3) + 260);
     const cahaya = new CahayaMalam(TITIK_LAMPU);
     const cuci = new PencucianBus();
     adegan.scene.add(laluLintas3D.objek, armada.objek, kerumunan.objek, cahaya.objek, cuci.objek);
 
-    const zona = new ZonaTahap(adegan.scene, wadahLabel);
+    const zona = new ZonaArea(adegan.scene, wadahLabel);
     const labelBus = new LabelBus(wadahLabel);
     const popUang = new PopUang3D(wadahLabel);
     const spanduk = new SpandukTelolet(m);
@@ -501,7 +530,7 @@ export class Terminal3D {
     adegan.bingkai(adegan.lebarCss > adegan.tinggiCss ? TITIK_INTI : TITIK_INTI_POTRET);
     // Kompilasi shader sebelum frame pertama supaya tidak tersendat saat mulai.
     await adegan.renderer.compileAsync(adegan.scene, adegan.kamera);
-    return new Terminal3D(adegan, pembaca, armada, kerumunan, zona, labelBus, papanJurusan, modernisasi, rollingDoor, luar, papanJadwal, bendera, laluLintas, laluLintas3D, trotoar, m, cahaya, cuci, popUang, spanduk, hiasanKelas, hiasanEvent, pembangunan, proyek, parkirBaris2);
+    return new Terminal3D(adegan, pembaca, armada, kerumunan, zona, labelBus, papanJurusan, modernisasi, rollingDoor, luar, papanJadwal, bendera, laluLintas, laluLintas3D, trotoar, m, cahaya, cuci, popUang, spanduk, hiasanKelas, hiasanEvent, pembangunan, proyek, parkirMobil, blokKursi, posRetribusi);
   }
 
   /** Sambungkan mesin suara; tiap frame adegan mengirim lapisan suara & bunyi sesaat. */
@@ -590,15 +619,12 @@ export class Terminal3D {
     this.jendela = bangunan.jendela;
     this.papanJurusan.perbarui({ mask: bangunan.mask, jendela: this.pemilikJendela(state), kelompok: bangunan.kelompok });
     this.pembangunan.perbarui({ jalur: state.terminal.bangunan.jalur, kelompok: bangunan.kelompok });
-    this.parkirBaris2.visible = state.perkembangan.perluasan >= TAHAP_PARKIR_MOBIL_PENUH;
     this.perbaruiProyek(state, dt, dtNyata);
     this.modernisasi.perbarui(state.terminal.teknologi);
     this.hiasanKelas.perbarui(kelasTerminal(state), state.profil.namaTerminal);
     this.hiasanEvent.perbarui(state.event.aktif?.id ?? null);
     this.jam = w.jamDesimal;
     this.detikPatroli += dt;
-    const b = state.terminal.bangunan;
-    this.rollingDoor.perbarui(this.jam, this.jendela, b.kios + b.toko > 0, b.jalur);
     this.luar.perbarui(this.jam, this.keramaian);
     this.material.aturBasah(this.basah);
     this.laluLintas.kepadatan = kepadatanLuar(this.keramaian);
@@ -612,6 +638,13 @@ export class Terminal3D {
       jam: this.jam,
       busEmas: busEmasAktif(state) && this.tampilkanBusEmas(),
     };
+    // Bangunan yang terlihat: blok kursi, mobil di parkir, pos retribusi, pintu gulung kios & toko per unit.
+    const f = laju.fasilitas ?? FASILITAS_LENGKAP;
+    this.fasilitas = f;
+    this.blokKursi.forEach((g, i) => (g.visible = f.blokKursi[i] !== false));
+    this.parkirMobil.forEach((g, i) => (g.visible = i < f.barisParkir));
+    this.posRetribusi.visible = f.posRetribusi;
+    this.rollingDoor.perbarui(this.jam, this.jendela, f, state.terminal.bangunan.jalur);
     const langkah = Math.max(1, Math.ceil(dt / LANGKAH_SIM));
     this.peristiwa.length = 0;
     this.transaksi.length = 0;
@@ -654,11 +687,17 @@ export class Terminal3D {
   }
 
   /**
-   * Pemain mengetuk adegan di (x, y) piksel CSS: bus yang diketuk membunyikan
-   * klakson telolet, dan anak-anak di pinggir jalan kegirangan.
-   * @returns true bila ketukan mengenai bus.
+   * Pemain mengetuk adegan di (x, y) piksel CSS: label area membuka tab
+   * Bangun area itu; bus yang diketuk membunyikan klakson telolet, dan
+   * anak-anak di pinggir jalan kegirangan.
+   * @returns true bila ketukan mengenai label area atau bus.
    */
   ketuk(x: number, y: number): boolean {
+    const area = this.zona.areaDiKetuk(x, y);
+    if (area) {
+      this.saatKetukArea(area);
+      return true;
+    }
     const b = busDiKetuk(this.dunia.bus, this.adegan, x, y);
     if (!b) return false;
     if (this.waktu - (this.teloletTerakhir.get(b.id) ?? Number.NEGATIVE_INFINITY) < JEDA_TELOLET_BUS) return true;
@@ -753,7 +792,12 @@ export class Terminal3D {
       const h = Math.max(tinggiLantai(o.x, o.y) ?? 0, o.y > Y_TROTOAR_BELAKANG - 0.2 ? H_TROTOAR : H_LANTAI);
       const penampilan = this.penampilan[o.varian % JUMLAH_PENAMPILAN]!;
       if (o.gaya === 'bilik') continue; // di dalam bilik toilet
-      if (o.fase === 'tungguBerangkat') k.tambah({ id: o.id, x: o.x, y: o.y, h, penampilan, pose: 'duduk', hadap: HADAP_GERBANG }, dt);
+      // Menunggu di ruang tunggu: duduk di kursi, atau berdiri bila blok kursinya belum dipasang (kursi kurang).
+      if (o.fase === 'tungguBerangkat') {
+        const blok = KURSI_TUNGGU[o.slot]?.blok ?? -1;
+        if (blok >= 0 && this.fasilitas.blokKursi[blok] === false) k.tambah({ id: o.id, x: o.x, y: o.y, h, penampilan, hadap: HADAP_GERBANG }, dt);
+        else k.tambah({ id: o.id, x: o.x, y: o.y, h, penampilan, pose: 'duduk', hadap: HADAP_GERBANG }, dt);
+      }
       // Sholat menghadap kiblat (barat); duduk (sujud/tasyahud) di lantai, bukan setinggi bangku.
       else if (o.gaya === 'sholatBerdiri') k.tambah({ id: o.id, x: o.x, y: o.y, h, penampilan, hadap: HADAP_KIBLAT }, dt);
       else if (o.gaya === 'sholatDuduk') k.tambah({ id: o.id, x: o.x, y: o.y, h: h - 0.075 * penampilan.skala, penampilan, pose: 'duduk', hadap: HADAP_KIBLAT }, dt);
@@ -764,7 +808,8 @@ export class Terminal3D {
       const h = Math.max(tinggiLantai(f.x, f.y) ?? 0, f.y > Y_TROTOAR_BELAKANG - 0.2 ? H_TROTOAR : H_LANTAI);
       const anak = f.peran === 'anak';
       const penampilan = anak ? this.penampilanAnak[(f.idPemimpin * 3 + f.urutan) % JUMLAH_PENAMPILAN_ANAK]! : this.penampilan[(f.idPemimpin * 7 + 13 * (f.urutan + 1)) % JUMLAH_PENAMPILAN]!;
-      if (f.duduk) k.tambah({ id: f.id, x: f.x, y: f.y, h, penampilan, pose: 'duduk', hadap: HADAP_GERBANG }, dt);
+      if (f.duduk && this.fasilitas.blokKursi[blokKursiDi(f.x, f.y)] !== false) k.tambah({ id: f.id, x: f.x, y: f.y, h, penampilan, pose: 'duduk', hadap: HADAP_GERBANG }, dt);
+      else if (f.duduk) k.tambah({ id: f.id, x: f.x, y: f.y, h, penampilan, hadap: HADAP_GERBANG }, dt);
       // Pengantar melambaikan tangan ke bus dari balik gerbang.
       else if (f.lambai) k.tambah({ id: f.id, x: f.x, y: f.y, h, penampilan, hadap: HADAP_GERBANG, lambai: Math.sin(this.waktu * 7 + f.id) }, dt);
       // Anak berlindung di bawah payung orang tuanya.
@@ -791,8 +836,9 @@ export class Terminal3D {
     const berteduh = this.hujan > HUJAN_PAYUNG;
     const state = this.pembaca.state;
     const patroli = dalamRentang(this.jam, JAM_PATROLI);
+    const petugas = this.petugasDari(state);
     for (const s of this.statis) {
-      if (this.keramaian < s.ambang || !hadir(s, state, this.jam, this.jendela)) continue;
+      if (this.keramaian < s.ambang || !hadir(s, state, this.jam, this.jendela, petugas.jumlah)) continue;
       // Malam: satpam luar berkeliling plaza (siang berjaga di posnya).
       const orang = s.orang.id === ID_STATIS && patroli ? this.satpamBerpatroli(s.orang) : s.orang;
       if (berteduh && diLuar(orang)) {
@@ -803,7 +849,7 @@ export class Terminal3D {
       }
     }
     this.pekerjaProyek(k, dt);
-    this.orangBergilir(k, dt);
+    this.orangBergilir(k, dt, petugas.staf, berteduh);
     if (anakTeloletHadir(this.jam, this.hujan)) this.anakPinggirJalan(k, dt);
     k.selesai();
   }
@@ -826,14 +872,27 @@ export class Terminal3D {
     return diPos ? pos : { ...tanpaHadap, x: p.x, y: p.y };
   }
 
-  /** Orang yang hanya ada pada jam tertentu: petugas kebersihan menyapu (malam), pedagang asongan (siang). */
-  private orangBergilir(k: Kerumunan3D, dt: number): void {
-    if (dalamRentang(this.jam, JAM_KEBERSIHAN)) {
-      const ayun = Math.sin(this.detikPatroli * 4.5);
-      const aula = posisiPatroli(SAPU_AULA, this.detikPatroli);
-      const tunggu = posisiPatroli(SAPU_TUNGGU, this.detikPatroli + 40);
-      k.tambah({ id: ID_KEBERSIHAN, x: aula.x, y: aula.y, h: TINGGI_LANTAI_GEDUNG, penampilan: SERAGAM_KEBERSIHAN, sapu: ayun }, dt);
-      k.tambah({ id: ID_KEBERSIHAN + 1, x: tunggu.x, y: tunggu.y, h: TINGGI_PERON, penampilan: SERAGAM_KEBERSIHAN, sapu: -ayun }, dt);
+  /** Petugas tiap peran yang direkrut & yang terlihat (dihitung ulang hanya bila daftar rekrutnya berganti). */
+  private petugasDari(state: GameState): { readonly jumlah: JumlahPetugas; readonly staf: StafAdegan } {
+    const urutan = state.terminal.petugas;
+    if (this.petugas?.urutan !== urutan) {
+      const jumlah = hitungPetugas(urutan);
+      this.petugas = { urutan, jumlah, staf: stafAdegan(jumlah) };
+    }
+    return this.petugas;
+  }
+
+  /**
+   * Orang yang bergerak di rutenya: petugas kebersihan yang direkrut menyapu
+   * siang & malam (rute urut RUTE_SAPU; yang di plaza berteduh saat hujan
+   * deras), pedagang asongan (siang).
+   */
+  private orangBergilir(k: Kerumunan3D, dt: number, staf: StafAdegan, berteduh: boolean): void {
+    const ayun = Math.sin(this.detikPatroli * 4.5);
+    for (let i = 0; i < staf.kebersihan; i++) {
+      const p = posisiPatroli(RUTE_SAPU[i]!, this.detikPatroli + i * 40);
+      if (berteduh && !diBawahAtap(p.x, p.y)) continue;
+      k.tambah({ id: ID_KEBERSIHAN + i, x: p.x, y: p.y, h: tinggiLantai(p.x, p.y) ?? H_LANTAI, penampilan: SERAGAM_KEBERSIHAN, sapu: i % 2 === 0 ? ayun : -ayun }, dt);
     }
     if (dalamRentang(this.jam, JAM_ASONGAN)) {
       ASONGAN.forEach((rute, i) => {

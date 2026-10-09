@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { acakBerbenih, DuniaVisual, kurvaKeluarPetak, kurvaMasukPetak, petugasCuci, posisiPetugasCuci, ruteKeGerbang, ruteKeKursi, saatLewat, tingkatKotor, type BusVisual, type FaseBus } from '../src/game/dunia-visual';
 import { Jalur, lintasanS } from '../src/game/jalur';
 import { loketBuka } from '../src/game/kehidupan-malam';
+import { blokKursiTerpasang, FASILITAS_LENGKAP, URUTAN_BLOK_KURSI } from '../src/game/fasilitas-adegan';
 import { batasArusLoket, hitungLajuVisual, lajuDasar, maskJurusanState, terapkanRitme, type LajuVisual, type PoVisual } from '../src/game/laju';
 import type { KeadaanKelompokParkir } from '../src/game/perluasan-adegan';
 import { MEJA_TUNGGU, Y_MEJA_TUNGGU } from '../src/game/gedung3d';
@@ -521,6 +522,70 @@ describe('model keramaian dekoratif', () => {
     const dunia = new DuniaVisual({ acak: acakBerbenih(8) });
     jalankan(dunia, 150, laju);
     expect(dunia.jumlahAntrean).toBeGreaterThan(JUMLAH_SLOT_LABIRIN * 0.7);
+  });
+});
+
+describe('ruang tunggu & parkir mengikuti bangunan', () => {
+  it('laju visual membawa bangunan dari state: satu blok kursi & tanpa lahan parkir di game baru', () => {
+    const f = hitungLajuVisual(stateOtomatis()).fasilitas!;
+    expect(f.blokKursi).toEqual(blokKursiTerpasang(1));
+    expect(f.barisParkir).toBe(0);
+    expect(hitungLajuVisual(denganBangunan(stateOtomatis(), { kursi: 3, lahanParkir: 1 })).fasilitas).toMatchObject({ blokKursi: blokKursiTerpasang(3), barisParkir: 1 });
+  });
+
+  it('kursi di blok yang terpasang diisi dulu; bila penuh, penumpang berdiri di lantai blok lain (loket tidak tertahan)', { timeout: 30_000 }, () => {
+    const dunia = new DuniaVisual({ acak: acakBerbenih(3) });
+    const blok = URUTAN_BLOK_KURSI[0]!;
+    const perBlok = KURSI_TUNGGU.length / BLOK_KURSI.length;
+    /** Kursi di blok terpasang yang sedang dipesan (penumpang + anggota rombongannya). */
+    const dipesan = (): number => {
+      let n = 0;
+      for (const o of dunia.orang) {
+        if (o.slot >= 0 && KURSI_TUNGGU[o.slot]!.blok === blok) n++;
+        for (const k of o.kursiRombongan) if (KURSI_TUNGGU[k]!.blok === blok) n++;
+      }
+      return n;
+    };
+    const sudah = new Set<number>();
+    let berdiri = 0;
+    let berdiriSaatAdaKursi = 0;
+    // Keberangkatan lambat: ruang tunggu penuh sesak (lihat tes di atas).
+    for (let t = 0; t < 420; t += 1 / 30) {
+      dunia.perbarui(1 / 30, { ...SEIMBANG, naik: 0.6, fasilitas: { ...FASILITAS_LENGKAP, blokKursi: blokKursiTerpasang(1) } });
+      for (const o of dunia.orang) {
+        if (o.slot < 0 || sudah.has(o.id)) continue;
+        sudah.add(o.id);
+        if (KURSI_TUNGGU[o.slot]!.blok === blok) continue;
+        berdiri++;
+        // Saat ia memesan tempat berdiri, kursi di blok terpasang sudah penuh (kelonggaran: kursi yang baru lepas di frame ini).
+        if (dipesan() < perBlok - 3) berdiriSaatAdaKursi++;
+      }
+    }
+    expect(dunia.periksaKonsistensi()).toEqual([]);
+    expect(berdiri).toBeGreaterThan(20);
+    expect(berdiriSaatAdaKursi).toBe(0);
+    expect(dunia.jumlahTungguBerangkat).toBeGreaterThan(perBlok);
+  });
+
+  it('tanpa kursi sama sekali penumpang tetap menunggu (berdiri), tidak menahan loket', { timeout: 20_000 }, () => {
+    const dunia = new DuniaVisual({ acak: acakBerbenih(4) });
+    jalankan(dunia, 150, { ...SEIMBANG, fasilitas: { ...FASILITAS_LENGKAP, blokKursi: blokKursiTerpasang(0) } });
+    expect(dunia.jumlahTungguBerangkat).toBeGreaterThan(5);
+  });
+
+  it('tanpa lahan parkir tidak ada calon penumpang yang datang dari parkir', () => {
+    for (const [barisParkir, ada] of [
+      [0, false],
+      [1, true],
+    ] as const) {
+      const dunia = new DuniaVisual({ acak: acakBerbenih(5) });
+      let dariParkir = 0;
+      for (let t = 0; t < 120; t += 1 / 30) {
+        dunia.perbarui(1 / 30, { ...SEIMBANG, fasilitas: { ...FASILITAS_LENGKAP, barisParkir } });
+        dariParkir += dunia.transaksi.filter((x) => x.jenis === 'parkir').length;
+      }
+      expect(dariParkir > 0).toBe(ada);
+    }
   });
 });
 

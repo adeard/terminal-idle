@@ -11,7 +11,7 @@
  */
 import * as THREE from 'three';
 import { WARNA_TAHAP, keHexCss } from '../config/tema';
-import { atapLengkung, bayanganKontak, bidang, Busur, dindingBusur, kotak, persegiTegak, rusukBusur, silinder, uvDunia, type Kumpulan } from './geometri';
+import { atapLengkung, bayanganKontak, bidang, Busur, dindingBusur, kotak, persegiTegak, rusukBusur, silinder, uvDunia, Kumpulan } from './geometri';
 import { SKALA_UV, type PustakaMaterial } from './material3d';
 import { bangunSayapBarat } from './sayap3d';
 import {
@@ -88,7 +88,6 @@ export function bangunGedung(k: Kumpulan, m: PustakaMaterial): void {
   labirinAntrean(k, m);
   isiAula(k, m);
   ruangTunggu(k, m);
-  kursiTunggu(k, m);
   isiRuangTunggu(k, m);
   kanopiKedatangan(k, m);
   bangunSayapBarat(k, m);
@@ -561,22 +560,35 @@ function ruangTunggu(k: Kumpulan, m: PustakaMaterial): void {
   k.tambah(papan.material, persegiTegak([cx - 2.36, bTalang + 0.04], [cx + 2.36, bTalang + 0.04], hTalang + 0.02, hTalang + 0.3, papan.uv, 0.004), { bayangan: false });
 }
 
-/** Deretan kursi tunggu: rangka baja, dudukan & sandaran plastik (warna per blok). */
-function kursiTunggu(k: Kumpulan, m: PustakaMaterial): void {
-  const h0 = TINGGI_PERON;
-  BLOK_KURSI.forEach((b, i) => {
-    const warna = m.kursi[i % m.kursi.length]!;
-    for (let r = 0; r < KURSI.jumlahBaris; r++) {
-      const y = KURSI.yBaris0 + r * KURSI.jarakBaris;
-      k.tambah(m.besiGelap, kotak(b.x0 + 0.02, y - 0.012, b.x1 - 0.02, y + 0.012, h0 + 0.05, h0 + 0.068));
-      for (const x of [b.x0 + 0.1, (b.x0 + b.x1) / 2, b.x1 - 0.1]) k.tambah(m.besiGelap, kotak(x - 0.012, y - 0.05, x + 0.012, y + 0.05, h0, h0 + 0.055));
-      for (let c = 0; c < KURSI.perBaris; c++) {
-        const x = b.x0 + KURSI.jarak * (c + 0.5);
-        k.tambah(warna, kotak(x - 0.072, y - 0.065, x + 0.072, y + 0.045, h0 + 0.075, h0 + 0.095));
-        k.tambah(warna, kotak(x - 0.072, y + 0.05, x + 0.072, y + 0.072, h0 + 0.1, h0 + 0.235));
-      }
-    }
+/**
+ * Deretan kursi tunggu, satu grup per blok (urut BLOK_KURSI) yang ditampilkan
+ * sesuai kursi yang dibangun (lihat blokKursiTerpasang): rangka baja, dudukan &
+ * sandaran plastik (warna per blok).
+ */
+export function bangunKursiTunggu(m: PustakaMaterial): THREE.Group[] {
+  return BLOK_KURSI.map((_, i) => {
+    const k = new Kumpulan();
+    kursiTunggu(k, m, i);
+    const grup = new THREE.Group();
+    k.bangun(grup);
+    return grup;
   });
+}
+
+function kursiTunggu(k: Kumpulan, m: PustakaMaterial, blok: number): void {
+  const h0 = TINGGI_PERON;
+  const b = BLOK_KURSI[blok]!;
+  const warna = m.kursi[blok % m.kursi.length]!;
+  for (let r = 0; r < KURSI.jumlahBaris; r++) {
+    const y = KURSI.yBaris0 + r * KURSI.jarakBaris;
+    k.tambah(m.besiGelap, kotak(b.x0 + 0.02, y - 0.012, b.x1 - 0.02, y + 0.012, h0 + 0.05, h0 + 0.068));
+    for (const x of [b.x0 + 0.1, (b.x0 + b.x1) / 2, b.x1 - 0.1]) k.tambah(m.besiGelap, kotak(x - 0.012, y - 0.05, x + 0.012, y + 0.05, h0, h0 + 0.055));
+    for (let c = 0; c < KURSI.perBaris; c++) {
+      const x = b.x0 + KURSI.jarak * (c + 0.5);
+      k.tambah(warna, kotak(x - 0.072, y - 0.065, x + 0.072, y + 0.045, h0 + 0.075, h0 + 0.095));
+      k.tambah(warna, kotak(x - 0.072, y + 0.05, x + 0.072, y + 0.072, h0 + 0.1, h0 + 0.235));
+    }
+  }
 }
 
 /** Isi aula: kios di dinding barat, meja makan, papan jadwal, pot tanaman, tempat sampah. */

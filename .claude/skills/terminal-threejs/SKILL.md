@@ -13,7 +13,7 @@ bahasa Indonesia. Balas pengguna dalam bahasa Indonesia.
 | Folder | Isi | Boleh import three.js? |
 | --- | --- | --- |
 | `src/sim/`, `src/config/`, `src/app/` | ekonomi, state, save, jam, cuaca | **Tidak** (juga tanpa DOM, dicek `tsconfig.sim.json`) |
-| `src/game/` modul murni | `tata-letak`, `dunia-visual`, `jalur`, `laju`, `langit`, `suara`, `rombongan`, `kamera`, `kehidupan-malam`, `jadwal`, `bayangan`, `label-bus`, `label-loket`, `kas-visual`, `telolet`, `perluasan-adegan`, `kembang-api`, `aset*` | **Tidak** (daftar `GAME_MURNI` di `tests/arsitektur.test.ts`) |
+| `src/game/` modul murni | `tata-letak`, `dunia-visual`, `jalur`, `laju`, `langit`, `suara`, `rombongan`, `kamera`, `kehidupan-malam`, `jadwal`, `bayangan`, `label-bus`, `label-loket`, `kas-visual`, `telolet`, `perluasan-adegan`, `fasilitas-adegan`, `kembang-api`, `aset*` | **Tidak** (daftar `GAME_MURNI` di `tests/arsitektur.test.ts`) |
 | `src/game/*3d.ts`, `adegan.ts`, `terminal3d.ts` | render three.js | Ya — hanya **membaca** state, tidak pernah mengirim aksi |
 | `src/ui/` | overlay DOM | Tidak |
 

@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import type { TitikCahaya } from './cahaya3d';
 import { acakBerbenih } from './dunia-visual';
-import { bayanganKontak, bidang, bidangPutar, kotak, persegiTegak, pita, silinder, uvDunia, v3, type Kumpulan, type Titik2 } from './geometri';
+import { bayanganKontak, bidang, bidangPutar, kotak, persegiTegak, pita, silinder, uvDunia, v3, Kumpulan, type Titik2 } from './geometri';
 import { lintasanS } from './jalur';
 import { PAPAN_JURUSAN } from './papan-jurusan3d';
 import { SKALA_UV, type PustakaMaterial } from './material3d';
@@ -42,7 +42,8 @@ import {
 
 const H = { lantai: 0.012, taman: 0.016, aspal: 0.02, setapak: 0.022, marka: 0.026 } as const;
 
-export function bangunLingkungan(k: Kumpulan, m: PustakaMaterial): { bendera: THREE.Mesh } {
+/** @returns bendera (dikibarkan tiap frame) & pos retribusi (ditampilkan setelah dibangun, lihat fasilitasAdegan). */
+export function bangunLingkungan(k: Kumpulan, m: PustakaMaterial): { bendera: THREE.Mesh; posRetribusi: THREE.Group } {
   tanah(k, m);
   jalanRaya(k, m);
   kompleks(k, m);
@@ -53,11 +54,14 @@ export function bangunLingkungan(k: Kumpulan, m: PustakaMaterial): { bendera: TH
   pepohonan(k, m);
   lampu(k, m);
   gapura(k, m);
-  posRetribusi(k, m);
+  const kPos = new Kumpulan();
+  posRetribusi(kPos, m);
+  const grupPos = new THREE.Group();
+  kPos.bangun(grupPos);
   perabot(k, m);
   pencucian(k, m);
   kelompokJurusan(k, m);
-  return { bendera: bendera(k, m) };
+  return { bendera: bendera(k, m), posRetribusi: grupPos };
 }
 
 const datar = (k: Kumpulan, mat: THREE.Material, x0: number, y0: number, x1: number, y1: number, h: number, skala: number): void => {

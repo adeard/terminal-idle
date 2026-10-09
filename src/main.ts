@@ -327,6 +327,7 @@ async function mulai(): Promise<void> {
         selesai: () => t.aturSinema(null),
       });
       t.saatTelolet = () => analitik.catat('telolet');
+      t.saatKetukArea = (area) => overlay.bukaArea(area);
       analitik.catat('adegan_siap', { detik: Math.round((performance.now() - mulaiGrafis) / 100) / 10 });
     })
     .catch((e: unknown) => {

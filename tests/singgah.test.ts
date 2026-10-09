@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { acakBerbenih, DuniaVisual, type OrangVisual } from '../src/game/dunia-visual';
+import { FASILITAS_LENGKAP } from '../src/game/fasilitas-adegan';
 import { loketBuka } from '../src/game/kehidupan-malam';
 import { hitungLajuVisual, type LajuVisual } from '../src/game/laju';
 import {
@@ -224,22 +225,40 @@ describe('penumpang mampir', () => {
     expect(tempat.has('kios')).toBe(false);
   }, 30_000);
 
-  it('Kios & Minimarket belum dibangun: tidak ada yang belanja di kios, minimarket, atau apotek; toilet, musholla & ATM tetap', () => {
+  it('kios & toko belum dibangun: tidak ada yang belanja di kios, minimarket, atau apotek; toilet, musholla & ATM tetap', () => {
     const s = stateOtomatis();
-    expect(hitungLajuVisual(s).kiosDibangun).toBe(false);
-    expect(hitungLajuVisual(denganBangunan(s, { kios: 1 })).kiosDibangun).toBe(true);
-    expect(hitungLajuVisual(denganBangunan(s, { toko: 1 })).kiosDibangun).toBe(true);
+    expect(hitungLajuVisual(s).fasilitas).toMatchObject({ kios: 0, toko: 0, toilet: false });
+    expect(hitungLajuVisual(denganBangunan(s, { kios: 1, toko: 2, toilet: 1 })).fasilitas).toMatchObject({ kios: 1, toko: 2, toilet: true });
     const dunia = new DuniaVisual({ acak: acakBerbenih(41), wanita });
     const tempat = new Set<string>();
     let belanja = 0;
     for (let t = 0; t < 420; t += 1 / 30) {
-      dunia.perbarui(1 / 30, { ...SEIMBANG, jam: 12.2, kiosDibangun: false });
+      dunia.perbarui(1 / 30, { ...SEIMBANG, jam: 12.2, fasilitas: { ...FASILITAS_LENGKAP, kios: 0, toko: 0 } });
       for (const o of dunia.orang) if (o.singgah) tempat.add(o.singgah.tempat);
       belanja += dunia.transaksi.filter((x) => x.jenis === 'belanja').length;
     }
     for (const n of ['toilet', 'musholla', 'atm']) expect(tempat).toContain(n);
     for (const n of ['kios', 'minimarket', 'apotek']) expect(tempat.has(n)).toBe(false);
     expect(belanja).toBe(0);
+  }, 60_000);
+
+  it('per unit: hanya kios & toko yang sudah dibangun yang didatangi; toilet & musholla baru dipakai setelah dibangun', () => {
+    // Satu kios (KOPI) & satu toko (minimarket), tanpa toilet & musholla.
+    const dunia = new DuniaVisual({ acak: acakBerbenih(41), wanita });
+    const tempat = new Set<string>();
+    const kiosLain = new Set(SINGGAH.kios.slice(1).flatMap((k) => k.titik));
+    let keKiosLain = 0;
+    for (let t = 0; t < 420; t += 1 / 30) {
+      dunia.perbarui(1 / 30, { ...SEIMBANG, naik: 0.5, jam: 12.2, fasilitas: { ...FASILITAS_LENGKAP, kios: 1, toko: 1, toilet: false } });
+      for (const o of dunia.orang) {
+        if (!o.singgah) continue;
+        tempat.add(o.singgah.tempat);
+        if (o.singgah.langkah.some((l) => kiosLain.has(l.titik))) keKiosLain++;
+      }
+    }
+    for (const n of ['atm', 'minimarket', 'kios']) expect(tempat).toContain(n);
+    for (const n of ['apotek', 'toilet', 'musholla']) expect(tempat.has(n)).toBe(false);
+    expect(keKiosLain).toBe(0);
   }, 60_000);
 
   it('beli tiket tidak instan: beberapa detik per pembeli, dan jendela yang buka tetap bukan hambatan palsu', () => {
