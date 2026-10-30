@@ -28,6 +28,7 @@ Beberapa fitur terbaru di repo mungkin belum dirilis ke situs:
 | 11 | [MVP Definition](11-mvp-definition.md) | Batasan versi pertama dan kriteria rilisnya |
 | 12 | [Rancangan Ekonomi v2: Mitra PO](12-rancangan-ekonomi-po.md) | **Dirilis 0.2.0.** Loket milik PO, level PO & terminal, kontrak, reputasi, perluasan terminal, Renovasi, hasil simulasi |
 | 13 | [Rancangan Tycoon](13-rancangan-tycoon.md) | **Dirilis 0.3.0** (9 Okt 2026; state, save skema 3, UI lima tab, tutorial & target memakai ekonomi tycoon, adegan 3D mengikuti bangunan & petugas), lalu **0.3.1** (penumpang tidak membayar terminal, kontrak PO dibayar di muka, slot PO terus bertambah). Dari idle ke tycoon: panel Tahap dihapus, kapasitas dari bangunan & petugas, biaya operasional & laba, pasar penumpang mutlak, Renovasi dihapus, uang realistis |
+| 14 | [Rancangan Arah Pemain Baru](14-rancangan-arah-pemain-baru.md) | **Disetujui owner** (29 Okt 2026, dalam pembangunan; ronde perbaikan 2 dari playtest disetujui 31 Okt 2026: syarat offline saran Manajer, cadangan B perluasan ≥ 2, pil kepuasan netral di awal, tombol "Oke" popup offline). Baris "tujuan berikutnya" di HUD dengan cadangan kas & histeresis, lencana tab Terminal & PO, notifikasi perluasan terbuka, laba rata-rata per hari di HUD, toast kepuasan turun, kamera portrait lebih dekat, gelembung tutorial yang tidak menutup aula, pesan proyek tetap berjalan saat game ditutup, peristiwa analitik `tujuan_ketuk` |
 
 ## Istilah yang sering dipakai
 

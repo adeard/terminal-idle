@@ -272,6 +272,12 @@ export interface LaporanOffline {
   readonly detikBoost: number;
   /** Petugas yang berhenti karena kas habis selama pergi. */
   readonly berhenti: number;
+  /**
+   * Proyek perluasan yang berjalan saat pemain pergi (null = tidak ada): tahap (1-based),
+   * apakah selesai selama pergi, dan sisa detik main bila belum. Data sesaat untuk
+   * popup offline, tidak disimpan.
+   */
+  readonly proyek: { readonly tahap: number; readonly selesai: boolean; readonly sisaDetik: number } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1370,7 +1376,7 @@ function jalankanOffline(state: GameState, detik: number, cfg: KonfigEkonomi): H
   };
   return {
     state: hasil,
-    laporan: { detik, dibatasi: false, tutup: false, pendapatan, biaya, laba: pendapatan - biaya, detikBoost: jamBoost * WAKTU.detikPerJam, berhenti },
+    laporan: { detik, dibatasi: false, tutup: false, pendapatan, biaya, laba: pendapatan - biaya, detikBoost: jamBoost * WAKTU.detikPerJam, berhenti, proyek: null },
   };
 }
 
@@ -1391,13 +1397,18 @@ export function terapkanOffline(state: GameState, sekarangMs: number, cfg: Konfi
   const dibatasi = (sekarangMs - state.waktuTerakhirMs) / 1000 > cfg.tycoon.offline.batasDetik;
   const tutup = !adaManajerOperasional(state);
   let s = state;
-  let laporan: LaporanOffline = { detik, dibatasi, tutup, pendapatan: 0, biaya: 0, laba: 0, detikBoost: 0, berhenti: 0 };
+  let laporan: LaporanOffline = { detik, dibatasi, tutup, pendapatan: 0, biaya: 0, laba: 0, detikBoost: 0, berhenti: 0, proyek: null };
   if (detik > 0 && !tutup) {
     const h = jalankanOffline(state, detik, cfg);
     s = h.state;
     laporan = { ...h.laporan, dibatasi };
   }
-  if (detik > 0) s = { ...s, perkembangan: majukanPerkembangan(s.perkembangan, 0, detik) };
+  if (detik > 0) {
+    const p = s.perkembangan;
+    s = { ...s, perkembangan: majukanPerkembangan(p, 0, detik) };
+    // Proyek tetap dibangun kontraktor, dengan atau tanpa Manajer: disebut di popup offline.
+    if (p.proyekDetik > 0) laporan = { ...laporan, proyek: { tahap: p.perluasan + 1, selesai: s.perkembangan.proyekDetik <= 0, sisaDetik: s.perkembangan.proyekDetik } };
+  }
   // Bonus 2× hanya untuk laba offline laporan ini; boost berkurang selama pergi.
   const hadiah = { ...s.hadiah, boostDetik: Math.max(0, s.hadiah.boostDetik - detik), bonusOffline: Math.max(0, Math.floor(laporan.laba)) };
   return { state: perbaruiPencapaian({ ...tandaiWaktu(s, sekarangMs), hadiah }, cfg), laporan };

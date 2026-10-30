@@ -841,13 +841,20 @@ export const TITIK_INTI: readonly (readonly [number, number, number])[] = [
 ];
 
 /**
- * Portrait lebih sempit: tampilan awal memuat pangkalan, gedung utama, dan
- * ruang tunggu; peron kedatangan di barat tinggal digeser.
+ * Portrait (documents/14 bagian 4.3): kamera awal lebih dekat, dari arah lain
+ * (AZIMUT_POTRET, JENDELA_POTRET di kamera.ts). Yang harus muat: label PERON,
+ * LOKET, dan KEBERANGKATAN, serta aula loket dengan antreannya (tepi selatan
+ * gedung, mulut antrean, ujung baris luapan) di atas 22% bawah layar, tempat
+ * gelembung tutorial. Zoom keluar tetap sampai seluruh terminal (TITIK_INTI).
  */
 export const TITIK_INTI_POTRET: readonly (readonly [number, number, number])[] = [
-  [PULAU_JURUSAN[1]! - 1, PANGKALAN.y0, 0],
-  [PULAU_JURUSAN[1]! - 1, JALAN.y0, 0],
-  ...TITIK_INTI.slice(2),
+  ZONA.peron.label,
+  ZONA.loket.label,
+  ZONA.keberangkatan.label,
+  [GEDUNG.x0, GEDUNG.y1, TINGGI_LANTAI_GEDUNG],
+  [GEDUNG.x1, GEDUNG.y1, TINGGI_LANTAI_GEDUNG],
+  [MULUT_ANTREAN[0], MULUT_ANTREAN[1] + 0.3, 0],
+  [15.4, Y_LUAPAN, 0],
 ];
 
 const di = (x: number, y: number, a: Persegi): boolean => x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1;

@@ -393,9 +393,29 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Pil laba rata-rata per hari: tombol (membuka laporan keuangan) yang tampak seperti teks HUD. */
 .hud-pendapatan {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
   color: #6ee7a0;
+  font: inherit;
   font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* Area ketuk diperluas ke ±44 px tanpa menambah tinggi baris HUD. */
+.hud-pendapatan::after {
+  content: '';
+  position: absolute;
+  inset: -11px -6px;
+}
+
+.hud-pendapatan.netral,
+.hud-pendapatan-ringkas.netral {
+  color: #cbd5e1;
 }
 
 .hud-arus {
@@ -410,6 +430,42 @@ body {
   color: #ffd479;
   font-size: 16px;
   font-weight: 600;
+}
+
+/* Baris tujuan berikutnya (app/tujuan.ts): tombol selebar HUD dengan "›" di kanan. Tingkat 1 merah
+   (.bahaya), 2–3 kuning, 4–5 netral (sedang menunggu). */
+.hud-tujuan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 0;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.tujuan-teks {
+  flex: 1;
+  min-width: 0;
+}
+
+.tujuan-panah {
+  flex: none;
+  font-size: 24px;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.hud-tujuan.netral {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--redup);
 }
 
 /* Jam terminal: ikon langit + jam, di bawahnya hari & keramaian. */
@@ -882,11 +938,18 @@ body {
 .hud-pendapatan-ringkas {
   display: none;
   margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
   color: #6ee7a0;
+  font: inherit;
   font-size: 16px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 #ui.panel-ringkas .hud-pendapatan-ringkas {
@@ -958,6 +1021,11 @@ body {
 .tab.aktif {
   background: #263241;
   color: #fff;
+}
+
+/* Tab berlencana memberi ruang di kanan labelnya (tab sempit di bilah landscape). */
+.tab.ada-lencana {
+  padding-right: 20px;
 }
 
 .tab-lencana {
@@ -1499,6 +1567,28 @@ body {
   color: #fca5a5;
 }
 
+/* Selama toast "kepuasan turun" tampil, pil kepuasan berdenyut (tanpa animasi bila reduced motion). */
+.hud-kepuasan.berdenyut {
+  animation: denyut-kepuasan 0.9s ease-in-out infinite;
+}
+
+@keyframes denyut-kepuasan {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(253, 224, 71, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(253, 224, 71, 0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-kepuasan.berdenyut {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(253, 224, 71, 0.55);
+  }
+}
+
 .popup-kepuasan .kepuasan-wajah {
   font-size: 44px;
   line-height: 1;
@@ -1660,6 +1750,20 @@ body {
   transform: translate(-50%, 0);
 }
 
+/* Toast kepuasan turun: satu-satunya notifikasi yang bisa diketuk (membuka popup kepuasan). */
+.notif.tampil.bisa-ketuk {
+  min-height: 44px;
+  box-sizing: border-box;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif {
+    transition: none;
+  }
+}
+
 /* Tutorial terpandu (ui/tutorial.ts): gelembung di bawah adegan & sorotan tombol yang dituju. */
 .tutorial {
   position: absolute;
@@ -1677,12 +1781,33 @@ body {
   pointer-events: auto;
 }
 
-/* Potret: di atas tombol Ringkas yang melayang di tepi atas panel. */
+/* Potret: di atas tombol Ringkas yang melayang di tepi atas panel; lebar supaya isinya ≤ 2 baris
+   dan tinggi gelembung ≤ 20% adegan (documents/14 bagian 4.4). */
 #ui.potret .tutorial {
   bottom: 62px;
+  box-sizing: border-box;
+  width: min(680px, calc(100% - 28px));
+  padding: 10px 16px;
+}
+
+/* Landscape: kiri bawah adegan (≤ 46% lebarnya), supaya aula, LOKET, dan KEBERANGKATAN tetap terlihat. */
+#ui.lanskap .tutorial {
+  left: 14px;
+  box-sizing: border-box;
+  width: max(300px, 46%);
+  padding: 10px 16px;
+  transform: none;
+}
+
+/* Nomor & judul satu baris ("LANGKAH 1/4 · Bangun jendela loket"), "Lewati" kecil di kanannya. */
+.tutorial-kepala {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .tutorial-nomor {
+  flex: none;
   color: #fde047;
   font-size: 13px;
   font-weight: 800;
@@ -1690,21 +1815,34 @@ body {
   text-transform: uppercase;
 }
 
+.tutorial-nomor::after {
+  content: ' ·';
+}
+
 .tutorial-judul {
-  margin-top: 2px;
+  flex: 1;
+  min-width: 0;
   color: #fff;
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 800;
 }
 
+.tutorial-isi {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 2px;
+}
+
 .tutorial-teks {
-  margin-top: 4px;
+  flex: 1;
+  min-width: 0;
   font-size: 16px;
-  line-height: 1.35;
+  line-height: 1.32;
 }
 
 .tutorial-kemajuan {
-  margin-top: 8px;
+  margin-top: 4px;
   color: #86efac;
   font-size: 15px;
   font-weight: 700;
@@ -1712,10 +1850,8 @@ body {
 }
 
 .tutorial-tombol {
+  flex: none;
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 8px;
 }
 
 .tutorial-lewati,
@@ -1728,13 +1864,20 @@ body {
   cursor: pointer;
 }
 
+/* Tautan kecil; area ketuknya diperluas dengan padding & margin negatif supaya baris judul tetap rendah. */
 .tutorial-lewati {
-  padding: 8px 10px;
+  flex: none;
+  margin: -12px -10px -12px auto;
+  padding: 12px 10px;
   background: none;
   color: #9ca3af;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 .tutorial-utama {
+  min-height: 44px;
   padding: 8px 22px;
   background: #fde047;
   color: #1a2129;
@@ -3063,4 +3206,10 @@ body {
 
 .offline-berhenti {
   color: #fca5a5;
+}
+
+/* Proyek perluasan yang tetap dibangun selama pemain pergi. */
+.offline-proyek {
+  color: #fde68a;
+  font-weight: 700;
 }

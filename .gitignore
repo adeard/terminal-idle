@@ -15,8 +15,9 @@ coverage/
 *.keystore
 keystore.properties
 
-# Pengaturan pribadi Claude Code.
+# Pengaturan pribadi Claude Code dan memori agent.
 .claude/settings.local.json
+.claude/agent-memory/
 
 # Skill untuk proyek lain (Phaser / game "Tebing"); hanya skill game ini yang ikut repo.
 .claude/skills/*

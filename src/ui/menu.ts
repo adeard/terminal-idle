@@ -262,6 +262,7 @@ export function buatTabBangun(kirim: Kirim): IsiTab {
   elemen.append(el('div', 'judul-bagian', TEKS.grupModern));
   const modern = TEKNOLOGI_IDS.map((id: TeknologiId) => {
     const r = baris3(IKON_MODERN, NAMA_TEKNOLOGI[id], 'modern');
+    r.elemen.dataset['teknologi'] = id;
     r.tombolKecil.textContent = TEKS.pasang;
     r.tombol.addEventListener('click', () => kirim({ jenis: 'beliTeknologi', teknologi: id }));
     elemen.append(r.elemen);
@@ -324,6 +325,8 @@ export function buatTabBangun(kirim: Kirim): IsiTab {
 export function buatTabPetugas(kirim: Kirim): IsiTab {
   const elemen = el('div', 'isi-tab daftar-item');
   const ringkasan = el('div', 'jurusan-ringkasan');
+  // Sasaran baris tujuan "kas menipis: kurangi petugas" (ui/baris-tujuan.ts).
+  ringkasan.dataset['kartu'] = 'gaji';
   elemen.append(ringkasan);
   const baris = PETUGAS_IDS.map((id: PetugasId) => {
     const manajer = id === 'manajerOperasional' || id === 'manajerKemitraan';
@@ -476,6 +479,7 @@ function buatKartuPo(id: PoId, kirim: Kirim): KartuPo {
   // Perpanjang = terima tawaran PO (panjang & nilainya dari PO, dibayar di muka).
   const tombolPerpanjang = tombolBeli();
   tombolPerpanjang.kecil.textContent = TEKS.perpanjang;
+  tombolPerpanjang.tombol.classList.add('tombol-perpanjang');
   tombolPerpanjang.tombol.addEventListener('click', () => kirim({ jenis: 'perpanjangPo', po: id }));
   // Putus kontrak lewat dua ketukan: ketukan pertama menampilkan akibatnya.
   const putus = tombolYakin('tombol tombol-putus', TEKS.putusYakin, () => kirim({ jenis: 'putusPo', po: id }));
@@ -823,13 +827,18 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
     r.tombol.hidden = true;
     return { id, ...r };
   });
+  // Sasaran baris tujuan & pil laba (ui/baris-tujuan.ts, overlay.ts).
+  level.elemen.dataset['kartu'] = 'level';
+  perluasan.elemen.dataset['kartu'] = 'perluasan';
+  keuangan.elemen.dataset['kartu'] = 'keuangan';
+  // Perluasan di urutan kedua: langkah besar berikutnya, tidak tersembunyi di bawah tarif.
   elemen.append(
     level.elemen,
+    perluasan.elemen,
     keuangan.elemen,
     el('div', 'judul-bagian', TEKS.tarifJudul),
     ...tarif.map((t) => t.elemen),
     el('div', 'harga-catatan', TEKS.tarifCatatan),
-    perluasan.elemen,
     el('div', 'judul-bagian', TEKS.judulKelasBus),
     ...barisKelas.map((b) => b.elemen),
     el('div', 'harga-catatan', `${TEKS.terminalCatatan} ${TEKS.kelasBusCatatan}`),

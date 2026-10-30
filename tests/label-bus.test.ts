@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { acakBerbenih, DuniaVisual, type BusVisual } from '../src/game/dunia-visual';
 import type { LajuVisual } from '../src/game/laju';
-import { isiLabelBus, labelAktif, type JenisLabelBus } from '../src/game/label-bus';
+import { isiLabelBus, jepitLabel, labelAktif, type JenisLabelBus } from '../src/game/label-bus';
 
 const SEIMBANG: LajuVisual = { turun: 1.4, layanLoket: 1.4, naik: 1.4, busDatang: 0.12, muatanBus: 16, faktorKecepatanBus: 1 };
 
@@ -83,4 +83,39 @@ describe('label kemajuan bus', () => {
     });
     expect(diperiksa).toBeGreaterThan(0);
   }, 20_000);
+});
+
+describe('jepit label bus ke layar (AC-GFX-04)', () => {
+  // Layar portrait 540 lebar; label "JAKARTA 0/14" ±62 × 24 px.
+  const L = 540;
+  const T = 590;
+  const titik = { x: 0, y: 0 };
+
+  it('label di tengah layar tidak bergeser', () => {
+    expect(jepitLabel(300, 400, 62, 24, L, T, titik)).toBe(true);
+    expect(titik).toEqual({ x: 300, y: 400 });
+  });
+
+  it('bus di tepi kanan (jangkar di dalam layar): label digeser masuk, utuh dengan tepi 4 px', () => {
+    expect(jepitLabel(534, 500, 62, 24, L, T, titik)).toBe(true);
+    expect(titik.x + 62 / 2).toBe(L - 4);
+    expect(titik.y).toBe(500);
+  });
+
+  it('tepi kiri dan atas juga dijepit (label tergantung di atas jangkar)', () => {
+    expect(jepitLabel(5, 10, 62, 24, L, T, titik)).toBe(true);
+    expect(titik.x - 62 / 2).toBe(4);
+    expect(titik.y - 24).toBe(4);
+  });
+
+  it('jangkar di luar layar: label disembunyikan, tidak dijepit jauh dari busnya', () => {
+    for (const [x, y] of [
+      [-1, 300],
+      [L + 1, 300],
+      [300, -1],
+      [300, T + 1],
+    ] as const) {
+      expect(jepitLabel(x, y, 62, 24, L, T, titik), `${x},${y}`).toBe(false);
+    }
+  });
 });

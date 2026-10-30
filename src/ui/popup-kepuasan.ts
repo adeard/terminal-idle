@@ -26,6 +26,14 @@ export function tingkatKepuasan(nilai: number): 'baik' | 'sedang' | 'kurang' {
   return nilai >= 0.75 ? 'baik' : nilai >= 0.45 ? 'sedang' : 'kurang';
 }
 
+/**
+ * Warna pil kepuasan HUD: netral (gaya dasar, tanpa hijau/merah) selama tutorial aktif & jam
+ * terminal pertama, aturan yang sama dengan pil laba; angka & wajahnya tetap.
+ */
+export function tingkatPilKepuasan(nilai: number, netral: boolean): 'baik' | 'sedang' | 'kurang' | 'netral' {
+  return netral ? 'netral' : tingkatKepuasan(nilai);
+}
+
 /** Saran fasilitas: yang belum ada sama sekali, atau tambah sesuai keramaian. */
 function saranFasilitas(m: ModelKepuasan): string {
   if (m.fasilitasKurang.length === 0) return TEKS.kepuasanSaranFasilitasCukup;

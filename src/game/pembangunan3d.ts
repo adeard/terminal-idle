@@ -38,12 +38,18 @@ export class PembangunanTerminal {
   private readonly putih = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.6 });
 
   constructor() {
-    // Halte kedatangan jalur ke-(k+1): pagar di tepi peron, tepat di depan pintu bus. Jalur 1 selalu ada.
+    // Jalur ke-(k+1) yang belum dibangun: pagar di tepi peron kedatangan (tepat di depan pintu bus)
+    // dan di tepi peron keberangkatan (gerbangnya). Keduanya satu grup karena aturan tampilnya sama:
+    // 2 draw call per jalur, bukan 4. Jalur 1 selalu ada.
     HALTE_DATANG_X.forEach((x, k) => {
-      if (k > 0) this.tambah((s) => s.jalur <= k, (kp) => this.pagarTepi(kp, x + PINTU_BUS, PERON.y0 + 0.14));
-    });
-    GERBANG_X.forEach((x, k) => {
-      if (k > 0) this.tambah((s) => s.jalur <= k, (kp) => this.pagarTepi(kp, x, PERON_BERANGKAT.y0 + 0.14));
+      if (k === 0) return;
+      this.tambah(
+        (s) => s.jalur <= k,
+        (kp) => {
+          this.pagarTepi(kp, x + PINTU_BUS, PERON.y0 + 0.14);
+          this.pagarTepi(kp, GERBANG_X[k]!, PERON_BERANGKAT.y0 + 0.14);
+        },
+      );
     });
     // Mulut petak parkir kelompok yang belum dibangun (posisi pita warna kelompok).
     const { pusatY, sudut } = PARKIR_SERONG;

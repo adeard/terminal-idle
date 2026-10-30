@@ -387,6 +387,23 @@ describe('offline', () => {
     expect(state.mitra.terdaftar[0]!.kontrakDetik).toBe(s.mitra.terdaftar[0]!.kontrakDetik);
   });
 
+  it('laporan menyebut proyek perluasan (selesai / sisa), dengan dan tanpa Manajer; tanpa proyek: null (data sesaat, bukan save)', () => {
+    const proyek = (s: GameState, detik: number): GameState => ({ ...s, perkembangan: { ...s.perkembangan, perluasan: 0, proyekDetik: detik } });
+    const tanpa = stateOtomatis();
+    const dengan = denganPetugas(stateOtomatis(), ['manajerOperasional']);
+    for (const s of [tanpa, dengan]) {
+      // Pergi 10 menit (600 dtk), proyek tinggal 1000 dtk: tetap dibangun, sisa 400 dtk.
+      const sisa = terapkanOffline(proyek(s, 1000), s.waktuTerakhirMs + 600_000);
+      expect(sisa.laporan.proyek).toEqual({ tahap: 1, selesai: false, sisaDetik: 400 });
+      expect(sisa.state.perkembangan.proyekDetik).toBe(400);
+      const selesai = terapkanOffline(proyek(s, 300), s.waktuTerakhirMs + 600_000);
+      expect(selesai.laporan.proyek).toEqual({ tahap: 1, selesai: true, sisaDetik: 0 });
+      expect(selesai.state.perkembangan.perluasan).toBe(1);
+      expect(pergi(s, 1).laporan.proyek).toBeNull();
+    }
+    expect(terapkanOffline(proyek(tanpa, 1000), tanpa.waktuTerakhirMs + 600_000).laporan.tutup).toBe(true);
+  });
+
   it('paling lama 8 jam; jam dimundurkan → 0', () => {
     const s = denganPetugas(stateOtomatis(), ['manajerOperasional']);
     const lama = pergi(s, 10).laporan;

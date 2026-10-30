@@ -100,23 +100,32 @@ export function pasangTutorial(o: OpsiTutorial): void {
     return;
   }
 
+  // Gelembung pendek (documents/14 bagian 4.4): nomor & judul satu baris dengan tautan "Lewati"
+  // di kanannya, isi paling banyak dua baris, lalu kemajuan atau tombol utama.
   const gelembung = el('section', 'tutorial');
   gelembung.setAttribute('aria-live', 'polite');
-  const nomor = el('div', 'tutorial-nomor');
-  const judul = el('div', 'tutorial-judul');
+  const kepala = el('div', 'tutorial-kepala');
+  const nomor = el('span', 'tutorial-nomor');
+  const judul = el('span', 'tutorial-judul');
+  const lewati = el('button', 'tutorial-lewati', TEKS.tutorialLewati);
+  lewati.type = 'button';
+  kepala.append(nomor, judul, lewati);
+  // Tombol utama (Mulai/Oke) di kanan teks, bukan baris sendiri, supaya gelembung tetap rendah.
+  const isi = el('div', 'tutorial-isi');
   const teks = el('div', 'tutorial-teks');
   const kemajuan = el('div', 'tutorial-kemajuan');
   const baris = el('div', 'tutorial-tombol');
-  const lewati = el('button', 'tutorial-lewati', TEKS.tutorialLewati);
-  lewati.type = 'button';
   const utama = el('button', 'tutorial-utama');
   utama.type = 'button';
-  baris.append(lewati, utama);
-  gelembung.append(nomor, judul, teks, kemajuan, baris);
+  baris.append(utama);
+  isi.append(teks, baris);
+  gelembung.append(kepala, isi, kemajuan);
   o.area.append(gelembung);
   o.akar.classList.add('tutorial-aktif');
 
   let tahap: 'sambutan' | 'langkah' | 'selesai' = o.status === 'aktif' ? 'langkah' : 'sambutan';
+  // Selama sambutan toast kepuasan belum boleh muncul (ui/overlay.ts).
+  o.akar.classList.toggle('tutorial-sambutan', tahap === 'sambutan');
   const terpenuhi = new Set(LANGKAH_TUTORIAL.filter((id) => langkahTerpenuhi(id, o.pengendali.state)));
   let disorot: HTMLElement[] = [];
   let lepas: (() => void) | null = null;
@@ -141,6 +150,7 @@ export function pasangTutorial(o: OpsiTutorial): void {
     kemajuan.hidden = isi.kemajuan === '';
     setTeks(utama, isi.utama ?? '');
     utama.hidden = isi.utama === null;
+    baris.hidden = isi.utama === null;
     lewati.hidden = !isi.lewati;
   };
   const tutup = (): void => {
@@ -148,7 +158,7 @@ export function pasangTutorial(o: OpsiTutorial): void {
     selesai = true;
     sorot([]);
     gelembung.remove();
-    o.akar.classList.remove('tutorial-aktif');
+    o.akar.classList.remove('tutorial-aktif', 'tutorial-sambutan');
     lepas?.();
   };
 
@@ -170,8 +180,10 @@ export function pasangTutorial(o: OpsiTutorial): void {
       tahap = 'selesai';
       o.simpan('selesai');
       o.analitik.catat('tutorial_complete');
-      sorot([]);
       o.akar.classList.remove('tutorial-aktif');
+      // Penutup memperkenalkan baris tujuan berikutnya (kini terlihat di HUD): disorot sampai "Oke".
+      const barisTujuan = o.akar.querySelector<HTMLElement>('.hud-tujuan');
+      sorot(barisTujuan ? [barisTujuan] : []);
       tampil({ nomor: '', judul: TEKS.tutorialSelesaiJudul, teks: TEKS.tutorialSelesai, kemajuan: '', utama: TEKS.tutorialOke, lewati: false });
       return;
     }
@@ -196,6 +208,7 @@ export function pasangTutorial(o: OpsiTutorial): void {
   utama.addEventListener('click', () => {
     if (tahap === 'sambutan') {
       tahap = 'langkah';
+      o.akar.classList.remove('tutorial-sambutan');
       o.simpan('aktif');
       o.analitik.catat('tutorial_begin');
       perbarui(o.pengendali.state);

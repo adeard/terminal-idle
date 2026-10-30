@@ -4,8 +4,9 @@ import { EKONOMI } from '../src/config/economy.config';
 import { terapkanAksi } from '../src/sim/aksi';
 import { slotBangunan } from '../src/sim/bangunan';
 import { urutanPo } from '../src/sim/mitra';
-import { aturTarif, buatStateBaru, daftarPo, keuanganSekarang, labaBuku, operasiState, tawaranKontrakPo, tick, type GameState } from '../src/sim/state';
+import { acuanHarian, aturTarif, buatStateBaru, daftarPo, keuanganSekarang, labaBuku, operasiState, tawaranKontrakPo, tick, type GameState } from '../src/sim/state';
 import { AREA_IDS, buatModel } from '../src/ui/model';
+import { tingkatKepuasan, tingkatPilKepuasan } from '../src/ui/popup-kepuasan';
 import { denganBangunan, denganPetugas, denganPo, jalankan, kaya, padaJam, stateOtomatis, T0 } from './helpers';
 
 const T = EKONOMI.tycoon;
@@ -35,6 +36,38 @@ describe('view model UI: HUD', () => {
     expect(m.hud.labaHariIni).toBeGreaterThan(0);
     const isi = denganPo(s, 'ondelOndel', { loket: 3 });
     expect(buatModel(padaJam(isi, 2)).hud.penumpangDiTerminal).toBeLessThan(buatModel(padaJam(isi, 8)).hud.penumpangDiTerminal);
+  });
+
+  it('pil laba: rata-rata sehari dengan kontrak = angka laporan keuangan; boost menaikkan pendapatan operasi saja; jam pertama "awal"', () => {
+    const s = daftarPo(kaya(stateOtomatis()), 'peuyeumKilat');
+    const m = buatModel(s);
+    expect(m.hud.labaHarian).toBeCloseTo(m.terminal.keuangan.rataRata.laba, 6);
+    expect(m.hud.labaHarian).toBeGreaterThan(0);
+    // Detik pertama game baru: rata-rata sehari negatif (sebelum PO kedua), tapi masih jam pertama.
+    const baru = buatModel(buatStateBaru(T0));
+    expect(baru.hud.labaHarian).toBeLessThan(0);
+    expect(baru.hud.awal).toBe(true);
+    expect(buatModel(jalankan(buatStateBaru(T0), 61)).hud.awal).toBe(false);
+    const boost = { ...s, hadiah: { ...s.hadiah, boostDetik: 600 } };
+    const a = acuanHarian(s, EKONOMI, s.terminal.tarif);
+    expect(buatModel(boost).hud.labaHarian - m.hud.labaHarian).toBeCloseTo(a.pendapatan * (EKONOMI.hadiah.pengaliBoost - 1) * 24, 3);
+    expect(buatModel(boost).terminal.keuangan.rataRata.laba).toBeCloseTo(m.terminal.keuangan.rataRata.laba, 6);
+  });
+
+  it('pil kepuasan: netral selama tutorial & jam pertama seperti pil laba, angka & wajah tetap (AC-GP-16)', () => {
+    // Detik pertama game baru: kepuasan < 45% (merah bila tidak netral), jam pertama.
+    const baru = buatModel(buatStateBaru(T0)).hud;
+    expect(baru.kepuasan.nilai).toBeLessThan(0.45);
+    expect(baru.awal).toBe(true);
+    expect(tingkatKepuasan(baru.kepuasan.nilai)).toBe('kurang');
+    expect(tingkatPilKepuasan(baru.kepuasan.nilai, baru.awal)).toBe('netral');
+    // Lewat jam pertama: netral hanya selama tutorial aktif.
+    const nanti = buatModel(jalankan(buatStateBaru(T0), 61)).hud;
+    expect(nanti.awal).toBe(false);
+    expect(tingkatPilKepuasan(nanti.kepuasan.nilai, true)).toBe('netral');
+    expect(tingkatPilKepuasan(nanti.kepuasan.nilai, false)).toBe(tingkatKepuasan(nanti.kepuasan.nilai));
+    expect(tingkatPilKepuasan(0.3, false)).toBe('kurang');
+    expect(tingkatPilKepuasan(0.9, false)).toBe('baik');
   });
 
   it('kepuasan: komponen, kebutuhan kursi/petugas kebersihan/satpam, fasilitas yang belum ada', () => {

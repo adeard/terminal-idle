@@ -3,10 +3,12 @@
  * satu pesan terpenting per pembaruan (kas, event, kelas & level terminal,
  * mitra PO, penghargaan, rekor, …). Murni, tanpa DOM; ditampilkan oleh overlay.ts.
  */
+import { kepuasanTurunBerlaku, type KepuasanTurun } from '../app/kepuasan-turun';
 import type { PoId } from '../sim/fitur';
 import { formatAngka } from './format';
 import type { ModelTampilan } from './model';
-import { namaKelas, NAMA_EVENT, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, TEKS } from './teks';
+import { wajahKepuasan } from './popup-kepuasan';
+import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_EVENT, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, TEKS } from './teks';
 
 /**
  * @param diputus PO yang diputus pemain sendiri: keluarnya bukan karena kontrak habis.
@@ -23,7 +25,9 @@ export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diput
   const tl = lalu.terminal;
   if (t.kelas > tl.kelas) return TEKS.notifNaikKelas(namaKelas(t.kelas));
   const perluasan = t.perluasan.selesai > tl.perluasan.selesai ? NAMA_PERLUASAN[t.perluasan.selesai - 1] : undefined;
-  if (perluasan) return TEKS.notifPerluasan(perluasan.nama);
+  if (perluasan) return TEKS.notifPerluasan(t.perluasan.selesai, perluasan.nama);
+  // Proyek baru dimulai: pemain tahu proyeknya tetap berjalan saat game ditutup.
+  if (t.perluasan.proyek && !tl.perluasan.proyek) return TEKS.notifPerluasanMulai(t.perluasan.proyek.tahap);
   const sekarang = new Map(m.mitra.terdaftar.map((p) => [p.id, p]));
   const sebelum = new Map(lalu.mitra.terdaftar.map((p) => [p.id, p]));
   const poBaru = m.mitra.terdaftar.find((p) => !sebelum.has(p.id));
@@ -36,7 +40,8 @@ export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diput
     const j = p.jurusan.find((x) => x.aktif && x.feri !== null && !antarpulauLalu.has(x.jurusan));
     if (j) return TEKS.notifAntarpulau(j.nama, NAMA_PO[p.id].nama);
   }
-  if (t.slot > tl.slot) return TEKS.notifSlotBaru(t.slot);
+  // Slot PO baru yang belum bisa diisi (slot jendela penuh) tidak menyuruh mendaftarkan PO.
+  if (t.slot > tl.slot) return m.mitra.tersedia.some((p) => p.bisa) ? TEKS.notifSlotBaru(t.slot) : TEKS.notifSlotTanpaJendela(t.slot);
   if (t.level > tl.level) return TEKS.notifLevelTerminal(t.level);
   const kelasBusBaru = t.kelasBus.find((k, i) => k.beroperasi && !tl.kelasBus[i]?.beroperasi);
   if (kelasBusBaru) return TEKS.notifKelasBus(NAMA_KELAS_BUS[kelasBusBaru.id].nama);
@@ -61,4 +66,105 @@ export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diput
   if (poNaik) return TEKS.notifPoLevel(NAMA_PO[poNaik.id].nama, poNaik.level);
   if (m.target.selesai && !lalu.target.selesai && !m.target.diklaim) return TEKS.notifTarget;
   return null;
+}
+
+/**
+ * Tahap perluasan yang baru terbuka (levelnya cukup, belum dibangun, tidak ada proyek)
+ * dan sebelumnya belum terbuka; null bila tidak ada. `lalu` null = awal sesi (yang sudah
+ * terbuka ikut diberitahukan). Overlay memberitahukannya sekali per tahap per sesi,
+ * mendahului notifikasi slot PO & level di pembaruan yang sama.
+ */
+export function perluasanBaruTerbuka(lalu: ModelTampilan | null, m: ModelTampilan): number | null {
+  const b = m.terminal.perluasan.berikut;
+  if (!b || b.levelKurang) return null;
+  const l = lalu?.terminal.perluasan.berikut;
+  return l && l.tahap === b.tahap && !l.levelKurang ? null : b.tahap;
+}
+
+/** Teks notifikasi perluasan terbuka. */
+export function teksPerluasanTerbuka(tahap: number): string {
+  return TEKS.notifPerluasanTerbuka(tahap, EFEK_PERLUASAN[tahap - 1] ?? '');
+}
+
+/**
+ * Urutan antre pesan satu pembaruan (murni): "Perluasan N terbuka" mendahului slot PO & level yang
+ * terpicu bersamaan (Lv 3 & 6), kecuali saat perluasan baru selesai: peresmiannya lebih dulu, lalu
+ * "Perluasan N+1 terbuka".
+ * @param pesan hasil notifikasiPerubahan (null = tidak ada).
+ * @param terbuka tahap yang baru terbuka & belum diumumkan sesi ini (null = tidak ada).
+ */
+export function urutanPesan(lalu: ModelTampilan | null, m: ModelTampilan, pesan: string | null, terbuka: number | null): string[] {
+  const t = terbuka === null ? [] : [teksPerluasanTerbuka(terbuka)];
+  const p = pesan === null ? [] : [pesan];
+  const diresmikan = lalu !== null && m.terminal.perluasan.selesai > lalu.terminal.perluasan.selesai;
+  return diresmikan ? [...p, ...t] : [...t, ...p];
+}
+
+/** Teks toast kepuasan turun: wajah & persen sekarang, dan sebabnya (documents/14 bagian 4.2). */
+export function teksKepuasanTurun(t: KepuasanTurun): string {
+  const s = t.sebab;
+  const sebab =
+    s.komponen === 'kelancaran'
+      ? s.area
+        ? TEKS.sebabAntreanDi(NAMA_AREA[s.area])
+        : TEKS.sebabAntrean
+      : s.komponen === 'kenyamanan'
+        ? TEKS.sebabKenyamanan
+        : s.komponen === 'kebersihan'
+          ? TEKS.sebabKebersihan
+          : s.komponen === 'keamanan'
+            ? TEKS.sebabKeamanan
+            : s.komponen === 'fasilitas'
+              ? TEKS.sebabFasilitas
+              : TEKS.sebabHarga;
+  return TEKS.notifKepuasanTurun(wajahKepuasan(t.ke), Math.round(t.dari * 100), Math.round(t.ke * 100), sebab);
+}
+
+/** Satu pesan di antrean notifikasi overlay. */
+export interface PesanNotif {
+  readonly teks: string;
+  /** Kas menipis & petugas berhenti: melompati antrean. */
+  readonly bahaya?: boolean;
+  /** Toast kepuasan turun (angkanya): satu-satunya yang bisa diketuk (membuka popup kepuasan). */
+  readonly kepuasan?: KepuasanTurun;
+}
+
+/** Pesan yang tertunda paling banyak sekian (yang sedang tampil tidak dihitung). */
+export const MAKS_ANTREAN_NOTIF = 3;
+
+/** Pesan tingkat bahaya (melompati antrean). */
+export function notifBahaya(teks: string): boolean {
+  return teks === TEKS.notifKasMenipis || teks === TEKS.notifPetugasBerhenti;
+}
+
+/**
+ * Masukkan pesan ke antrean (murni). Pesan yang sama (sedang tampil atau tertunda) tidak
+ * masuk dua kali; pesan bahaya masuk di depan (setelah pesan bahaya lain); antrean
+ * paling panjang MAKS_ANTREAN_NOTIF: pesan biasa yang tidak muat dibuang, pesan bahaya
+ * menggeser pesan biasa terakhir.
+ */
+export function antreNotif(antrean: readonly PesanNotif[], baru: PesanNotif, tampil: string | null = null): PesanNotif[] {
+  if (baru.teks === tampil || antrean.some((p) => p.teks === baru.teks)) return [...antrean];
+  if (!baru.bahaya) return antrean.length >= MAKS_ANTREAN_NOTIF ? [...antrean] : [...antrean, baru];
+  const i = antrean.findIndex((p) => !p.bahaya);
+  const hasil = i < 0 ? [...antrean, baru] : [...antrean.slice(0, i), baru, ...antrean.slice(i)];
+  return hasil.slice(0, MAKS_ANTREAN_NOTIF);
+}
+
+/**
+ * Keluarkan pesan berikut dari antrean (murni). Toast kepuasan turun dinilai ulang saat akan
+ * tampil, karena bisa menunggu beberapa detik di belakang pesan lain: dibuang bila kepuasan
+ * sudah pulih (`kepuasanTurunBerlaku`), dan angka "sekarang"-nya memakai kepuasan saat itu
+ * supaya sama dengan pil HUD.
+ * @param kepuasanSekarang kepuasan penumpang saat ini (0–1, sama dengan pil HUD).
+ * @returns pesan yang tampil (null = tidak ada) & sisa antrean.
+ */
+export function ambilNotif(antrean: readonly PesanNotif[], kepuasanSekarang: number): { readonly pesan: PesanNotif | null; readonly sisa: PesanNotif[] } {
+  for (const [i, p] of antrean.entries()) {
+    if (!p.kepuasan) return { pesan: p, sisa: antrean.slice(i + 1) };
+    if (!kepuasanTurunBerlaku(p.kepuasan, kepuasanSekarang)) continue;
+    const kini: KepuasanTurun = { ...p.kepuasan, ke: kepuasanSekarang };
+    return { pesan: { ...p, teks: teksKepuasanTurun(kini), kepuasan: kini }, sisa: antrean.slice(i + 1) };
+  }
+  return { pesan: null, sisa: [] };
 }

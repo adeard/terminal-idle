@@ -32,6 +32,29 @@ export function labelAktif(b: BusVisual): JenisLabelBus | null {
 
 const jepit01 = (v: number): number => Math.min(1, Math.max(0, v));
 
+/** Jarak label ke tepi layar (px CSS), sama dengan label zona (zona3d.ts). */
+const TEPI_LABEL = 4;
+
+/** Posisi label di layar (px CSS): tengah bawah label. Diisi ulang jepitLabel (tanpa alokasi per frame). */
+export interface TitikLabel {
+  x: number;
+  y: number;
+}
+
+/**
+ * Jepit label yang tergantung di atas jangkarnya (tengah bawah di x, y; tampil lebar × tinggi px CSS)
+ * ke dalam layar lebarLayar × tinggiLayar supaya utuh, mis. bus yang memuat di gerbang paling timur
+ * di tepi kanan portrait. Jangkar di luar layar: false (label disembunyikan, tidak dijepit jauh
+ * dari busnya). Hasilnya ditulis ke `keluar`.
+ */
+export function jepitLabel(x: number, y: number, lebar: number, tinggi: number, lebarLayar: number, tinggiLayar: number, keluar: TitikLabel): boolean {
+  if (!(x >= 0 && x <= lebarLayar && y >= 0 && y <= tinggiLayar)) return false;
+  const setengah = lebar / 2 + TEPI_LABEL;
+  keluar.x = Math.min(Math.max(x, setengah), lebarLayar - setengah);
+  keluar.y = Math.max(y, tinggi + TEPI_LABEL);
+  return true;
+}
+
 /**
  * @param aktif false = pekerjaan baru saja selesai dan bus sudah beranjak
  *   (label memudar sebentar dengan tanda ✓).

@@ -1,8 +1,8 @@
 /**
  * Popup "Selama kamu pergi…". Laba offline SUDAH diterapkan ke state sebelum
  * popup muncul, jadi menutup popup (atau app mati saat popup terbuka) tidak
- * menghilangkan uang. Ditutup lewat tombol "Ambil", mengetuk area gelap di luar
- * kotak, atau tombol Esc.
+ * menghilangkan uang. Ditutup lewat tombol "Ambil" (atau "Oke" bila tidak ada
+ * laba), mengetuk area gelap di luar kotak, atau tombol Esc.
  */
 import { EKONOMI } from '../config/economy.config';
 import type { LaporanOffline } from '../sim/state';
@@ -10,11 +10,28 @@ import { formatDurasi, formatUang, formatUangBertanda } from './format';
 import { IKON_PUTAR } from './popup-hadiah';
 import { TEKS } from './teks';
 
+/** Tombol utama (murni): "Ambil" hanya bila ada laba untuk diambil; laba ≤ 0 atau terminal tutup: "Oke". */
+export function teksTombolOffline(laporan: LaporanOffline): string {
+  return laporan.laba > 0 ? TEKS.offlineAmbil : TEKS.offlineOke;
+}
+
+/**
+ * Catatan bawah (murni). Terminal tutup (tanpa Manajer): sarankan Manajer Operasional hanya bila ia
+ * sudah untung, juga saat pemain pergi (`manajerUntung` di app/tujuan.ts, syarat yang sama dengan
+ * baris tujuan); bila belum: terminal tutup tanpa pendapatan & biaya.
+ */
+export function teksCatatanOffline(laporan: LaporanOffline, manajerUntung: boolean): string {
+  const o = EKONOMI.tycoon.offline;
+  if (!laporan.tutup) return TEKS.offlineCatatan(Math.round(o.efisiensi * 100), formatDurasi(o.batasDetik));
+  return manajerUntung ? TEKS.offlineTutup : TEKS.offlineTutupBelumUntung;
+}
+
 /**
  * @param ganda kalau ada: tombol "Ambil 2×" lewat iklan berhadiah; true = iklan
  *   selesai & bonus sudah diberikan pemanggil.
+ * @param manajerUntung merekrut Manajer Operasional sekarang sudah untung (lihat teksCatatanOffline).
  */
-export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline, ganda?: () => Promise<boolean>): Promise<void> {
+export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline, ganda: (() => Promise<boolean>) | undefined, manajerUntung: boolean): Promise<void> {
   akar.querySelector('.popup-latar.latar-offline')?.remove();
 
   const latar = document.createElement('div');
@@ -32,7 +49,14 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
 
   const durasi = document.createElement('p');
   durasi.className = 'popup-durasi';
-  durasi.textContent = TEKS.offlineDurasi(formatDurasi(laporan.detik), laporan.dibatasi);
+  // Tanpa Manajer terminal tutup: yang dilaporkan lamanya pemain pergi, bukan "terminal beroperasi".
+  durasi.textContent = (laporan.tutup ? TEKS.offlinePergi : TEKS.offlineDurasi)(formatDurasi(laporan.detik), laporan.dibatasi);
+
+  // Proyek perluasan tetap dibangun saat game ditutup, dengan atau tanpa Manajer.
+  const proyek = document.createElement('p');
+  proyek.className = 'popup-catatan offline-proyek';
+  const pr = laporan.proyek;
+  proyek.textContent = pr ? (pr.selesai ? TEKS.offlineProyekSelesai(pr.tahap) : TEKS.offlineProyekSisa(pr.tahap, formatDurasi(pr.sisaDetik))) : '';
 
   const jumlah = document.createElement('div');
   jumlah.className = 'popup-jumlah';
@@ -45,8 +69,7 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
 
   const catatan = document.createElement('p');
   catatan.className = 'popup-catatan';
-  const o = EKONOMI.tycoon.offline;
-  catatan.textContent = laporan.tutup ? TEKS.offlineTutup : TEKS.offlineCatatan(Math.round(o.efisiensi * 100), formatDurasi(o.batasDetik));
+  catatan.textContent = teksCatatanOffline(laporan, manajerUntung);
 
   const berhenti = document.createElement('p');
   berhenti.className = 'popup-catatan offline-berhenti';
@@ -55,7 +78,7 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
   const tombol = document.createElement('button');
   tombol.type = 'button';
   tombol.className = ganda ? 'pembaruan-nanti' : 'tombol tombol-upgrade popup-tombol';
-  tombol.textContent = TEKS.offlineAmbil;
+  tombol.textContent = teksTombolOffline(laporan);
 
   const boost = document.createElement('p');
   boost.className = 'popup-catatan offline-boost';
@@ -72,6 +95,7 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
 
   kotak.append(judul, durasi);
   if (!laporan.tutup) kotak.append(jumlah, rincian);
+  if (pr) kotak.append(proyek);
   if (laporan.detikBoost > 0) kotak.append(boost);
   if (laporan.berhenti > 0) kotak.append(berhenti);
   kotak.append(catatan);

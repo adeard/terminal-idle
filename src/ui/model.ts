@@ -2,7 +2,9 @@
  * View model: semua angka yang ditampilkan UI, diturunkan dari GameState
  * lewat fungsi sim. UI tidak menghitung ekonomi sendiri. Murni, tanpa DOM.
  */
+import { kasMenipis } from '../app/tujuan';
 import { EKONOMI, type KonfigEkonomi, type TingkatPo } from '../config/economy.config';
+import { WAKTU } from '../config/waktu.config';
 import { menurutTahap, petakBus, pengaliBiayaKelas, perawatanHarian } from '../sim/bangunan';
 import { cuacaTerminalState } from '../sim/cuaca';
 import { BANGUNAN_IDS, EVENT_IDS, KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, PO_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type EventId, type JenisTarget, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
@@ -41,6 +43,7 @@ import {
   levelPo,
   levelTerminal,
   operasiState,
+  pengaliBoost,
   pengaliEvent,
   pengembalianBongkarState,
   slotPoState,
@@ -84,6 +87,14 @@ export interface ModelHud {
   readonly adaManajer: boolean;
   /** Rata-rata sehari merugi dan kas tinggal kurang dari sehari kerugian. */
   readonly kasMenipis: boolean;
+  /**
+   * Laba rata-rata per hari terminal dengan tarif sekarang, termasuk kontrak PO yang
+   * dirata-rata (pil laba HUD). Sama dengan rata-rata laporan keuangan, kecuali boost
+   * iklan aktif: pendapatan operasi (bukan kontrak) ikut × pengali boost.
+   */
+  readonly labaHarian: number;
+  /** Jam terminal pertama (pil laba netral, belum hijau/merah). */
+  readonly awal: boolean;
 }
 
 /** Kebutuhan sesuatu dibanding yang ada (saran di popup kepuasan). */
@@ -502,7 +513,9 @@ export function buatModel(state: GameState, cfg: KonfigEkonomi = EKONOMI): Model
       level: levelTerminal(state, cfg),
       kepuasan,
       adaManajer: n.manajerOperasional > 0,
-      kasMenipis: rata.laba < 0 && state.kas < -rata.laba * 24,
+      kasMenipis: kasMenipis(state, cfg),
+      labaHarian: (rata.pendapatan * pengaliBoost(state, cfg) + rata.kontrak - rata.biaya) * 24,
+      awal: state.statistik.waktuMainDetik < WAKTU.detikPerJam,
       waktu: {
         hari,
         jam: `${duaDigit(w.jam)}:${duaDigit(w.menit)}`,

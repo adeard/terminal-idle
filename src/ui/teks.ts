@@ -112,6 +112,9 @@ export const NAMA_PERLUASAN: readonly { readonly nama: string; readonly deskrips
   { nama: 'Terminal Terpadu', deskripsi: 'Dek parkir ketiga & lantai 3: jalur +2, petak bus +20, jendela +4' },
 ];
 
+/** Efek singkat tiap tahap perluasan (baris tujuan & notifikasi perluasan terbuka), urut NAMA_PERLUASAN. */
+export const EFEK_PERLUASAN: readonly string[] = ['slot jendela loket +2', 'petak bus +10, jendela +2', 'lantai 2, jendela +4', 'jalur +2, petak bus +20', 'jalur +2, jendela +4'];
+
 /** Event musiman: nama lengkap, nama singkat (HUD), dan ikon notifikasi. */
 export const NAMA_EVENT: Readonly<Record<EventId, { readonly nama: string; readonly singkat: string; readonly ikon: string }>> = {
   mudikLebaran: { nama: 'Mudik Lebaran', singkat: 'Mudik', ikon: '🌙' },
@@ -170,6 +173,16 @@ export const NAMA_TEKNOLOGI: Readonly<Record<TeknologiId, string>> = {
   gateOtomatis: 'Gate e-boarding otomatis',
 };
 
+/** Nama pendek modernisasi untuk baris tujuan (satu baris di portrait). */
+export const NAMA_PENDEK_TEKNOLOGI: Readonly<Record<TeknologiId, string>> = {
+  rambuHalte: 'marka & rambu',
+  pengaturBus: 'pengatur bus',
+  mesinTiket: 'mesin tiket',
+  eTiket: 'e-tiket',
+  jadwalDigital: 'papan jadwal digital',
+  gateOtomatis: 'gate e-boarding',
+};
+
 /** Kelas bus yang dioperasikan mitra PO (tab PO & tab Terminal). */
 export const NAMA_KELAS_BUS: Readonly<Record<KelasBusId, { readonly nama: string; readonly deskripsi: string }>> = {
   ekonomi: { nama: 'Ekonomi', deskripsi: 'Bus kota tanpa AC, tarif paling murah' },
@@ -217,29 +230,63 @@ export const TEKS = {
   judul: 'Bustation: Idle Bus',
   level: (n: number) => `Lv ${n}`,
   satuanArus: 'pnp/jam',
-  hudHariIni: (laba: string, penumpang: string) => `Hari ini ${laba} · ${penumpang} pnp`,
-  hudHariIniRingkas: (laba: string) => `Hari ini ${laba}`,
+  /** Pil laba HUD: laba rata-rata per hari terminal (lihat ModelHud.labaHarian). */
+  hudLaba: (laba: string) => `Laba ${laba}/hari`,
+  hudLabaJudul: 'Laba rata-rata sehari dengan tarif sekarang, termasuk kontrak PO yang dirata-rata. Ketuk untuk laporan keuangan.',
   hudDiTerminal: (n: string) => `Di terminal ${n} pnp`,
-  petunjukManajer: 'Rekrut Manajer Operasional supaya terminal tetap jalan saat kamu pergi.',
-  petunjukKasMenipis: 'Kas menipis: operasi terminal merugi sebelum kontrak PO berikutnya masuk. Kurangi petugas, ubah tarif, atau bongkar unit yang tidak terpakai.',
+  // Baris tujuan berikutnya di HUD (app/tujuan.ts, ui/baris-tujuan.ts; documents/14 bagian 3.4, ≤ 60 karakter).
+  tujuanKasPerpanjang: (po: string) => `⚠️ Kas menipis: perpanjang kontrak ${po}`,
+  tujuanKasSewakan: '⚠️ Kas menipis: sewakan jendela loket yang kosong',
+  tujuanKasDaftar: (po: string, nilai: string) => `⚠️ Kas menipis: daftarkan ${po} (+${nilai})`,
+  tujuanKasPetugas: '⚠️ Kas menipis: kurangi petugas sampai kontrak berikutnya',
+  tujuanKontrakHampir: (po: string) => `📄 Kontrak ${po} tinggal sehari: perpanjang`,
+  tujuanMenolakKepuasan: (po: string, persen: number) => `📄 ${po} menolak perpanjang: butuh kepuasan ${persen}%`,
+  tujuanMenolakMitra: (po: string) => `📄 ${po} menolak perpanjang: turunkan sewa loket`,
+  tujuanPerpanjang: (po: string, nilai: string) => `📄 Perpanjang kontrak ${po}: +${nilai}`,
+  tujuanSewakan: (n: number) => `🎫 ${n} jendela loket kosong: sewakan ke PO, gratis`,
+  tujuanDaftarPo: (po: string, nilai: string) => `🚌 Daftarkan ${po}: +${nilai} di muka`,
+  tujuanPerluasan: (tahap: number, efek: string) => `🏗️ Bangun Perluasan ${tahap}: ${efek}`,
+  tujuanAreaRekrut: (area: string, petugas: string) => `🚦 ${area} paling lambat: rekrut petugas ${petugas}`,
+  tujuanAreaJendela: (biaya: string) => `🚦 Loket paling lambat: bangun jendela loket · ${biaya}`,
+  tujuanAreaModern: (area: string, nama: string) => `🚦 ${area} paling lambat: pasang ${nama}`,
+  tujuanAreaJalur: (area: string, nomor: number, biaya: string) => `🚦 ${area} paling lambat: bangun Jalur ${nomor} · ${biaya}`,
+  tujuanKebersihan: (wajah: string) => `${wajah} Kebersihan kurang: rekrut petugas kebersihan`,
+  tujuanToilet: (wajah: string) => `${wajah} Toilet kotor: rekrut petugas toilet`,
+  tujuanKeamanan: (wajah: string) => `${wajah} Keamanan kurang: rekrut satpam`,
+  tujuanKursi: (wajah: string, biaya: string) => `${wajah} Kursi kurang: bangun blok kursi · ${biaya}`,
+  tujuanFasilitas: (wajah: string, nama: string, biaya: string) => `${wajah} Belum ada ${nama}: bangun · ${biaya}`,
+  tujuanManajer: '🌙 Rekrut Manajer Operasional: terminal jalan saat kamu pergi',
+  tujuanProyek: (tahap: number, durasi: string) => `🏗️ Perluasan ${tahap} jadi dalam ${durasi}, walau game ditutup`,
+  tujuanMenabung: (tahap: number, uang: string) => `🏗️ Perluasan ${tahap}: kumpulkan ${uang} lagi`,
+  /** Kas sudah ≥ biaya perluasan: yang dikumpulkan hanya cadangan kas (tombol Bangun di kartu sudah aktif). */
+  tujuanMenabungCadangan: (tahap: number, uang: string) => `🏗️ Perluasan ${tahap}: kumpulkan ${uang} lagi untuk cadangan`,
+  tujuanNaikLevel: (tahap: number, level: number, kini: number) => `⬆️ Perluasan ${tahap} terbuka di Lv ${level} · kini Lv ${kini}`,
+  tujuanKelas: (kelas: string, level: number, kini: number) => `⭐ Naik ke ${kelas} di Lv ${level} · kini Lv ${kini}`,
+  // Toast kepuasan turun (app/kepuasan-turun.ts; documents/14 bagian 4.2).
+  notifKepuasanTurun: (wajah: string, dari: number, ke: number, sebab: string) => `${wajah} Kepuasan turun ${dari}% → ${ke}%: ${sebab}. Ketuk untuk rincian`,
+  sebabAntreanDi: (area: string) => `antrean di ${area}`,
+  sebabAntrean: 'antrean panjang',
+  sebabKenyamanan: 'kursi kurang',
+  sebabKebersihan: 'petugas kebersihan kurang',
+  sebabKeamanan: 'satpam kurang',
+  sebabFasilitas: 'fasilitas kurang',
+  sebabHarga: 'tarif parkir terlalu mahal',
   // Tutorial terpandu (ui/tutorial.ts).
   tutorialSambutanJudul: 'Selamat datang, Kepala Terminal!',
-  tutorialSambutan:
-    'Penumpang turun di Peron, membeli tiket di Loket, lalu naik bus di Keberangkatan. Bangun, rekrut petugas, dan gandeng PO bus supaya laba bersihmu terus tumbuh.',
+  tutorialSambutan: 'Penumpang turun di Peron, beli tiket di Loket, lalu naik bus di Keberangkatan. Kembangkan terminalmu supaya laba terus tumbuh.',
   tutorialMulai: 'Mulai',
   tutorialLewati: 'Lewati',
   tutorialOke: 'Oke',
   tutorialNomor: (ke: number, dari: number) => `Langkah ${ke}/${dari}`,
   tutorialJendelaJudul: 'Bangun jendela loket',
-  tutorialJendela: (po: string) =>
-    `Terminalmu sudah berjalan. Penumpang menumpuk di Loket, area yang paling lambat (lantainya berkedip merah): di tab Bangun, bangun jendela loket baru untuk ${po}.`,
+  tutorialJendela: (po: string) => `Penumpang menumpuk di Loket (lantainya berkedip merah). Bangun jendela loket baru untuk ${po}.`,
   tutorialPoJudul: 'Daftarkan PO kedua',
-  tutorialPo: (po: string) => `Mitra PO membawa jurusan & busnya sendiri. Di tab PO, daftarkan ${po}: PO membayar kontraknya di muka, jurusan baru menarik lebih banyak penumpang, dan PO baru langsung menyewa jendela loket.`,
+  tutorialPo: (po: string) => `PO membawa jurusan & busnya sendiri, dan membayar kontraknya di muka. Daftarkan ${po} di tab PO.`,
   tutorialKontrak: (nilai: string) => `PO ini membayar kontrak ${nilai} di muka. Ketuk tombol yang berkedip.`,
   tutorialPetugasJudul: 'Rekrut petugas peron',
-  tutorialPetugas: 'Kini Peron yang paling lambat. Di tab Petugas, rekrut petugas peron: halte kedatangan melayani 25% lebih banyak penumpang. Gajinya dibayar tiap hari dari kas.',
+  tutorialPetugas: 'Penumpang PO baru menumpuk di Peron. Rekrut petugas peron di tab Petugas: halte melayani 25% lebih banyak.',
   tutorialJalurJudul: 'Bangun Jalur 2',
-  tutorialJalur: 'Terminalmu baru punya satu jalur, jadi bus mengantre di jalan raya. Di tab Bangun, bangun Jalur 2: satu halte kedatangan & satu gerbang keberangkatan lagi.',
+  tutorialJalur: 'Bus mengantre di jalan raya karena baru ada satu jalur. Bangun Jalur 2 di tab Bangun.',
   tutorialUang: (kas: string, biaya: string) => `Kas ${kas} / ${biaya}`,
   tutorialUangCukup: 'Kas cukup! Ketuk tombol yang berkedip.',
   tutorialGaji: 'Rekrut tanpa biaya: gajinya dibayar tiap hari. Ketuk tombol yang berkedip.',
@@ -468,12 +515,15 @@ export const TEKS = {
   notifNaikKelas: (kelas: string) => `⭐ Selamat! Terminal naik ke ${kelas}`,
   notifLevelTerminal: (level: number) => `🏢 Terminal naik ke Lv ${level}`,
   notifSlotBaru: (slot: number) => `🅿️ Slot PO ke-${slot} terbuka! Daftarkan PO di tab PO`,
+  notifSlotTanpaJendela: (slot: number) => `🅿️ Slot PO ke-${slot} terbuka: PO baru butuh jendela dari perluasan`,
   notifPo: (nama: string) => `🚌 ${nama} bergabung & membayar kontraknya!`,
   notifPoLevel: (nama: string, level: number) => `⬆️ ${nama} naik ke Lv ${level}`,
   notifPoKeluar: (nama: string) => `📄 Kontrak ${nama} habis: PO keluar dan jendela loketnya kosong`,
   notifKontrakHampir: (nama: string) => `📄 Kontrak ${nama} tinggal sehari. Terima tawaran perpanjangannya di tab PO`,
   notifKelasBus: (nama: string) => `🚌 Bus ${nama} mulai beroperasi!`,
-  notifPerluasan: (nama: string) => `🏗️ ${nama} diresmikan! Slot bangunan bertambah`,
+  notifPerluasan: (tahap: number, nama: string) => `🏗️ Perluasan ${tahap} selesai: ${nama}!`,
+  notifPerluasanTerbuka: (tahap: number, efek: string) => `🏗️ Perluasan ${tahap} terbuka: ${efek}. Bangun di tab Terminal`,
+  notifPerluasanMulai: (tahap: number) => `🏗️ Perluasan ${tahap} dimulai! Selesai dalam sehari terminal, juga saat game ditutup`,
   notifJalur: (n: number) => `🚧 Jalur ${n} dibuka! Lebih banyak bus bisa singgah sekaligus`,
   notifKasMenipis: '⚠️ Kas menipis: operasi terminal merugi. Kurangi petugas atau ubah tarif',
   notifPetugasBerhenti: '⚠️ Kas habis: seorang petugas berhenti karena gajinya tak terbayar',
@@ -493,15 +543,22 @@ export const TEKS = {
   /** Label di atas bus yang diketuk (klakson telolet). */
   telolet: 'TELOLET!',
   tutorialSelesaiJudul: 'Terminalmu sudah berjalan!',
-  tutorialSelesai:
-    'Bangun toilet & kios supaya penumpang betah, rekrut Manajer Operasional supaya terminal tetap jalan saat kamu pergi, dan pantau laba di tab Terminal. Tips: ketuk bus untuk membunyikan klakson telolet!',
+  tutorialSelesai: 'Baris di bawah kas selalu menunjukkan langkah berikutnya. Ketuk untuk menuju ke sana. Tips: ketuk bus untuk klakson telolet!',
   offlineJudul: 'Selama kamu pergi…',
   offlineDurasi: (durasi: string, dibatasi: boolean) => (dibatasi ? `Terminal beroperasi ${durasi} (batas maksimal)` : `Terminal beroperasi ${durasi}`),
+  /** Tanpa Manajer Operasional terminal tutup, jadi yang dilaporkan lamanya pemain pergi. */
+  offlinePergi: (durasi: string, dibatasi: boolean) => (dibatasi ? `Kamu pergi ${durasi} (batas maksimal)` : `Kamu pergi ${durasi}`),
+  offlineProyekSelesai: (tahap: number) => `🏗️ Perluasan ${tahap} selesai selama kamu pergi!`,
+  offlineProyekSisa: (tahap: number, durasi: string) => `🏗️ Perluasan ${tahap} tetap dibangun · selesai dalam ${durasi}`,
   offlineRincian: (pendapatan: string, biaya: string) => `Pendapatan ${pendapatan} · biaya ${biaya}`,
   offlineCatatan: (persen: number, batas: string) => `Manajer Operasional menjalankan terminal: pendapatan ${persen}%, biaya penuh · maksimal ${batas}`,
   offlineTutup: 'Terminal tutup selama kamu pergi. Rekrut Manajer Operasional di tab Petugas supaya terminal tetap berjalan.',
+  /** Tanpa Manajer, dan Manajer belum untung saat pemain pergi: tidak menyarankannya. */
+  offlineTutupBelumUntung: 'Terminal tutup selama kamu pergi: tanpa pendapatan, tanpa biaya.',
   offlineBerhenti: (n: number) => `${n} petugas berhenti karena kas habis`,
   offlineAmbil: 'Ambil',
+  /** Tombol popup offline saat tidak ada laba untuk diambil (laba ≤ 0 atau terminal tutup). */
+  offlineOke: 'Oke',
   kecepatan: (k: number) => `Kecepatan waktu ${k}× (tombol ${k})`,
   tabBangun: 'Bangun',
   tabPetugas: 'Petugas',

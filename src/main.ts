@@ -4,6 +4,7 @@ import { PencatatAnalitik, pesanGalat } from './app/analitik';
 import type { TempatIklan } from './app/iklan';
 import { LayananPeringkat } from './app/layanan-peringkat';
 import { SesiGame, slotLokal, type Logger } from './app/sesi';
+import { manajerUntung } from './app/tujuan';
 import { STATUS_TUTORIAL } from './app/tutorial';
 import { EKONOMI } from './config/economy.config';
 import { buatAnalitik } from './platform/analitik';
@@ -144,6 +145,7 @@ async function mulai(): Promise<void> {
     saatUbahRingkas: (r) => void penyimpanan.tulis(KUNCI_PANEL, r ? 'ringkas' : 'penuh').catch(() => undefined),
     kecepatan,
     saatUbahKecepatan: ubahKecepatan,
+    analitik,
   });
   // Tutorial terpandu untuk pemain baru; statusnya disimpan per perangkat.
   const KUNCI_TUTORIAL = 'terminal-bus-tycoon/tutorial';
@@ -352,7 +354,8 @@ async function mulai(): Promise<void> {
             return true;
           }
         : undefined;
-    void tampilkanPopupOffline(ui, l, ganda);
+    // Tanpa Manajer: catatan popup menyarankannya hanya bila ia sudah untung (syarat baris tujuan).
+    void tampilkanPopupOffline(ui, l, ganda, l.tutup && manajerUntung(s));
   };
   tampilkanLaporan(laporan);
   saatSaveDiganti = (l) => {

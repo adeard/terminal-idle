@@ -32,16 +32,14 @@ import {
   VignetteEffect,
 } from 'postprocessing';
 import type { N8AOPostPass } from 'n8ao';
-import { ELEVASI_MAKS, ELEVASI_MIN, PelacakPelintir, selisihSudut } from './kamera';
+import { arahKamera, AZIMUT_LANSKAP, bingkaiAwal, ELEVASI_MAKS, ELEVASI_MIN, FOV_KAMERA as FOV, PelacakPelintir, selisihSudut } from './kamera';
 import { poseSinema, type PoseSinema } from './sinema';
 import { bingkaiBayangan } from './bayangan';
 import type { Suasana, Vektor3 } from './langit';
 import { LangitLingkungan } from './langit3d';
+import { TITIK_INTI } from './tata-letak';
 import type { Proyektor } from './zona3d';
 
-/** Elevasi kamera (radian): sedikit lebih tegak dari isometrik supaya terminal mengisi layar potret. */
-export const ELEVASI_KAMERA = (42 * Math.PI) / 180;
-const FOV = 26;
 /** Arah datang sinar matahari (dari belakang-kanan) → bayangan jatuh ke kiri layar. */
 const ARAH_MATAHARI = new THREE.Vector3(10, 17, -8).normalize();
 /** Batas setengah sisi peta bayangan (unit); di antaranya mengikuti luas tanah yang terlihat (bayangan.ts). */
@@ -141,9 +139,10 @@ export class Adegan implements Proyektor {
   private waktu = 0;
   private frame = 0;
   private nomorFrame = 0;
-  private readonly arahKamera = new THREE.Vector3(Math.cos(ELEVASI_KAMERA) * Math.SQRT1_2, Math.sin(ELEVASI_KAMERA), Math.cos(ELEVASI_KAMERA) * Math.SQRT1_2);
+  /** Arah kamera awal (dari titik pandang ke kamera): landscape atau portrait, diatur bingkai(). */
+  private readonly arahKamera = new THREE.Vector3(...arahKamera(AZIMUT_LANSKAP));
   private readonly v = new THREE.Vector3();
-  /** Arah & kemiringan kamera awal (koordinat bola three.js di sekitar titik pandang). */
+  /** Arah & kemiringan kamera awal (koordinat bola three.js di sekitar titik pandang), untuk tombol kompas. */
   private readonly bolaAwal = new THREE.Spherical().setFromVector3(this.arahKamera);
   private readonly bola = new THREE.Spherical();
   /** Sisa putaran & kemiringan yang sedang dianimasikan (tombol putar, kembali ke arah awal). */
@@ -340,35 +339,19 @@ export class Adegan implements Proyektor {
     this.kamera.updateProjectionMatrix();
   }
 
-  /** Arahkan kamera supaya semua titik (x, y, tinggi) muat; atur batas zoom dari jarak itu. */
+  /**
+   * Arahkan kamera awal supaya semua titik (x, y, tinggi) muat (bingkaiAwal di kamera.ts:
+   * landscape seperti 0.3.1, portrait lebih dekat dari AZIMUT_POTRET). Tombol kompas kembali
+   * ke arah ini; zoom keluar selalu bisa memuat seluruh terminal.
+   */
   bingkai(titik: readonly (readonly [number, number, number])[], margin = 0.94): void {
-    let x0 = Infinity;
-    let x1 = -Infinity;
-    let z0 = Infinity;
-    let z1 = -Infinity;
-    for (const [x, y] of titik) {
-      x0 = Math.min(x0, x);
-      x1 = Math.max(x1, x);
-      z0 = Math.min(z0, y);
-      z1 = Math.max(z1, y);
-    }
-    const target = new THREE.Vector3((x0 + x1) / 2, 0, (z0 + z1) / 2);
-    const d = this.arahKamera;
-    const maju = d.clone().negate();
-    const kanan = new THREE.Vector3().crossVectors(maju, new THREE.Vector3(0, 1, 0)).normalize();
-    const atas = new THREE.Vector3().crossVectors(kanan, maju);
-    const tanV = Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * margin;
-    const tanH = tanV * this.kamera.aspect;
-    let jarak = 10;
-    for (const [x, y, h] of titik) {
-      const q = new THREE.Vector3(x, h, y).sub(target);
-      const dalam = q.dot(d);
-      jarak = Math.max(jarak, dalam + Math.abs(q.dot(kanan)) / tanH, dalam + Math.abs(q.dot(atas)) / tanV);
-    }
-    this.kontrol.target.copy(target);
-    this.kamera.position.copy(target).addScaledVector(d, jarak);
+    const b = bingkaiAwal(titik, TITIK_INTI, this.lebar, this.tinggi, margin);
+    this.arahKamera.set(...arahKamera(b.azimut));
+    this.bolaAwal.setFromVector3(this.arahKamera);
+    this.kontrol.target.set(b.x, 0, b.y);
+    this.kamera.position.copy(this.kontrol.target).addScaledVector(this.arahKamera, b.jarak);
     this.kontrol.minDistance = 7;
-    this.kontrol.maxDistance = jarak * 1.25;
+    this.kontrol.maxDistance = b.jarakMaks;
     this.kontrol.update();
   }
 

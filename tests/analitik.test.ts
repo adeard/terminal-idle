@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PencatatAnalitik, peristiwaAksi, type Analitik, type DataAnalitik } from '../src/app/analitik';
+import { PencatatAnalitik, peristiwaAksi, peristiwaTujuanKetuk, type Analitik, type DataAnalitik } from '../src/app/analitik';
 import { PengendaliGame } from '../src/app/pengendali';
 import { terapkanAksi, type Aksi } from '../src/sim/aksi';
 import { buatStateBaru, type GameState } from '../src/sim/state';
@@ -65,6 +65,26 @@ describe('analitik: aksi pemain → peristiwa', () => {
     }
     expect(catatan.filter((c) => c.nama === 'telolet')).toHaveLength(1);
     expect(catatan.filter((c) => c.nama === 'rekrut')).toHaveLength(5);
+  });
+
+  it('tujuan_ketuk: hanya jenis tujuan (bukan teks, nama PO, atau uang), paling banyak sekali per jenis per sesi', () => {
+    expect(peristiwaTujuanKetuk('daftarPo')).toEqual({ nama: 'tujuan_ketuk', data: { jenis: 'daftarPo' } });
+    const { analitik, catatan } = rekam();
+    const p = new PencatatAnalitik(analitik);
+    for (const j of ['daftarPo', 'perluasan', 'daftarPo', 'kasMenipis', 'perluasan', 'daftarPo'] as const) {
+      const e = peristiwaTujuanKetuk(j);
+      p.catat(e.nama, e.data);
+    }
+    expect(catatan).toEqual([
+      { nama: 'tujuan_ketuk', data: { jenis: 'daftarPo' } },
+      { nama: 'tujuan_ketuk', data: { jenis: 'perluasan' } },
+      { nama: 'tujuan_ketuk', data: { jenis: 'kasMenipis' } },
+    ]);
+    // Sesi baru (pencatat baru): boleh dikirim lagi.
+    const lagi = rekam();
+    const e = peristiwaTujuanKetuk('daftarPo');
+    new PencatatAnalitik(lagi.analitik).catat(e.nama, e.data);
+    expect(lagi.catatan).toHaveLength(1);
   });
 
   it('pengendali memberi tahu pemantau hanya untuk aksi yang berlaku', () => {

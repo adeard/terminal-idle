@@ -306,7 +306,10 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
 - **Petugas**: jumlah per peran dengan tombol − / +, efeknya, gaji, dan total gaji per hari.
 - **PO**: pengaturan harga per jurusan dihapus. Kartu PO menampilkan harga tiket PO (informasi), kepuasan mitra, kontrak, dan jendela loketnya. Tombol perpanjang berisi tawaran PO ("Perpanjang N hari" & nilainya) dan baru muncul saat sisa kontrak ≤ 3 hari; keterangan putus menyebut kompensasinya. PO tersedia urut katalog, tiap baris berisi tawaran kontraknya.
 - **Terminal**: level & kelas, perluasan, **tarif** (dengan tombol Saran), dan **laporan keuangan** (hari ini & kemarin: pendapatan per sumber, biaya per pos, laba, kas).
-- **HUD**: kas, laba hari ini (hijau/merah), penumpang di terminal (keputusan 16), kepuasan, jam.
+- **HUD**: kas, laba, penumpang di terminal (keputusan 16), kepuasan, jam.
+  - **Laba rata-rata per hari** ("Laba ±Rp X/hari", termasuk kontrak PO yang dirata-rata), bukan lagi "Hari ini ±Rp X · N pnp". Netral selama tutorial dan jam terminal pertama, lalu hijau/merah; diketuk membuka laporan keuangan. Disetujui owner 29 Oktober 2026, dalam pembangunan (dokumen 14 bagian 4.1): laba hari ini hampir selalu merah di hari tanpa kontrak, walau terminal sehat.
+  - Baris di bawahnya adalah **tujuan berikutnya** (dokumen 14 bagian 3), menggantikan baris petunjuk. Saran Manajer Operasional pindah ke sana (muncul saat gajinya aman dan, sejak 31 Oktober 2026, saat laba offline-nya sehari tidak minus), dan penutup tutorial tidak lagi menyarankannya.
+  - Pil kepuasan memakai aturan netral yang sama dengan pil laba: tidak merah atau hijau selama tutorial dan jam terminal pertama (dokumen 14 bagian 4.1, disetujui owner 31 Oktober 2026).
 - **Adegan**: label area (PERON, LOKET, KEBERANGKATAN, PANGKALAN) bisa diketuk untuk membuka kartu Bangun area itu. Area yang membatasi arus ditandai sorotan lantai merah berdenyut; label teks "PALING LAMBAT" dihapus atas permintaan user (9 Oktober 2026).
 - **Mode ringkas** hanya menyembunyikan panel. Rel chip tahap dihapus.
 - **Layar penuh** (9 Oktober 2026, permintaan user): panel bisa menutupi adegan karena tab yang berisi banyak pengaturan terlalu sempit di bawah adegan. Adegan berhenti digambar selama itu dan kameranya tidak berubah.

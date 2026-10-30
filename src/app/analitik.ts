@@ -13,6 +13,7 @@
  */
 import type { Aksi } from '../sim/aksi';
 import { jurusanDilayani, kelasTerminal, kepuasanTerminal, levelTerminal, type GameState } from '../sim/state';
+import type { JenisTujuan } from './tujuan';
 
 export type NilaiAnalitik = string | number | boolean;
 export type DataAnalitik = Readonly<Record<string, NilaiAnalitik>>;
@@ -32,7 +33,15 @@ export const TANPA_ANALITIK: Analitik = { catat: () => {} };
  * Peristiwa yang cukup dicatat sekali per sesi untuk data yang sama (mis. klakson telolet
  * pertama, tarif terminal: pemain biasanya mengetuk +/− berkali-kali).
  */
-const SEKALI_PER_SESI: ReadonlySet<string> = new Set(['telolet', 'atur_tarif', 'saran_tarif']);
+const SEKALI_PER_SESI: ReadonlySet<string> = new Set(['telolet', 'atur_tarif', 'saran_tarif', 'tujuan_ketuk']);
+
+/**
+ * Pemain mengetuk baris tujuan berikutnya di HUD. Hanya jenis tujuannya (bukan teks,
+ * nama PO, atau nilai uang); lewat PencatatAnalitik paling banyak sekali per jenis per sesi.
+ */
+export function peristiwaTujuanKetuk(jenis: JenisTujuan): PeristiwaAnalitik {
+  return { nama: 'tujuan_ketuk', data: { jenis } };
+}
 
 /** Rupiah → juta, satu desimal (angka besar tetap enak dibandingkan di dasbor). */
 const juta = (rp: number): number => Math.round(rp / 1e5) / 10;

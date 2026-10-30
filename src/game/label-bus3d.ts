@@ -12,7 +12,7 @@
  */
 import { WARNA_TAHAP, keHexCss } from '../config/tema';
 import type { BusVisual, OrangVisual } from './dunia-visual';
-import { isiLabelBus, JENIS_LABEL_BUS, labelAktif, type JenisLabelBus } from './label-bus';
+import { isiLabelBus, JENIS_LABEL_BUS, jepitLabel, labelAktif, type JenisLabelBus, type TitikLabel } from './label-bus';
 import { kemajuanLoket } from './label-loket';
 import { KELOMPOK_PARKIR, LOKET, TINGGI_LANTAI_GEDUNG, X_LOKET } from './tata-letak';
 import type { Proyektor } from './zona3d';
@@ -42,6 +42,9 @@ interface Label {
   tampil: boolean;
   /** Kemajuan terakhir yang ditulis ke DOM (hindari menulis gaya tiap frame tanpa perubahan). */
   kemajuanLalu: number;
+  /** Ukuran label di DOM (px CSS, sebelum di-skala) untuk menjepitnya ke layar; 0 = belum diukur sejak isinya berubah. */
+  lebarEl: number;
+  tinggiEl: number;
 }
 
 interface LabelBusDom extends Label {
@@ -104,12 +107,15 @@ export class LabelBus {
   private readonly label = new Map<string, LabelBusDom>();
   /** Cincin transaksi per jendela loket (null = jendela tidak sedang melayani). */
   private readonly cincinLoket: (Label | null)[] = X_LOKET.map(() => null);
+  /** Posisi label hasil jepitLabel, dipakai ulang tiap frame. */
+  private readonly titik: TitikLabel = { x: 0, y: 0 };
 
   constructor(private readonly wadah: HTMLElement) {}
 
   /** @param jarakKamera jarak kamera ke titik pandang (skala label). */
   perbarui(daftar: readonly BusVisual[], dt: number, kamera: Proyektor, lebar: number, tinggi: number, jarakKamera: number): void {
-    const skala = skalaJarak(jarakKamera).toFixed(3);
+    const s = skalaJarak(jarakKamera);
+    const skala = s.toFixed(3);
     const ada = new Set<string>();
     for (const b of daftar) {
       if (b.jenis !== 'terminal') continue;
@@ -132,7 +138,7 @@ export class LabelBus {
         }
         this.isi(l, b, aktif);
         const p = kamera.proyeksi(b.x, b.y, H_LABEL);
-        this.tempatkan(l, p, p.terlihat, lebar, tinggi, skala, aktif ? 1 : l.sisa / SISA_SETELAH_SELESAI);
+        this.tempatkan(l, p, p.terlihat, lebar, tinggi, s, skala, aktif ? 1 : l.sisa / SISA_SETELAH_SELESAI);
       }
     }
     for (const kunci of [...this.label.keys()]) if (!ada.has(kunci)) this.hapus(kunci);
@@ -154,7 +160,7 @@ export class LabelBus {
       let l = this.cincinLoket[i] ?? null;
       if (!l) {
         if (k === null) return;
-        l = { el: buatCincin(this.wadah, keHexCss(WARNA_TAHAP.loket), IKON_TIKET, WARNA_IKON_TIKET), sisa: SISA_LOKET, tampil: true, kemajuanLalu: -1 };
+        l = { el: buatCincin(this.wadah, keHexCss(WARNA_TAHAP.loket), IKON_TIKET, WARNA_IKON_TIKET), sisa: SISA_LOKET, tampil: true, kemajuanLalu: -1, lebarEl: 0, tinggiEl: 0 };
         this.cincinLoket[i] = l;
       }
       if (k !== null) l.sisa = SISA_LOKET;
@@ -166,25 +172,32 @@ export class LabelBus {
       }
       isiCincin(l, k ?? 1, k === null);
       const p = kamera.proyeksi(x, LOKET.yPembeli, H_LOKET);
-      this.tempatkan(l, p, muat && p.terlihat, lebar, tinggi, skala, k !== null ? 1 : l.sisa / SISA_LOKET);
+      this.tempatkan(l, p, muat && p.terlihat, lebar, tinggi, s, skala, k !== null ? 1 : l.sisa / SISA_LOKET);
     });
   }
 
-  private tempatkan(l: Label, p: { x: number; y: number }, terlihat: boolean, lebar: number, tinggi: number, skala: string, opasitas: number): void {
-    const tampil = terlihat && p.x > -40 && p.x < lebar + 40 && p.y > 0 && p.y < tinggi + 40;
+  /** Tampilkan label di atas jangkarnya, dijepit utuh ke dalam layar; disembunyikan bila jangkarnya di luar layar. */
+  private tempatkan(l: Label, p: { x: number; y: number }, terlihat: boolean, lebar: number, tinggi: number, s: number, skala: string, opasitas: number): void {
+    // Ukuran dibaca dari DOM hanya saat label tampil dan isinya berubah sejak terakhir dibaca:
+    // offsetWidth memaksa layout ulang. Sampai terukur, label dijepit sebagai titik.
+    if (l.tampil && l.lebarEl === 0) {
+      l.lebarEl = l.el.offsetWidth;
+      l.tinggiEl = l.el.offsetHeight;
+    }
+    const tampil = terlihat && jepitLabel(p.x, p.y, l.lebarEl * s, l.tinggiEl * s, lebar, tinggi, this.titik);
     if (tampil !== l.tampil) {
       l.tampil = tampil;
       l.el.hidden = !tampil;
     }
     if (!tampil) return;
-    l.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) translate(-50%, -100%) scale(${skala})`;
+    l.el.style.transform = `translate(${this.titik.x.toFixed(1)}px, ${this.titik.y.toFixed(1)}px) translate(-50%, -100%) scale(${skala})`;
     l.el.style.opacity = opasitas >= 1 ? '1' : opasitas.toFixed(2);
   }
 
   private buat(b: BusVisual, jenis: JenisLabelBus): LabelBusDom {
     if (jenis === 'cuci') {
       const e = buatCincin(this.wadah, warnaJurusan(b.tujuan), IKON_TETES);
-      return { jenis, el: e, judul: null, angka: null, penuh: null, samar: null, sisa: SISA_SETELAH_SELESAI, tampil: true, kemajuanLalu: -1 };
+      return { jenis, el: e, judul: null, angka: null, penuh: null, samar: null, sisa: SISA_SETELAH_SELESAI, tampil: true, kemajuanLalu: -1, lebarEl: 0, tinggiEl: 0 };
     }
     const e = el('label-bus');
     e.style.setProperty('--warna', jenis === 'turun' ? keHexCss(WARNA_TAHAP.peron) : warnaJurusan(b.tujuan));
@@ -198,7 +211,7 @@ export class LabelBus {
     bar.append(samar, penuh);
     e.append(baris, bar);
     this.wadah.append(e);
-    return { jenis, el: e, judul, angka, penuh, samar, sisa: SISA_SETELAH_SELESAI, tampil: true, kemajuanLalu: -1 };
+    return { jenis, el: e, judul, angka, penuh, samar, sisa: SISA_SETELAH_SELESAI, tampil: true, kemajuanLalu: -1, lebarEl: 0, tinggiEl: 0 };
   }
 
   private isi(l: LabelBusDom, b: BusVisual, aktif: boolean): void {
@@ -208,8 +221,14 @@ export class LabelBus {
       return;
     }
     l.el.classList.toggle('penuh', isi.selesai);
-    if (l.judul && l.judul.textContent !== isi.judul) l.judul.textContent = isi.judul;
-    if (l.angka && l.angka.textContent !== isi.angka) l.angka.textContent = isi.angka;
+    if (l.judul && l.judul.textContent !== isi.judul) {
+      l.judul.textContent = isi.judul;
+      l.lebarEl = 0;
+    }
+    if (l.angka && l.angka.textContent !== isi.angka) {
+      l.angka.textContent = isi.angka;
+      l.lebarEl = 0;
+    }
     if (isi.kemajuan !== l.kemajuanLalu) {
       l.kemajuanLalu = isi.kemajuan;
       if (l.penuh) l.penuh.style.width = `${(100 * isi.kemajuan).toFixed(1)}%`;

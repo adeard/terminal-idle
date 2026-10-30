@@ -1,22 +1,29 @@
 /**
  * DOM overlay: area adegan 3D (tempat tombol kamera & suara melayang) dan
- * bilah berisi HUD (kas, laba hari ini, penumpang di terminal, kepuasan, jam) + panel tab
- * pengelolaan. Portrait: HUD di atas, panel di bawah; landscape: HUD & panel di
- * bilah samping kanan (lihat gaya.css). Dibangun sekali; setiap perubahan state
- * hanya menyentuh node yang nilainya berubah. Semua angka berasal dari view
- * model (ui/model.ts).
+ * bilah berisi HUD (kas, laba rata-rata per hari, penumpang di terminal, kepuasan,
+ * jam, baris tujuan berikutnya) + panel tab pengelolaan. Portrait: HUD di atas,
+ * panel di bawah; landscape: HUD & panel di bilah samping kanan (lihat gaya.css).
+ * Dibangun sekali; setiap perubahan state hanya menyentuh node yang nilainya
+ * berubah. Semua angka berasal dari view model (ui/model.ts) dan helper murni
+ * (app/tujuan.ts, app/kepuasan-turun.ts). Ingatan sesi (tujuan yang tampil, butir
+ * lencana yang sudah dilihat, antrean notifikasi, riwayat kepuasan) tidak disimpan.
  */
+import type { Analitik } from '../app/analitik';
+import { peristiwaTujuanKetuk } from '../app/analitik';
+import { KEPUASAN_TURUN, kepuasanTurunBerlaku, periksaKepuasanTurun, type KepuasanTurun, type SampelKepuasan } from '../app/kepuasan-turun';
 import type { PengendaliGame } from '../app/pengendali';
+import { butirLencana, daftarTujuan, jumlahLencana, pilihTujuan, type ButirLencana, type TujuanDinilai } from '../app/tujuan';
 import { PILIHAN_KECEPATAN } from '../config/waktu.config';
 import type { Aksi } from '../sim/aksi';
 import type { AreaId } from '../sim/operasi';
 import type { PoId } from '../sim/fitur';
+import { gayaTujuan, sasaranTujuan, teksTujuan, type GayaTujuan, type SasaranTujuan } from './baris-tujuan';
 import { formatAngka, formatUang, formatUangBertanda } from './format';
 import { buatTabBangun, buatTabPetugas, buatTabPo, buatTabTarget, buatTabTerminal, type IklanMenu, type IsiTab } from './menu';
 import { buatModel, type ModelEvent, type ModelHud, type ModelTampilan } from './model';
-import { notifikasiPerubahan } from './notifikasi';
+import { ambilNotif, antreNotif, notifBahaya, notifikasiPerubahan, perluasanBaruTerbuka, teksKepuasanTurun, urutanPesan, type PesanNotif } from './notifikasi';
 import { tanyaNamaTerminal } from './popup-nama';
-import { tampilkanPopupKepuasan, tingkatKepuasan, wajahKepuasan } from './popup-kepuasan';
+import { tampilkanPopupKepuasan, tingkatPilKepuasan, wajahKepuasan } from './popup-kepuasan';
 import { buatKartuPeringkat, type OpsiPeringkatUi } from './peringkat';
 import { LABEL_KERAMAIAN, namaKelas, NAMA_EVENT, TEKS } from './teks';
 
@@ -48,7 +55,20 @@ export interface OpsiOverlay {
   readonly iklan?: IklanMenu;
   /** Papan peringkat (hanya web; tanpa ini kartunya tidak ada). Model & popup nama disiapkan overlay. */
   readonly peringkat?: Omit<OpsiPeringkatUi, 'ambilModel' | 'mintaNama'>;
+  /** Analitik untuk ketukan baris tujuan (`tujuan_ketuk`). */
+  readonly analitik?: Analitik;
 }
+
+/** Baris tujuan & lencana dihitung ulang paling sering sekali per detik nyata (dan langsung setelah aksi pemain). */
+const MS_HITUNG_TUJUAN = 1000;
+/** Lama sasaran ketukan baris tujuan / pil laba disorot. */
+const MS_SOROT_TUJUAN = 3000;
+/** Lama satu notifikasi tampil, dan jeda sebelum notifikasi berikutnya dari antrean. */
+const MS_NOTIF = 3500;
+const MS_JEDA_NOTIF = 300;
+/** Toast kepuasan tidak muncul di detik-detik pertama sesi (sambutan tutorial). */
+const MS_AWAL_TANPA_TOAST_KEPUASAN = 8000;
+const KELAS_SOROT = 'sorot-tutorial';
 
 const ID_TAB = ['bangun', 'petugas', 'po', 'terminal', 'target'] as const;
 type IdTab = (typeof ID_TAB)[number];
@@ -68,16 +88,25 @@ const IKON_PENUH = { besar: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5', kecil: 'M9
 export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, opsi: OpsiOverlay = {}): Overlay {
   // PO yang diputus pemain sendiri: keluarnya tidak diberi notifikasi "kontrak habis".
   const diputus = new Set<PoId>();
+  // Setelah aksi pemain, baris tujuan langsung dihitung ulang (tujuan yang baru dikerjakan diganti).
+  let perluHitungTujuan = true;
   const kirim = (aksi: Aksi): void => {
     if (aksi.jenis === 'putusPo') diputus.add(aksi.po);
+    perluHitungTujuan = true;
     pengendali.kirim(aksi);
   };
 
-  const hud = buatHud(
-    opsi.kecepatan ?? 1,
-    (k) => opsi.saatUbahKecepatan?.(k),
-    () => tampilkanPopupKepuasan(akar, buatModel(pengendali.state).hud.kepuasan),
-  );
+  const hud = buatHud(opsi.kecepatan ?? 1, {
+    pilihKecepatan: (k) => opsi.saatUbahKecepatan?.(k),
+    bukaKepuasan: () => tampilkanPopupKepuasan(akar, buatModel(pengendali.state).hud.kepuasan),
+    bukaKeuangan: () => bukaSasaran({ tab: 'terminal', selektor: '[data-kartu="keuangan"]' }),
+    ketukTujuan: () => {
+      if (!tujuan) return;
+      const p = peristiwaTujuanKetuk(tujuan.jenis);
+      opsi.analitik?.catat(p.nama, p.data);
+      bukaSasaran(sasaranTujuan(tujuan));
+    },
+  });
   const daftar = el('section', 'panel-daftar');
   /** Popup nama terminal; nama baru dikirim sebagai aksi. Hasil: nama sekarang (null = batal atau kosong). */
   const mintaNama = async (): Promise<string | null> => {
@@ -105,12 +134,19 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   const barTab = el('nav', 'tab-bar');
   const tombolTab = {} as Record<IdTab, HTMLButtonElement>;
   const lencanaTarget = el('span', 'tab-lencana');
+  // Lencana Terminal (perluasan terbuka) & PO (tawaran, PO yang bisa didaftarkan, jendela kosong): app/tujuan.ts.
+  const lencanaTerminal = el('span', 'tab-lencana');
+  const lencanaPo = el('span', 'tab-lencana');
+  lencanaTerminal.hidden = true;
+  lencanaPo.hidden = true;
   for (const id of ID_TAB) {
     const b = el('button', 'tab', LABEL_TAB[id]());
     b.type = 'button';
     b.dataset['tab'] = id;
     b.addEventListener('click', () => pilihTab(id));
     if (id === 'target') b.append(lencanaTarget);
+    if (id === 'terminal') b.append(lencanaTerminal);
+    if (id === 'po') b.append(lencanaPo);
     tombolTab[id] = b;
     barTab.append(b);
   }
@@ -122,6 +158,27 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
       tombolTab[t].setAttribute('aria-selected', String(t === id));
       tab[t].elemen.hidden = t !== id;
     }
+  };
+  /** Butir lencana terakhir & kunci yang sudah dilihat (memori sesi saja: memuat ulang = dihitung ulang). */
+  let butir: ButirLencana = { terminal: [], po: [] };
+  const dilihat = new Set<string>();
+  let jumlahKlaim = 0;
+  const perbaruiLencana = (): void => {
+    // Tab yang terbuka (panel tidak ringkas): semua butirnya terlihat.
+    if (!ringkas) for (const k of tabAktif === 'terminal' ? butir.terminal : tabAktif === 'po' ? butir.po : []) dilihat.add(k);
+    // Ditahan selama tutorial aktif (juga titik merah tombol panel yang berasal dari lencana).
+    const { terminal, po, target } = jumlahLencana(butir, dilihat, akar.classList.contains('tutorial-aktif'), jumlahKlaim);
+    setTeks(lencanaTerminal, terminal > 0 ? String(terminal) : '');
+    setHidden(lencanaTerminal, terminal === 0);
+    setTeks(lencanaPo, po > 0 ? String(po) : '');
+    setHidden(lencanaPo, po === 0);
+    setTeks(lencanaTarget, target > 0 ? String(target) : '');
+    setHidden(lencanaTarget, target === 0);
+    tombolTab.terminal.classList.toggle('ada-lencana', terminal > 0);
+    tombolTab.po.classList.toggle('ada-lencana', po > 0);
+    tombolTab.target.classList.toggle('ada-lencana', target > 0);
+    // Titik merah tombol panel: ada hadiah, atau (saat panel ringkas, tab tersembunyi) lencana tab.
+    tombolRingkas.classList.toggle('ada-klaim', target > 0 || (ringkas && terminal + po > 0));
   };
   daftar.append(barTab, ...ID_TAB.map((t) => tab[t].elemen));
   pilihTab('bangun');
@@ -195,38 +252,171 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   bilah.append(hud.elemen, daftar);
   akar.replaceChildren(area, bilah);
 
-  // Notifikasi singkat (penghargaan baru, target harian selesai) di atas adegan.
+  // Notifikasi singkat di atas adegan, bergantian lewat antrean (paling banyak 3 tertunda, 3,5 dtk
+  // masing-masing; pesan bahaya melompati antrean). Menunggu selama popup terbuka.
   const notif = el('div', 'notif');
   notif.setAttribute('role', 'status');
   area.append(notif);
   let modelLalu: ModelTampilan | null = null;
+  let antrean: PesanNotif[] = [];
+  let notifTampil: PesanNotif | null = null;
   let timerNotif = 0;
-  const tampilkanNotif = (teks: string): void => {
-    notif.textContent = teks;
-    notif.classList.add('tampil');
-    window.clearTimeout(timerNotif);
-    timerNotif = window.setTimeout(() => notif.classList.remove('tampil'), 3500);
+  /** Kepuasan penumpang terakhir (pil HUD): toast kepuasan dinilai ulang dengannya saat keluar dari antrean. */
+  let kepuasanKini = 0;
+  const antre = (teks: string, kepuasan?: KepuasanTurun): void => {
+    antrean = antreNotif(antrean, { teks, bahaya: notifBahaya(teks), ...(kepuasan ? { kepuasan } : {}) }, notifTampil?.teks ?? null);
   };
+  const sembunyikanNotif = (): void => {
+    window.clearTimeout(timerNotif);
+    notif.classList.remove('tampil', 'bisa-ketuk');
+    hud.denyutKepuasan(false);
+    // Jeda singkat supaya pesan berikutnya muncul sebagai toast baru, bukan teks yang berganti.
+    timerNotif = window.setTimeout(() => {
+      notifTampil = null;
+      tampilkanBerikut();
+    }, MS_JEDA_NOTIF);
+  };
+  const tampilkanBerikut = (): void => {
+    if (notifTampil || antrean.length === 0 || akar.querySelector('.popup-latar')) return;
+    // Toast kepuasan yang sudah pulih dibuang; yang masih berlaku memakai angka sekarang (sama dengan pil).
+    const { pesan: p, sisa } = ambilNotif(antrean, kepuasanKini);
+    antrean = sisa;
+    if (!p) return;
+    notifTampil = p;
+    notif.textContent = p.teks;
+    notif.classList.add('tampil');
+    // Hanya toast kepuasan yang bisa diketuk; selama tampil pil kepuasan berdenyut.
+    notif.classList.toggle('bisa-ketuk', p.kepuasan !== undefined);
+    hud.denyutKepuasan(p.kepuasan !== undefined);
+    window.clearTimeout(timerNotif);
+    timerNotif = window.setTimeout(sembunyikanNotif, MS_NOTIF);
+  };
+  const tampilkanNotif = (teks: string): void => {
+    antre(teks);
+    tampilkanBerikut();
+  };
+  notif.addEventListener('click', () => {
+    if (!notifTampil?.kepuasan) return;
+    sembunyikanNotif();
+    tampilkanPopupKepuasan(akar, buatModel(pengendali.state).hud.kepuasan);
+  });
+
+  // Toast kepuasan turun: satu sampel per detik nyata (documents/14 bagian 4.2).
+  const mulaiMs = performance.now();
+  let riwayatKepuasan: SampelKepuasan[] = [];
+  let toastKepuasanMs: number | null = null;
+  let sampelKepuasanMs = Number.NEGATIVE_INFINITY;
+  const amatiKepuasan = (m: ModelTampilan, sekarang: number): void => {
+    if (sekarang - sampelKepuasanMs < 1000) return;
+    sampelKepuasanMs = sekarang;
+    const sampel: SampelKepuasan = { ms: sekarang, kepuasan: m.hud.kepuasan, bottleneck: m.hud.kepuasan.bottleneck };
+    // Toast kepuasan yang sedang tampil hilang begitu kepuasan pulih (tidak bertentangan dengan pil).
+    if (notifTampil?.kepuasan && !kepuasanTurunBerlaku(notifTampil.kepuasan, sampel.kepuasan.nilai)) sembunyikanNotif();
+    const boleh = !akar.classList.contains('tutorial-sambutan') && sekarang - mulaiMs >= MS_AWAL_TANPA_TOAST_KEPUASAN;
+    const turun = boleh ? periksaKepuasanTurun(riwayatKepuasan, sampel, toastKepuasanMs) : null;
+    if (turun) {
+      antre(teksKepuasanTurun(turun), turun);
+      toastKepuasanMs = sekarang;
+      riwayatKepuasan = [sampel];
+      return;
+    }
+    riwayatKepuasan = riwayatKepuasan.filter((x) => x.ms >= sekarang - KEPUASAN_TURUN.jendelaMs);
+    riwayatKepuasan.push(sampel);
+  };
+
+  // Baris tujuan berikutnya: yang tampil dipertahankan (histeresis app/tujuan.ts); tidak disimpan.
+  let tujuan: TujuanDinilai | null = null;
+  let tujuanTampil: { kunci: string; sejakMs: number } | null = null;
+  let hitungTujuanMs = Number.NEGATIVE_INFINITY;
+  const perbaruiTujuan = (sekarang: number): void => {
+    const s = pengendali.state;
+    const p = pilihTujuan(daftarTujuan(s, tujuanTampil?.kunci ?? null), tujuanTampil, sekarang);
+    if (!tujuanTampil || tujuanTampil.kunci !== p.kunci) tujuanTampil = { kunci: p.kunci, sejakMs: sekarang };
+    tujuan = p;
+    hud.tampilkanTujuan(teksTujuan(p), gayaTujuan(p));
+    butir = butirLencana(s);
+    perbaruiLencana();
+  };
+  // Perluasan yang baru terbuka diberitahukan sekali per tahap per sesi.
+  const perluasanDiumumkan = new Set<number>();
 
   const lepasLangganan = pengendali.berlangganan((state) => {
     const model = buatModel(state);
-    hud.perbarui(model.hud, model.event);
+    const sekarang = performance.now();
+    kepuasanKini = model.hud.kepuasan.nilai;
+    hud.perbarui(model.hud, model.event, akar.classList.contains('tutorial-aktif'));
     // Hanya tab yang terlihat yang diperbarui (dan semuanya sekali di awal) supaya hemat DOM.
     for (const t of ID_TAB) if (!modelLalu || (t === tabAktif && !ringkas)) tab[t].perbarui(model);
-    setTeks(lencanaTarget, model.jumlahKlaim > 0 ? String(model.jumlahKlaim) : '');
-    setHidden(lencanaTarget, model.jumlahKlaim === 0);
-    tombolRingkas.classList.toggle('ada-klaim', model.jumlahKlaim > 0);
+    jumlahKlaim = model.jumlahKlaim;
+    // Level naik atau perluasan berganti tahap: baris tujuan & lencana langsung ikut (bersamaan dengan notifikasinya).
+    const lp = modelLalu?.terminal;
+    if (lp && (lp.level !== model.terminal.level || lp.perluasan.selesai !== model.terminal.perluasan.selesai)) perluHitungTujuan = true;
+    if (perluHitungTujuan || sekarang - hitungTujuanMs >= MS_HITUNG_TUJUAN) {
+      perluHitungTujuan = false;
+      hitungTujuanMs = sekarang;
+      perbaruiTujuan(sekarang);
+    } else perbaruiLencana();
+    // Perluasan terbuka lebih dulu dari slot PO & level (Lv 3 & 6 memicu ketiganya sekaligus), tapi sesudah
+    // peresmian perluasan sebelumnya (urutanPesan). Di awal sesi pesannya menunggu di antrean sampai popup
+    // (offline, pembaruan) ditutup.
+    const baru = perluasanBaruTerbuka(modelLalu, model);
+    const tahap = baru !== null && !perluasanDiumumkan.has(baru) ? baru : null;
+    if (tahap !== null) perluasanDiumumkan.add(tahap);
+    const pesan = modelLalu ? notifikasiPerubahan(modelLalu, model, diputus) : null;
+    for (const teks of urutanPesan(modelLalu, model, pesan, tahap)) antre(teks);
     if (modelLalu) {
       const lalu = modelLalu;
-      const pesan = notifikasiPerubahan(lalu, model, diputus);
       // PO yang sudah keluar tidak perlu diingat lagi (bisa didaftarkan & diputus ulang nanti).
       for (const p of lalu.mitra.terdaftar) if (!model.mitra.terdaftar.some((x) => x.id === p.id)) diputus.delete(p.id);
-      if (pesan) tampilkanNotif(pesan);
+      amatiKepuasan(model, sekarang);
+      // Pembaruan pertama berjalan sebelum popup offline dipasang: antrean baru diputar sesudahnya.
+      tampilkanBerikut();
     }
     modelLalu = model;
   });
-  // Saat berpindah tab, isi tab langsung diperbarui dengan state terbaru.
-  for (const id of ID_TAB) tombolTab[id].addEventListener('click', () => tab[id].perbarui(buatModel(pengendali.state)));
+  // Saat berpindah tab, isi tab langsung diperbarui dengan state terbaru, dan butirnya ditandai sudah dilihat.
+  for (const id of ID_TAB)
+    tombolTab[id].addEventListener('click', () => {
+      tab[id].perbarui(buatModel(pengendali.state));
+      perbaruiLencana();
+    });
+  // Tutorial dipasang (ui/tutorial.ts) setelah pembaruan pertama di atas, atau selesai: lencana langsung
+  // ikut kelas `tutorial-aktif`, tanpa menunggu pembaruan state berikutnya (sambutan tanpa kilasan lencana).
+  const pengamatTutorial = new MutationObserver(() => perbaruiLencana());
+  pengamatTutorial.observe(akar, { attributes: true, attributeFilter: ['class'] });
+
+  // Ketukan baris tujuan / pil laba: buka panel & tab, gulir ke sasaran, sorot 3 dtk. Tidak pernah menjalankan aksi.
+  let disorot: HTMLElement[] = [];
+  let timerSorot = 0;
+  const lepasSorot = (): void => {
+    window.clearTimeout(timerSorot);
+    for (const e of disorot) {
+      e.classList.remove(KELAS_SOROT);
+      e.removeEventListener('click', lepasSorot);
+    }
+    disorot = [];
+  };
+  const bukaSasaran = (s: SasaranTujuan): void => {
+    if (ringkas) ubahRingkas(false);
+    if (penuh) aturPenuh(false);
+    pilihTab(s.tab);
+    tab[s.tab].perbarui(buatModel(pengendali.state));
+    perbaruiLencana();
+    const cari = (sel: string): HTMLElement[] => [...daftar.querySelectorAll<HTMLElement>(sel)].filter((e) => e.getClientRects().length > 0);
+    let ketemu = cari(s.selektor);
+    if (ketemu.length === 0 && s.cadangan) ketemu = cari(s.cadangan);
+    lepasSorot();
+    disorot = ketemu.length > 0 ? ketemu : [tombolTab[s.tab]];
+    const halus = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    for (const e of disorot) {
+      e.classList.add(KELAS_SOROT);
+      // Sasaran diketuk: sorotan berhenti lebih awal.
+      e.addEventListener('click', lepasSorot);
+    }
+    const pertama = disorot[0]!;
+    if (pertama.closest('.isi-tab')) pertama.scrollIntoView({ block: 'nearest', behavior: halus ? 'smooth' : 'auto' });
+    timerSorot = window.setTimeout(lepasSorot, MS_SOROT_TUJUAN);
+  };
   const bukaArea = (id: AreaId): void => {
     if (ringkas) ubahRingkas(false);
     pilihTab('bangun');
@@ -235,7 +425,10 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   };
   const lepas = (): void => {
     lepasLangganan();
+    pengamatTutorial.disconnect();
     window.removeEventListener('keydown', saatTombol);
+    window.clearTimeout(timerNotif);
+    lepasSorot();
   };
   return { area, kontrol, aturKecepatan: hud.aturKecepatan, notif: tampilkanNotif, bukaArea, panelPenuh: () => penuh, lepas };
 }
@@ -245,15 +438,33 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
 
 interface Hud {
   readonly elemen: HTMLElement;
-  perbarui(m: ModelHud, event: ModelEvent | null): void;
+  /** @param tutorial tutorial sedang aktif: pil laba & kepuasan netral (belum hijau/merah). */
+  perbarui(m: ModelHud, event: ModelEvent | null, tutorial: boolean): void;
   aturKecepatan(kecepatan: number): void;
+  /** Isi & warna baris tujuan berikutnya. */
+  tampilkanTujuan(teks: string, gaya: GayaTujuan): void;
+  /** Pil kepuasan berdenyut selama toast kepuasan turun tampil. */
+  denyutKepuasan(aktif: boolean): void;
 }
 
-function buatHud(kecepatanAwal: number, saatPilih: (kecepatan: number) => void, bukaKepuasan: () => void): Hud {
+interface AksiHud {
+  readonly pilihKecepatan: (kecepatan: number) => void;
+  readonly bukaKepuasan: () => void;
+  /** Pil laba diketuk: laporan keuangan di tab Terminal. */
+  readonly bukaKeuangan: () => void;
+  readonly ketukTujuan: () => void;
+}
+
+function buatHud(kecepatanAwal: number, aksi: AksiHud): Hud {
+  const saatPilih = aksi.pilihKecepatan;
   const elemen = el('header', 'hud');
   const kas = el('div', 'hud-uang');
   const baris = el('div', 'hud-baris');
-  const laba = el('span', 'hud-pendapatan');
+  // Laba rata-rata per hari: diketuk membuka laporan keuangan.
+  const laba = el('button', 'hud-pendapatan');
+  laba.type = 'button';
+  laba.title = TEKS.hudLabaJudul;
+  laba.addEventListener('click', aksi.bukaKeuangan);
   const diTerminal = el('span', 'hud-arus');
   const kelas = el('span', 'hud-kelas');
   // Kepuasan penumpang: diketuk membuka rinciannya.
@@ -261,12 +472,21 @@ function buatHud(kecepatanAwal: number, saatPilih: (kecepatan: number) => void, 
   kepuasan.type = 'button';
   kepuasan.title = TEKS.kepuasanTombol;
   kepuasan.setAttribute('aria-label', TEKS.kepuasanTombol);
-  kepuasan.addEventListener('click', bukaKepuasan);
+  kepuasan.addEventListener('click', aksi.bukaKepuasan);
   const pilEvent = el('span', 'hud-event');
   pilEvent.hidden = true;
-  const petunjuk = el('div', 'hud-petunjuk');
+  // Baris tujuan berikutnya (menggantikan petunjuk lama, posisi & ukuran sama): diketuk menuju sasarannya.
+  const petunjuk = el('button', 'hud-petunjuk hud-tujuan');
+  petunjuk.type = 'button';
+  const teksTujuanEl = el('span', 'tujuan-teks');
+  petunjuk.append(teksTujuanEl, el('span', 'tujuan-panah', '›'));
+  petunjuk.hidden = true;
+  petunjuk.addEventListener('click', aksi.ketukTujuan);
   baris.append(laba, diTerminal, kelas, kepuasan, pilEvent);
-  const labaRingkas = el('div', 'hud-pendapatan-ringkas');
+  const labaRingkas = el('button', 'hud-pendapatan-ringkas');
+  labaRingkas.type = 'button';
+  labaRingkas.title = TEKS.hudLabaJudul;
+  labaRingkas.addEventListener('click', aksi.bukaKeuangan);
   const keuangan = el('div', 'hud-keuangan');
   keuangan.append(kas, baris, labaRingkas);
   // Jam terminal di kanan: ikon matahari/bulan + jam 24 jam, di bawahnya hari & keramaian.
@@ -310,7 +530,17 @@ function buatHud(kecepatanAwal: number, saatPilih: (kecepatan: number) => void, 
   return {
     elemen,
     aturKecepatan,
-    perbarui(m, event) {
+    tampilkanTujuan(teks, gaya) {
+      setTeks(teksTujuanEl, teks);
+      if (petunjuk.getAttribute('aria-label') !== teks) petunjuk.setAttribute('aria-label', teks);
+      setHidden(petunjuk, teks === '');
+      petunjuk.classList.toggle('bahaya', gaya === 'bahaya');
+      petunjuk.classList.toggle('netral', gaya === 'netral');
+    },
+    denyutKepuasan(aktif) {
+      kepuasan.classList.toggle('berdenyut', aktif);
+    },
+    perbarui(m, event, tutorial) {
       const aktif = event?.aktif ? event : null;
       setHidden(pilEvent, aktif === null);
       if (aktif) {
@@ -327,26 +557,26 @@ function buatHud(kecepatanAwal: number, saatPilih: (kecepatan: number) => void, 
       const judul = m.waktu.hujan ? TEKS.hujan : m.waktu.siang ? TEKS.siang : TEKS.malam;
       if (ikon.title !== judul) ikon.title = judul;
       setTeks(kas, formatUang(Math.floor(m.kas)));
-      // Laba bersih hari ini (hari terminal): hijau untung, merah rugi.
+      // Laba rata-rata per hari (dengan kontrak PO): hijau untung, merah rugi; netral selama
+      // tutorial & jam terminal pertama supaya HUD tidak merah di detik pertama.
       const boost = m.boostAktif ? TEKS.boostHud : '';
-      const teksLaba = formatUangBertanda(m.labaHariIni);
-      setTeks(laba, `${TEKS.hudHariIni(teksLaba, formatAngka(m.penumpangHariIni))}${boost}`);
+      const teksLaba = TEKS.hudLaba(formatUangBertanda(m.labaHarian));
+      const netral = tutorial || m.awal;
+      setTeks(laba, `${teksLaba}${boost}`);
       laba.classList.toggle('boost', boost !== '');
-      laba.classList.toggle('rugi', m.labaHariIni < 0);
-      setTeks(labaRingkas, TEKS.hudHariIniRingkas(teksLaba));
-      labaRingkas.classList.toggle('rugi', m.labaHariIni < 0);
+      laba.classList.toggle('rugi', !netral && m.labaHarian < 0);
+      laba.classList.toggle('netral', netral);
+      setTeks(labaRingkas, teksLaba);
+      labaRingkas.classList.toggle('rugi', !netral && m.labaHarian < 0);
+      labaRingkas.classList.toggle('netral', netral);
       setTeks(diTerminal, TEKS.hudDiTerminal(formatAngka(m.penumpangDiTerminal)));
       setTeks(kelas, TEKS.hudKelas(namaKelas(m.kelas), m.level));
       if (kelas.dataset['kelas'] !== String(Math.min(m.kelas, 3))) kelas.dataset['kelas'] = String(Math.min(m.kelas, 3));
       const puas = m.kepuasan.nilai;
       setTeks(kepuasan, TEKS.kepuasanHud(wajahKepuasan(puas), Math.round(puas * 100)));
-      const tingkat = tingkatKepuasan(puas);
+      // Pil kepuasan ikut netral seperti pil laba (angka & wajah tetap).
+      const tingkat = tingkatPilKepuasan(puas, netral);
       if (kepuasan.dataset['tingkat'] !== tingkat) kepuasan.dataset['tingkat'] = tingkat;
-      // Peringatan kas lebih penting dari saran manajer.
-      const teksPetunjuk = m.kasMenipis ? TEKS.petunjukKasMenipis : m.adaManajer ? '' : TEKS.petunjukManajer;
-      setTeks(petunjuk, teksPetunjuk);
-      setHidden(petunjuk, teksPetunjuk === '');
-      petunjuk.classList.toggle('bahaya', m.kasMenipis);
     },
   };
 }
