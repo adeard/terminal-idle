@@ -178,6 +178,11 @@ export interface TantanganAktif {
   readonly target: number;
   readonly progres: number;
   readonly diklaim: boolean;
+  /**
+   * Hanya tantangan kepuasan: kepuasan minimal (0–1) yang dijaga, ditetapkan saat minggu dimulai
+   * (lihat ambangKepuasan). Tanpa ini: batas atasnya, tantangan.kepuasanMin (save lama dihitung ulang saat dimuat).
+   */
+  readonly ambang?: number;
 }
 
 /** Tantangan mingguan (lihat sim/tantangan.ts & perbaruiTantangan). */
@@ -648,7 +653,9 @@ export function tick(state: GameState, dtDetik: number, cfg: KonfigEkonomi = EKO
   let petugas = state.terminal.petugas;
   for (let i = 0; i < kas.berhenti; i++) petugas = berhentiKasHabis(petugas);
   const penumpang = op.arus * dtJam;
-  const laba = keu.laba * dtJam;
+  // Kemajuan laba target harian & tantangan: laba operasi + kontrak PO yang dirata-rata (seperti
+  // pil Laba/hari, documents/15 bagian 5.1); uang kontrak yang masuk sekaligus tidak dihitung.
+  const labaKemajuan = (keu.laba + kontrakPerJam(state)) * dtJam;
 
   const waktuMainDetik = state.statistik.waktuMainDetik + dtDetik;
   const hariKe = waktuTerminal(waktuMainDetik).hariKe;
@@ -674,11 +681,11 @@ export function tick(state: GameState, dtDetik: number, cfg: KonfigEkonomi = EKO
     rekor: majukanRekor(state.rekor, hariSelesai, op.arus),
     hadiah: majukanHadiah(state, dtDetik, cfg),
     event: state.event.aktif && penumpang > 0 ? { ...state.event, progres: state.event.progres + penumpang } : state.event,
-    tantangan: majukanTantangan(state.tantangan, op.kepuasan.nilai, penumpang, laba, dtDetik, cfg),
+    tantangan: majukanTantangan(state.tantangan, op.kepuasan.nilai, penumpang, labaKemajuan, dtDetik, cfg),
     mitra: majukanMitra(state.mitra, op, kelasTerminal(state, cfg), dtDetik, 1, true, cfg),
     perkembangan: majukanPerkembangan(state.perkembangan, penumpang, dtDetik),
   };
-  const harian = hariSelesai ? buatTargetHarian(dasar, hariKe, cfg) : tambahProgres(state.harian, state.harian.jenis === 'penumpang' ? penumpang : laba);
+  const harian = hariSelesai ? buatTargetHarian(dasar, hariKe, cfg) : tambahProgres(state.harian, state.harian.jenis === 'penumpang' ? penumpang : labaKemajuan);
   return perbaruiPencapaian(urusKontrak(manajerKemitraan({ ...dasar, harian }, op, cfg), cfg), cfg);
 }
 
@@ -750,15 +757,46 @@ function majukanRekor(r: RekorState, hariSelesai: BukuHarian | null, arus: numbe
   return arus > x.arusTertinggi ? { ...x, arusTertinggi: arus } : x;
 }
 
-/** Kemajuan tantangan mingguan dari satu tick main aktif. */
+/** Kemajuan tantangan mingguan dari satu tick main aktif (laba = laba operasi + kontrak dirata-rata). */
 function majukanTantangan(t0: TantanganState, kepuasan: number, penumpang: number, laba: number, dt: number, cfg: KonfigEkonomi): TantanganState {
   let t = t0;
   if (t.minggu === null) return t;
   if (penumpang > 0) t = { ...t, penumpang: t.penumpang + penumpang };
   t = tambahProgresTantangan(t, 'penumpang', penumpang);
   t = tambahProgresTantangan(t, 'laba', laba);
-  if (kepuasan >= cfg.tantangan.kepuasanMin) t = tambahProgresTantangan(t, 'kepuasan', dt);
+  const puas = t.daftar.find((x) => x.jenis === 'kepuasan' && x.progres < x.target);
+  if (puas && kepuasan >= ambangTantangan(puas, cfg) - 1e-9) t = tambahProgresTantangan(t, 'kepuasan', dt);
   return t;
+}
+
+/**
+ * Ambang tantangan kepuasan dari kepuasan saat minggu dimulai (documents/15 bagian 5.2):
+ * dibulatkan ke bawah ke kelipatan kepuasanLangkah, dijepit kepuasanAmbangMin–kepuasanMin
+ * (28 % → 50 %, 56 % → 55 %, 91 % → 75 %).
+ */
+export function ambangKepuasan(kepuasan: number, cfg: KonfigEkonomi = EKONOMI): number {
+  const t = cfg.tantangan;
+  const turun = Math.round(Math.floor(kepuasan / t.kepuasanLangkah + 1e-9) * t.kepuasanLangkah * 1e6) / 1e6;
+  return Math.min(t.kepuasanMin, Math.max(t.kepuasanAmbangMin, turun));
+}
+
+/** Kepuasan minimal tantangan kepuasan ini (tanpa ambang tersimpan: batas atasnya). */
+export function ambangTantangan(x: TantanganAktif, cfg: KonfigEkonomi = EKONOMI): number {
+  return x.ambang ?? cfg.tantangan.kepuasanMin;
+}
+
+/** Ambang sah untuk disimpan/dimuat: angka di rentang kepuasanAmbangMin–kepuasanMin. */
+export function ambangSah(nilai: unknown, cfg: KonfigEkonomi = EKONOMI): nilai is number {
+  const t = cfg.tantangan;
+  return typeof nilai === 'number' && Number.isFinite(nilai) && nilai >= t.kepuasanAmbangMin - 1e-9 && nilai <= t.kepuasanMin + 1e-9;
+}
+
+/** Tantangan kepuasan tanpa ambang sah (save lama) mendapat ambang dari kepuasan sekarang; state sama persis bila tidak ada. */
+export function lengkapiAmbangTantangan(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameState {
+  const t = state.tantangan;
+  if (!t.daftar.some((x) => x.jenis === 'kepuasan' && !ambangSah(x.ambang, cfg))) return state;
+  const ambang = ambangKepuasan(kepuasanTerminal(state, cfg).nilai, cfg);
+  return { ...state, tantangan: { ...t, daftar: t.daftar.map((x) => (x.jenis === 'kepuasan' && !ambangSah(x.ambang, cfg) ? { ...x, ambang } : x)) } };
 }
 
 /**
@@ -785,14 +823,17 @@ function bulatkanTarget(n: number): number {
   return Math.round(n / skala) * skala;
 }
 
-/** Target baru untuk hari ke-`hariKe`: penumpang (hari genap) atau laba bersih (hari ganjil), dari rata-rata sehari dengan tarif bawaan. */
+/**
+ * Target baru untuk hari ke-`hariKe`: penumpang (hari genap) atau laba bersih (hari ganjil), dari
+ * rata-rata sehari dengan tarif bawaan; laba termasuk kontrak PO yang dirata-rata (documents/15 bagian 5.1).
+ */
 export function buatTargetHarian(state: GameState, hariKe: number, cfg: KonfigEkonomi = EKONOMI): HarianState {
   const jenis: JenisTarget = hariKe % 2 === 0 ? 'penumpang' : 'laba';
   const a = acuanHarian(state, cfg);
   const target =
     jenis === 'penumpang'
       ? bulatkanTarget(Math.max(10, a.arus) * 24 * cfg.harian.fraksiPenumpang)
-      : bulatkanTarget(Math.max(a.laba, cfg.hadiah.minPerMenit) * 24 * cfg.harian.fraksiLaba);
+      : bulatkanTarget(Math.max(labaDenganKontrak(a), cfg.hadiah.minPerMenit) * 24 * cfg.harian.fraksiLaba);
   return { hariKe, jenis, target, progres: 0, diklaim: false, jumlahSelesai: state.harian.jumlahSelesai };
 }
 
@@ -1073,7 +1114,10 @@ export function tawaranKontrakPo(state: GameState, id: PoId, cfg: KonfigEkonomi 
   return tawaranKontrak(id, r?.kontrakKe ?? 0, levelPoDariXp(r?.xp ?? 0, cfg), kelas, cfg);
 }
 
-/** Uang masuk dari kontrak PO (dibayar di muka): kas, buku harian, statistik, & kemajuan laba (target & tantangan). */
+/**
+ * Uang masuk dari kontrak PO (dibayar di muka): kas, buku harian, & statistik. Kemajuan laba target &
+ * tantangan tidak bertambah: kontraknya ikut lewat rata-rata per jam di tick (documents/15 bagian 5.1).
+ */
 function terimaKontrak(state: GameState, nilai: number): GameState {
   if (!(nilai > 0)) return state;
   const k = state.keuangan;
@@ -1082,12 +1126,10 @@ function terimaKontrak(state: GameState, nilai: number): GameState {
     kas: state.kas + nilai,
     keuangan: { ...k, hariIni: { ...k.hariIni, pendapatan: { ...k.hariIni.pendapatan, kontrak: k.hariIni.pendapatan.kontrak + nilai } } },
     statistik: { ...state.statistik, totalPendapatan: state.statistik.totalPendapatan + nilai },
-    tantangan: state.tantangan.minggu === null ? state.tantangan : tambahProgresTantangan(state.tantangan, 'laba', nilai),
-    harian: state.harian.jenis === 'laba' ? tambahProgres(state.harian, nilai) : state.harian,
   };
 }
 
-/** Uang keluar untuk kompensasi putus kontrak: kebalikan terimaKontrak. */
+/** Uang keluar untuk kompensasi putus kontrak: kebalikan terimaKontrak (kemajuan laba tidak berkurang; kontrak PO itu berhenti mengalir). */
 function bayarKompensasi(state: GameState, nilai: number): GameState {
   if (!(nilai > 0)) return state;
   const k = state.keuangan;
@@ -1096,8 +1138,6 @@ function bayarKompensasi(state: GameState, nilai: number): GameState {
     kas: kurangiKas(state.kas, nilai),
     keuangan: { ...k, hariIni: { ...k.hariIni, biaya: { ...k.hariIni.biaya, kompensasi: k.hariIni.biaya.kompensasi + nilai } } },
     statistik: { ...state.statistik, totalBiaya: state.statistik.totalBiaya + nilai },
-    tantangan: state.tantangan.minggu === null ? state.tantangan : tambahProgresTantangan(state.tantangan, 'laba', -nilai),
-    harian: state.harian.jenis === 'laba' ? tambahProgres(state.harian, -nilai) : state.harian,
   };
 }
 
@@ -1598,7 +1638,15 @@ export function perbaruiTantangan(state: GameState, sekarangMs: number, cfg: Kon
   if (state.tantangan.minggu === m.kunci) return state;
   let s = state;
   for (const x of state.tantangan.daftar) if (!x.diklaim && x.progres >= x.target) s = tambahKas(s, hadiahTantangan(s, cfg));
-  const daftar = jenisTantanganMinggu(m.kunci).map((jenis): TantanganAktif => ({ jenis, target: targetTantangan(s, jenis, cfg), progres: 0, diklaim: false }));
+  const daftar = jenisTantanganMinggu(m.kunci).map(
+    (jenis): TantanganAktif => ({
+      jenis,
+      target: targetTantangan(s, jenis, cfg),
+      progres: 0,
+      diklaim: false,
+      ...(jenis === 'kepuasan' ? { ambang: ambangKepuasan(kepuasanTerminal(s, cfg).nilai, cfg) } : {}),
+    }),
+  );
   return { ...s, tantangan: { minggu: m.kunci, selesaiMs: m.selesaiMs, daftar, penumpang: 0 } };
 }
 

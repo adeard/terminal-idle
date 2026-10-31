@@ -195,15 +195,22 @@ export interface KonfigEkonomi {
   /**
    * Tantangan mingguan (sim/tantangan.ts): target ditetapkan saat minggu dimulai
    * dari keadaan terminal saat itu (penumpang = arus rata-rata × penumpangDetik,
-   * laba = laba rata-rata × labaDetik, kepuasan = detik main dengan kepuasan ≥
-   * kepuasanMin, bangun = unit & modernisasi yang dibangun); hadiah tiap
-   * tantangan = sekian menit laba.
+   * laba = laba rata-rata dengan kontrak × labaDetik, kepuasan = detik main dengan
+   * kepuasan ≥ ambang, bangun = unit & modernisasi yang dibangun); hadiah tiap
+   * tantangan = sekian menit laba. Ambang kepuasan = kepuasan saat minggu dimulai,
+   * dibulatkan ke bawah ke kelipatan kepuasanLangkah, dijepit kepuasanAmbangMin–kepuasanMin
+   * (documents/15 bagian 5.2).
    */
   readonly tantangan: {
     readonly penumpangDetik: number;
     readonly labaDetik: number;
     readonly bangun: number;
+    /** Batas atas ambang tantangan kepuasan. */
     readonly kepuasanMin: number;
+    /** Batas bawah ambang tantangan kepuasan. */
+    readonly kepuasanAmbangMin: number;
+    /** Ambang dibulatkan ke bawah ke kelipatan ini. */
+    readonly kepuasanLangkah: number;
     readonly kepuasanDetik: number;
     readonly hadiahMenit: number;
   };
@@ -212,7 +219,7 @@ export interface KonfigEkonomi {
     readonly hadiahMenit: number;
     /** Target "berangkatkan N penumpang" = arus rata-rata × sehari × fraksi ini. */
     readonly fraksiPenumpang: number;
-    /** Target "laba bersih hari ini" = laba rata-rata × sehari × fraksi ini. */
+    /** Target "laba bersih hari ini" = laba rata-rata dengan kontrak PO (dirata-rata) × sehari × fraksi ini. */
     readonly fraksiLaba: number;
   };
   /** Hadiah tiap pencapaian = sekian menit laba saat diklaim. */
@@ -429,7 +436,7 @@ export const EKONOMI: KonfigEkonomi = {
     nataru: { pengaliPasar: 1.3, targetDetik: [1200, 3600, 10800], hadiahMenit: [5, 15, 30], po: 'kembangApi' },
   },
   // Tantangan mingguan: ±2–3 jam main aktif per minggu untuk ketiganya.
-  tantangan: { penumpangDetik: 7200, labaDetik: 10_800, bangun: 15, kepuasanMin: 0.75, kepuasanDetik: 3600, hadiahMenit: 15 },
+  tantangan: { penumpangDetik: 7200, labaDetik: 10_800, bangun: 15, kepuasanMin: 0.75, kepuasanAmbangMin: 0.5, kepuasanLangkah: 0.05, kepuasanDetik: 3600, hadiahMenit: 15 },
   harian: { hadiahMenit: 2, fraksiPenumpang: 0.5, fraksiLaba: 0.5 },
   hadiahMenitPencapaian: 3,
   hadiah: {

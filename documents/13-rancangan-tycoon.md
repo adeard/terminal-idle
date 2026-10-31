@@ -4,6 +4,8 @@
 >
 > **Pembaruan 0.3.1 (dirilis 9 Oktober 2026):** penumpang tidak lagi membayar terminal (biaya layanan & tarif toilet dihapus), pendapatan utama terminal kini **kontrak PO** yang dibayar di muka (bagian 6.5), dan tempo dikalibrasi ulang (bagian 14). Keputusan 9–16 di bagian 2.
 >
+> **Pembaruan dokumen 15 (disetujui owner 31 Oktober 2026, dalam pembangunan):** izin level, slot PO lebih rapat, hadiah armada & percepat proyek, tantangan laba & target harian yang menghitung kontrak dirata-rata, ambang tantangan kepuasan dari awal minggu, dan patokan tempo baru (keputusan 17–20, bagian 4.1, 6.5, 8, 10, 11, 14, 15). Dibangun dua ronde: **ronde 1** = tantangan, target harian, tes kasual, perbaikan baris tujuan; **ronde 2** = izin level, slot PO, petak, hadiah non-uang, patokan tempo baru. Yang belum ada di kode ditandai "(ronde 2)" atau "(ronde 1)" di tempatnya.
+>
 > Angka di dokumen ini adalah hasil kalibrasi (bagian 14), masih bisa digeser. Angka yang berlaku selalu yang di `EKONOMI.tycoon` (`src/config/economy.config.ts`).
 
 ## 1. Ringkasan
@@ -49,9 +51,13 @@ flowchart LR
 | 11 | **Panjang kontrak ditawarkan PO** | 5–30 hari terminal, diundi menurut tingkat PO: PO kecil pendek, PO besar panjang |
 | 12 | **Nilai kontrak ikut armada PO** | Tingkat PO, level PO, dan kelas terminal |
 | 13 | **Biaya daftar PO dihapus** | Mendaftarkan PO gratis; batasnya slot PO & jendela |
-| 14 | **Slot PO terus bertambah** seiring level terminal | Satu slot tiap 10 level setelah Lv 60, sampai 20 di Lv 140 |
+| 14 | **Slot PO terus bertambah** seiring level terminal | Satu slot tiap 10 level setelah Lv 60, sampai 20 di Lv 140. Sejak ronde 2 dokumen 15, slot ke-7/8/9 di Lv 17/19/27 (sebelumnya 20/25/30); ujungnya tetap 20 di Lv 140 (bagian 6.5) |
 | 15 | Loket menampilkan **"+N tiket"**, bukan "+Rp" | Uang tiket milik PO. N = tiket yang dibeli pembeli itu (dengan rombongannya) |
 | 16 | HUD menampilkan **penumpang di terminal**, bukan arus | Penumpang yang sedang menunggu = arus × lama menunggu |
+| 17 | **Izin level** (31 Oktober 2026, dokumen 15; ronde 2): sejak Perluasan 3, slot jendela & jalur juga bertambah dari level | Tidak ada bentang > 45 menit tanpa aksi bernilai sebelum Terpadu. Tempo aktif lebih cepat (bagian 4.1, 8, 14) |
+| 18 | **Hadiah non-uang** (ronde 2): armada PO & percepat proyek, dari target, tantangan, dan iklan opt-in | Hadiah tetap bermakna saat kas menumpuk. Tidak ada hadiah yang hanya lewat iklan (bagian 10) |
+| 19 | **Laba tantangan & target harian menghitung kontrak dirata-rata** (ronde 1) | Kontrak PO sekaligus tidak lagi menyelesaikan tantangan; target harian laba ikut tumbuh (bagian 10) |
+| 20 | **Ambang tantangan kepuasan dari awal minggu** (ronde 1) | Field save opsional `ambang` (skema tetap 3); baris tantangan membuka popup kepuasan (bagian 10, 11) |
 
 Keputusan dokumen 12 yang **tetap berlaku**: loket milik terminal disewa PO, level & kelas terminal dari penumpang, kontrak PO, perluasan lima tahap yang permanen dan bertingkat, proyek tetap berjalan saat offline.
 
@@ -95,16 +101,27 @@ Bila arus jam sibuk melebihi peron, keberangkatan, atau pangkalan, arus semua PO
 
 | Area | Unit | Awal | Slot | Bertambah lewat |
 |---|---|---|---|---|
-| Jalur | 1 halte kedatangan + 1 gerbang keberangkatan | 1 | 5 | Perluasan 4 (Gedung Antarpulau, +2), 5 (+2) |
-| Jendela loket | Disewa satu PO | 1 | 4 | Perluasan 1 (+2), 2 (+2), 3 (lantai 2, +4), 4 (aula kedua, +4), 5 (+4) |
+| Jalur | 1 halte kedatangan + 1 gerbang keberangkatan | 1 | 5 | Perluasan 4 (Gedung Antarpulau, +2), 5 (+2). **Ronde 2:** Perluasan 4 (+1), 5 (+1), ditambah izin Lv 16 dan Lv 26 (+1 masing-masing); totalnya tetap 7 dan 9 |
+| Jendela loket | Disewa satu PO | 1 | 4 | Perluasan 1 (+2), 2 (+2), 3 (lantai 2, +4), 4 (aula kedua, +4), 5 (+4). **Ronde 2:** ditambah izin level (+1 tiap level Lv 11–30, lalu tiap level genap sampai Lv 140) |
 | Blok kursi ruang tunggu | 60 kursi | 1 | 4 | Perluasan 3 (lantai 2, +4) |
-| Petak parkir bus | Kelompok 5 petak (dibangun lewat perluasan) | 2 | 2 | Perluasan 2 (+2), 4 & 5 (dek +4 tiap tahap) |
+| Petak parkir bus | Kelompok 5 petak (dibangun lewat perluasan) | 2 | 2 | Perluasan 2 (+2), 4 & 5 (dek +4 tiap tahap). **Ronde 2:** Perluasan 3 juga +2 (petak 20 → 30) |
 | Kios ruang tunggu | Disewakan | 0 | 3 | |
 | Toko aula (minimarket, apotek) | Disewakan | 0 | 2 | Perluasan 3 (food court) |
 | Toilet | Blok | 0 | 1 | Perluasan 3 (+1) |
 | Lahan parkir kendaraan | Baris | 0 | 1 | Perluasan 2 (baris kedua) |
 | Pos retribusi | Pintu masuk bus | 0 | 1 | |
 | Modernisasi | Sekali beli | | 6 | Seperti sekarang |
+
+**Izin level (keputusan 17, dokumen 15 bagian 3; dibangun di ronde 2).** Sejak Perluasan 3 terminal mendapat izin saat naik level. Izin hanya menambah **slot**; unitnya tetap dibeli seperti biasa, atau dibangun PO yang bergabung. Tidak ada proyek dan tidak ada field save: slot diturunkan dari level (XP) dan tahap perluasan (`EKONOMI.tycoon.izinLevel`).
+
+| Izin | Level |
+|---|---|
+| Slot jendela loket +1 | Tiap level Lv 11–30, lalu tiap level genap Lv 32–140 |
+| Slot jalur +1 | Lv 16 dan Lv 26. Slot tahap jalur menjadi `[5, 5, 5, 5, 6, 7]`, jadi totalnya tetap 7 di Perluasan 4 dan 9 di Perluasan 5 |
+
+- Izin yang levelnya sudah lewat sebelum Perluasan 3 selesai aktif sekaligus saat Perluasan 3 diresmikan.
+- Adegan tidak berubah. Sejak tahap 2 adegan memang hanya menggambar 8 jendela, 5 halte/gerbang, dan 4 kelompok parkir; slot di atasnya sudah tak terlihat sejak 0.3.0.
+- Save lama tidak kehilangan unit: slot baru ≥ slot lama di tiap level dan tahap. Perapian bangunan saat memuat memakai level dari XP.
 
 Di terminal awal (1 jalur, 1 jendela, 2 kelompok petak, satu PO berjurusan Jakarta), arusnya min(permintaan ±135, peron 100, loket 50, keberangkatan 150, pangkalan 333) = 50 pnp/jam. Loket menjadi yang paling lambat, sama seperti sekarang, jadi langkah pertama tutorial tetap "bangun loket". Setelah dua jendela, peron (100) yang paling lambat, sehingga petugas peron dan Jalur 2 langsung berguna. Pangkalan baru membatasi sekitar 300 pnp/jam (perluasan 2).
 
@@ -217,6 +234,7 @@ Semua tarif diatur pemain (bagian 6.4). Angka di bawah memakai tarif bawaan.
 - **Putus**: sisa nilai kontrak dikembalikan pro-rata sebagai **kompensasi** (kas harus cukup), reputasi −10, jeda 3 hari. PO terakhir tidak bisa diputus.
 - **Laporan & hadiah**: buku harian mencatat kontrak pada hari diterima, jadi laba hari itu melonjak. Rata-rata sehari di laporan, hadiah "N menit laba", target tantangan laba, dan laba offline memakai nilai kontrak yang **dirata-rata** sepanjang kontraknya. Peringatan kas menipis memakai laba operasi tanpa kontrak, karena kontrak berikutnya bisa masih berhari-hari lagi.
 - **Slot PO** terus bertambah (keputusan 14): 2 → 3 (Lv 3) → 4 (Lv 6) → 5 (Lv 10) → 6 (Lv 14) → 7 (Lv 20) → 8 (Lv 25) → 9 (Lv 30) → 10 (Lv 40) → … → 20 (Lv 140). Lebih dari 8 butuh aula kedua (perluasan 4).
+  - **Ronde 2 (dokumen 15 bagian 3):** 7 di **Lv 17**, 8 di **Lv 19**, 9 di **Lv 27**; sisanya sama (`EKONOMI.mitra.terminal.slot`). Bersama izin jendela, slot PO 9–20 kini benar-benar terpakai (pemain kasual 15/15 PO di hari nyata ke-14, sebelumnya 7/14).
 
 ## 7. Penumpang, permintaan, kepuasan
 
@@ -269,7 +287,10 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
   | Penumpang kumulatif | 340 | 4,2 rb | 21 rb | 164 rb | 525 rb |
   | Waktu main aktif (pemain serakah) | ±3 menit | ±32 menit | ±1,6 jam | ±6,3 jam | ±13,1 jam |
 
+  Sejak ronde 2 dokumen 15 kurvanya **tidak** diubah, tapi waktunya maju karena dinding Lv 11–20 hilang: Tipe A ±5,1 jam, Terpadu ±10,9 jam (bagian 14). Kurva XP sengaja tidak diperlambat: level diturunkan dari XP yang tersimpan, jadi kurva baru akan menurunkan level dan kelas save yang sudah ada.
+
 - **Kelas terminal**, slot PO, dan kelas bus mengikuti level seperti 0.2.0; slot PO kini terus bertambah (bagian 6.5).
+- **Izin level** (ronde 2, bagian 4.1): sejak Perluasan 3, tiap level di Tipe B dan Tipe A menambah satu slot jendela loket; slot jalur ke-6 dan ke-8 datang di Lv 16 dan Lv 26. Hasilnya, tiap level punya sesuatu untuk dikerjakan.
 - **Perluasan** tetap lima tahap pada Lv 3 / 6 / 10 / 20 / 30, dengan biaya Rp 20 jt / 80 jt / 250 jt / 800 jt / 3 M. Proyeknya tetap sehari terminal. Tiap tahap menambah slot (tabel 4.1), bukan pengali. Setelah selesai, gedungnya punya biaya operasional per hari: Rp 0,5 jt / 2 jt / 6 jt / 20 jt / 60 jt (menumpuk).
 - **Laba** pemain serakah dengan tarif bawaan (dari tes tempo, bagian 14; kontrak PO dirata-rata sepanjang kontraknya):
 
@@ -282,6 +303,8 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
 
   Kontrak PO ±50% pendapatan di awal dan ±75–80% di akhir permainan; sisanya operasi (retribusi, parkir, sewa).
 
+  Sesudah ronde 2 (dokumen 15, simulasi): laba hari ke-10 ±Rp 197 jt dan hari ke-40 ±Rp 663 jt (sebelumnya ±Rp 139 jt dan ±Rp 452 jt), biaya ÷ pendapatan ±18%, tidak ada hari rugi.
+
 ## 9. Offline
 
 - Terminal hanya beroperasi saat game ditutup bila ada **Manajer Operasional**. Tanpa manajer, terminal tutup: tidak ada pendapatan dan tidak ada biaya.
@@ -293,22 +316,40 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
 ## 10. Target, tantangan, penghargaan, event, iklan
 
 - **Target harian**: penumpang (tetap) dan **laba bersih hari ini ≥ X** (X dari laba operasi; kontrak PO yang diterima hari itu ikut menambah kemajuannya). "Upgrade 10×" dihapus.
+  - **Ronde 1 (keputusan 19, dokumen 15 bagian 5.1):** X = setengah laba rata-rata sehari **dengan** kontrak PO yang dirata-rata (tarif bawaan), paling sedikit 12 × Rp 200 rb. Kemajuan bertambah tiap tick main aktif sebesar (laba operasi + kontrak per jam) × jam terminal; uang kontrak yang masuk sekaligus tidak lagi ikut. Sebelumnya X selalu jatuh ke batas bawah Rp 2,4 jt, karena laba operasi hampir selalu minus, dan hanya tercapai di hari ada kontrak.
 - **Tantangan mingguan**: tiga dari empat jenis diundi tiap minggu: penumpang, laba bersih, kepuasan ≥ 75% selama 60 menit main, dan bangun 15 unit atau modernisasi. "Upgrade 40×" dihapus.
+  - **Laba (ronde 1, keputusan 19):** targetnya tetap laba rata-rata dengan kontrak × 180 jam terminal. Kemajuannya sama dengan target harian: kontrak dihitung dirata-rata per jam main, bukan sekaligus; kompensasi putus tidak lagi menguranginya. Sebelumnya tantangan laba minggu pertama selesai di menit main ke-1–2 karena kontrak PO kedua.
+  - **Kepuasan (ronde 1, keputusan 20):** ambangnya = kepuasan saat minggu dimulai, dibulatkan ke bawah ke kelipatan 5%, dijepit 50–75% (mis. 28% → 50%, 56% → 55%, 91% → 75%); lamanya tetap 60 menit main. Ambang disimpan di field opsional `ambang` tantangan itu (skema tetap 3); save lama tanpa field ini menghitungnya dari kepuasan saat dimuat. Sebelumnya 75% hampir mustahil setelah Terpadu, karena permintaan tumbuh melebihi kapasitas peron.
+- **Hadiah non-uang (ronde 2, keputusan 18, dokumen 15 bagian 4):** paket hadiah = uang + **armada** (XP untuk PO berlevel terendah, sebagian dari kebutuhan level berikutnya PO itu) + **percepat proyek** (−6 menit main pada proyek perluasan yang berjalan). PO sasaran armada ditulis sebelum klaim.
+
+  | Sumber | Uang | Armada | Percepat |
+  |---|---|---|---|
+  | Target harian | 2 menit laba | +50% level | 6 menit, bila ada proyek berjalan |
+  | Tantangan mingguan (tiap tantangan) | 15 menit laba | +100% level | – |
+  | Bus Emas (iklan) | 10 menit laba | +25% level | – |
+  | Tombol "Percepat 6 menit" di kartu perluasan (iklan) | – | – | 6 menit, hanya bila sisa proyek > 12 menit (paling banyak 2× per proyek) |
+
+  Klaim 2× (iklan) menggandakan seluruh paket. Penghargaan dan event tetap uang saja. XP terminal sengaja tidak dipakai sebagai hadiah: 5 menit arus per hari terminal memajukan Terpadu ±1,6 jam.
 - **Penghargaan**: yang berbasis level tahap (mis. `level100`) diganti. Kini 20 penghargaan (`PENCAPAIAN_IDS`), antara lain petugas pertama, Manajer Operasional, lima jalur, tujuh hari tanpa rugi, kas Rp 1 M, aula loket penuh, dan Terpadu.
 - **Hadiah "N menit pendapatan"** menjadi "N menit laba": laba rata-rata per jam hari biasa dengan tarif bawaan, termasuk kontrak PO yang dirata-rata, paling sedikit Rp 200 rb per menit supaya tetap terasa saat rugi.
-- **Boost iklan** tetap: pendapatan ×2 selama 30 menit (kontrak PO tidak ikut). Bus Emas tetap.
+- **Boost iklan** tetap: pendapatan ×2 selama 30 menit (kontrak PO tidak ikut). Bus Emas tetap; sejak ronde 2 ia juga memberi armada (tabel di atas). Semua iklan tetap pilihan, dan tiap jenis hadiah iklan juga bisa didapat tanpa iklan.
 - **Event musiman** tetap: pasar penumpang naik (Mudik ×1,5, Nataru ×1,3, HUT RI ×1,17), jadi kapasitas & petugas tambahan terasa gunanya.
 
 ## 11. UI
 
 - **Tab**: Bangun · Petugas · PO · Terminal · Target. Tab Tahap, Fasilitas, dan Modern digabung ke Bangun.
-- **Bangun**: dikelompokkan per area (Peron & jalur, Loket, Ruang tunggu, Pangkalan, Fasilitas, Modernisasi). Tiap kartu menampilkan unit, jumlah/slot, efeknya pada area, biaya, perawatan, dan alasan bila belum bisa (mis. "slot penuh: Perluasan 2").
+- **Bangun**: dikelompokkan per area (Peron & jalur, Loket, Ruang tunggu, Pangkalan, Fasilitas, Modernisasi). Tiap kartu menampilkan unit, jumlah/slot, efeknya pada area, biaya, perawatan, dan alasan bila belum bisa (mis. "slot penuh: Perluasan 2"). Sejak ronde 2, bila izin level datang lebih dulu dari perluasan: "Slot penuh: +1 di Lv L".
 - **Petugas**: jumlah per peran dengan tombol − / +, efeknya, gaji, dan total gaji per hari.
 - **PO**: pengaturan harga per jurusan dihapus. Kartu PO menampilkan harga tiket PO (informasi), kepuasan mitra, kontrak, dan jendela loketnya. Tombol perpanjang berisi tawaran PO ("Perpanjang N hari" & nilainya) dan baru muncul saat sisa kontrak ≤ 3 hari; keterangan putus menyebut kompensasinya. PO tersedia urut katalog, tiap baris berisi tawaran kontraknya.
 - **Terminal**: level & kelas, perluasan, **tarif** (dengan tombol Saran), dan **laporan keuangan** (hari ini & kemarin: pendapatan per sumber, biaya per pos, laba, kas).
+  - **Ronde 2 (dokumen 15 bagian 3.5 dan 4.4):** kartu level mendapat baris "Izin berikutnya: Lv L {izin} · Lv L2 {izin2}". Selama proyek berjalan, kartu perluasan menampilkan tombol iklan "▶ Percepat 6 menit" (paling banyak 2× per proyek).
+- **Target** (dokumen 15 bagian 4.4 dan 5.3):
+  - **Ronde 1:** baris tantangan kepuasan berbunyi "Jaga kepuasan ≥ A% selama 60 menit main", dengan "kini K% ›" di kanan yang membuka popup kepuasan. Selama tantangan itu aktif, popup kepuasan menampilkan baris "🎯 Tantangan: ≥ A% · x/60 menit main". Catatan kartu tantangan menyebut bahwa laba dihitung seperti Laba/hari (kontrak dirata-rata).
+  - **Ronde 2:** baris target harian dan tantangan menampilkan paket hadiahnya ("+Rp X · 🚌 PO … +50%"). Toast setelah klaim menyebut kemajuan armada PO itu.
+- **Toast & baris tujuan, ronde 2:** toast naik level menyebut izin yang terbuka ("🏢 Terminal naik ke Lv 16: slot jalur +1"). Tingkat 5 baris tujuan menampilkan izin terdekat ("⬆️ Lv 17: slot PO ke-7 · kini Lv 16"). Popup offline menyebut izin yang terbuka selama pergi.
 - **HUD**: kas, laba, penumpang di terminal (keputusan 16), kepuasan, jam.
   - **Laba rata-rata per hari** ("Laba ±Rp X/hari", termasuk kontrak PO yang dirata-rata), bukan lagi "Hari ini ±Rp X · N pnp". Netral selama tutorial dan jam terminal pertama, lalu hijau/merah; diketuk membuka laporan keuangan. Disetujui owner 29 Oktober 2026, dalam pembangunan (dokumen 14 bagian 4.1): laba hari ini hampir selalu merah di hari tanpa kontrak, walau terminal sehat.
-  - Baris di bawahnya adalah **tujuan berikutnya** (dokumen 14 bagian 3), menggantikan baris petunjuk. Saran Manajer Operasional pindah ke sana (muncul saat gajinya aman dan, sejak 31 Oktober 2026, saat laba offline-nya sehari tidak minus), dan penutup tutorial tidak lagi menyarankannya.
+  - Baris di bawahnya adalah **tujuan berikutnya** (dokumen 14 bagian 3), menggantikan baris petunjuk. Saran Manajer Operasional pindah ke sana (muncul saat gajinya aman dan, sejak 31 Oktober 2026, saat laba offline-nya sehari tidak minus), dan penutup tutorial tidak lagi menyarankannya. Ronde 1 dokumen 15 (perbaikan U-2): kunci tujuan berbiaya memuat unitnya (mis. nomor jalur), supaya pembelian berikutnya dinilai lagi dengan cadangan kas.
   - Pil kepuasan memakai aturan netral yang sama dengan pil laba: tidak merah atau hijau selama tutorial dan jam terminal pertama (dokumen 14 bagian 4.1, disetujui owner 31 Oktober 2026).
 - **Adegan**: label area (PERON, LOKET, KEBERANGKATAN, PANGKALAN) bisa diketuk untuk membuka kartu Bangun area itu. Area yang membatasi arus ditandai sorotan lantai merah berdenyut; label teks "PALING LAMBAT" dihapus atas permintaan user (9 Oktober 2026).
 - **Mode ringkas** hanya menyembunyikan panel. Rel chip tahap dihapus.
@@ -378,6 +419,40 @@ Kalibrasi ulang 9 Oktober 2026 (penumpang tidak membayar, kontrak PO):
 - Strategi wajar menyisakan kas untuk kerugian operasi sampai tawaran perpanjangan berikutnya. Tanpa itu, setelah membeli Jalur 6 di akhir permainan, kas habis sebelum kontrak berikutnya dan petugas berhenti.
 - Jalur 2 kini menit ke-27 (patokan lama 8–12 menit): PO terbaik yang didaftarkan di menit 0 menyewa tiga jendela, sehingga loket, bukan jalur, yang membatasi sampai perluasan 1 selesai. Jeda terpanjang di jam pertama (±24 menit) adalah lama proyek perluasan. Pemain yang mengikuti tutorial tetap membangun Jalur 2 di menit-menit pertama.
 
+### Kalibrasi ulang 31 Oktober 2026: izin level (dokumen 15, disetujui owner)
+
+Dasar: gerbang tahap 0 ADR 004, "tidak ada bentang buntu > 45 menit main aktif sebelum Terpadu". Buntu = tidak ada aksi yang menambah laba atau penumpang, dan perluasan belum terbuka. Bukti dan varian yang ditolak ada di `docs/design/20261031-fondasi-saran-3-6.md` (repo tim). **Patokan baru di bawah berlaku di `tests/tycoon-tempo.test.ts` sejak ronde 2.** Sampai ronde 2 selesai, kode dan tes masih memakai tabel 9 Oktober di atas.
+
+| Momen | Patokan lama | 0.3.1 | Sesudah ronde 2 (simulasi) | Patokan baru |
+|---|---|---|---|---|
+| PO kedua / Perluasan 1 dimulai / Jalur 2 | < 3 / < 45 / < 30 menit | 0 / 3 / 27 menit | 0 / 3 / 27 menit | tetap |
+| Jeda terlama tanpa membeli di jam pertama | ≤ 25 menit | 24 menit | 24 menit | tetap |
+| Lv 6 / Tipe B (Lv 10) | 15–45 / 75–130 menit | 32 / 97 menit | 32 / 97 menit | tetap |
+| Tipe A (Lv 20) | 5–8,5 jam | 6,3 jam | 5,08 jam | **4,5–8,5 jam** |
+| Terpadu (Lv 30) | 12–17,5 jam | 13,1 jam | 10,9 jam | **10–17,5 jam** |
+| Perluasan 5 selesai | sebelum 17,5 jam | 13,6 jam | 11,4 jam | tetap |
+| Bentang buntu terpanjang sebelum Terpadu | – | 257 menit (Lv 11) | 41 menit (Lv 7) | **≤ 45 menit** (baru) |
+| Laba hari 10 > 2× hari 1; hari 40 > 2× hari 10; biaya ÷ pendapatan 10–40%; tiap hari laba > 0 | tetap | lulus (20,2%) | lulus (18,3%) | tetap |
+| Petugas berhenti karena kas habis | 0 | 0 | 0 | tetap |
+
+Catatan kalibrasi:
+
+- **Jendela saja tidak cukup.** Membuka slot jendela dari level hanya memindahkan dinding: pertama ke pangkalan (petak 20 di tahap 3), lalu ke pasar (tidak ada slot PO di Lv 14–20), lalu ke peron (jalur 7 sampai Perluasan 5). Yang lolos adalah paket izin jendela + jalur Lv 16/26 + petak tahap 3 = 30 + slot PO 7/8/9 di Lv 17/19/27.
+- **Tempo lebih cepat** karena dinding 4 jam itu sendiri dulu yang memperlambat game. Kurva XP tidak diubah: level diturunkan dari XP tersimpan, jadi memperlambatnya akan menurunkan level dan kelas save yang ada.
+- Fase 6,5–13,5 jam kini berisi ±200 menit "menabung" untuk jalur Rp 1,5–4 M dan Perluasan 5, bukan buntu: uang kembali punya arti. PO terdaftar sampai jam ke-24: 7 → 10.
+- Kepuasan median pemain serakah di 10–13,5 jam turun 79% → 66%: PO yang lebih banyak menambah permintaan di atas kapasitas peron.
+- Dengan hadiah yang diklaim (target harian dan sepertiga Bus Emas), Terpadu ±10,5 jam dan satu bentang 48–49 menit. Patokan tes tetap memakai pemain serakah tanpa hadiah.
+
+**Patokan pemain kasual (`tests/tycoon-kasual.test.ts`, ronde 1; batas ronde 2 sesudah izin level).** Pemain serakah bermain dalam sesi pendek. Di antara sesi berlaku rumus offline bagian 9 (dengan Manajer, direkrut menurut aturan baris tujuan dokumen 14). Panjangnya 14 hari nyata.
+
+| Ukuran | K3 (3 sesi/hari: 15 + 10 + 20 mnt) | K2 (2 sesi/hari: 10 + 10 mnt) | Batas ronde 1 / ronde 2 |
+|---|---|---|---|
+| Terpadu | hari nyata ke-2 | hari nyata ke-3 | K3 hari 2–4, K2 hari 3–5 |
+| XP terminal dari offline | 94% | 96% | K3 85–98% |
+| Sesi berisi keputusan hari 4–7 (0.3.1 → ronde 2) | 0% → 25% | 25% → 75% | K3 ≥ 0% / ≥ 20%; K2 ≥ 20% / ≥ 50% |
+| Hari terakhir dengan keputusan (0.3.1 → ronde 2) | 3 → 12 | 4 → 12 | K3 ≥ 3 / ≥ 10 |
+| Petugas berhenti | 0 | 0 | 0 |
+
 Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.ts`, `operasi.test.ts` (termasuk pasar mutlak: membangun melebihi permintaan tidak menambah arus), `keuangan.test.ts` (termasuk overbuild merugi dan kas tidak pernah minus). Tes offline (Manajer Operasional, batas 8 jam, jam mundur, tarif ekstrem tidak menggelembungkan laba offline, kas habis) ada di `tests/state.test.ts` sejak langkah 2.
 
 ## 15. Rencana implementasi bertahap
@@ -405,6 +480,12 @@ Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.t
    - judul "Bustation: Idle Bus" sengaja belum diubah (nama, `index.html`, manifest PWA, og-image): menunggu keputusan.
 
 7. ✓ **Pembaruan ekonomi**, dirilis **0.3.1** (9 Oktober 2026; `versiMinimal` 0.3.1): biaya layanan & toilet dihapus, kontrak PO dibayar di muka (bagian 6.5), slot PO terus bertambah, "+N tiket" di loket, penumpang di terminal di HUD, panel layar penuh, dan kalibrasi ulang (bagian 14). Save skema 3 tetap; PO dari save 0.3.0 dianggap berkontrak 7 hari yang sudah dibayar.
+
+8. **Fondasi tahap 0** (dokumen 15; disetujui owner 31 Oktober 2026, dalam pembangunan, brief `docs/tasks/20261031-fondasi-saran-3-6.md` di repo tim):
+   - **ronde 1**: tes tempo kasual (`tests/tycoon-kasual.test.ts`, `jalankanKasual`); laba tantangan & target harian dengan kontrak dirata-rata; ambang tantangan kepuasan (field save opsional `ambang`, skema tetap 3) dan tautan ke popup kepuasan; perbaikan kunci histeresis baris tujuan (U-2);
+   - **ronde 2**: izin level, slot PO lebih rapat, petak tahap 3; paket hadiah (armada PO, percepat proyek; Bus Emas dan tombol iklan "Percepat 6 menit"); patokan tempo baru (bagian 14).
+
+   Tanpa model 3D baru dan tanpa peristiwa analitik baru (`iklan_hadiah.tempat` mendapat nilai `percepatProyek`). Ingatkan `npm run cap:sync` sebelum APK berikutnya.
 
 ## 16. Keputusan terbuka
 

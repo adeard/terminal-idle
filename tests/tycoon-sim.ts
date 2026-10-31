@@ -408,3 +408,149 @@ export function jalankanSerakah(detik: number, cfg: KonfigEkonomi = EKONOMI): Ha
   return { akhir: s, catatan, level, perluasan, labaHarian };
 }
 
+// ---------------------------------------------------------------------------
+// Pemain kasual (documents/15 bagian 2): pemain serakah di sesi pendek, offline di antaranya
+
+export interface JadwalKasual {
+  readonly nama: string;
+  /** Sesi tiap hari nyata: [jam dinding mulai, menit main]. */
+  readonly sesi: readonly (readonly [number, number])[];
+}
+
+/** Profil pemain kasual documents/15 bagian 2.1; keduanya merekrut Manajer Operasional. */
+export const JADWAL_KASUAL = {
+  K3: { nama: 'K3 (3 sesi/hari)', sesi: [[7.5, 15], [12.5, 10], [21, 20]] },
+  K2: { nama: 'K2 (2 sesi/hari)', sesi: [[8, 10], [20, 10]] },
+} as const satisfies Record<string, JadwalKasual>;
+
+/** Rata-rata per jam terminal sepanjang profil hari: pendapatan & biaya operasi (tanpa kontrak) dan arus tiap PO. */
+function rataHari(s: SimTycoon, cfg: KonfigEkonomi): { pendapatan: number; biaya: number; arusPo: number[] } {
+  const k = keadaan(s, cfg);
+  let pendapatan = 0;
+  let biaya = 0;
+  const arusPo = s.po.map(() => 0);
+  for (const [ritme, jam, malam] of PROFIL) {
+    const op = hitungOperasi(k, { ritme, event: 1 }, cfg);
+    const keu = keuanganPerJam(k, op, malam, cfg);
+    pendapatan += keu.totalPendapatan * jam;
+    biaya += keu.totalBiaya * jam;
+    op.po.forEach((p, i) => (arusPo[i]! += p.arus * jam));
+  }
+  return { pendapatan: pendapatan / 24, biaya: biaya / 24, arusPo: arusPo.map((a) => a / 24) };
+}
+
+/**
+ * Selama game ditutup (rumus jalankanOffline di src/sim/state.ts): hanya dengan Manajer Operasional,
+ * paling lama batas offline; pendapatan & kontrak dirata-rata × efisiensi offline, biaya penuh; XP
+ * terminal & PO × efisiensi; kontrak tidak berkurang; proyek perluasan tetap berjalan. Kas tidak minus:
+ * bila habis, petugas berhenti (dihitung di `berhenti`).
+ */
+function majukanOffline(s: SimTycoon, detikNyata: number, cfg: KonfigEkonomi): { readonly s: SimTycoon; readonly laba: number; readonly xp: number } {
+  const detik = Math.min(detikNyata, cfg.tycoon.offline.batasDetik);
+  const x = salinSim(s);
+  let laba = 0;
+  let xp = 0;
+  if (x.petugas.includes('manajerOperasional')) {
+    const ef = cfg.tycoon.offline.efisiensi;
+    const jam = detik / 60;
+    const r = rataHari(x, cfg);
+    const labaJam = (r.pendapatan + kontrakRata(x)) * ef - r.biaya;
+    laba = labaJam * jam;
+    const kas = majukanKas(x.kas, labaJam, jam, x.tunggakan);
+    x.kas = kas.kas;
+    x.tunggakan = kas.tunggakanJam;
+    for (let i = 0; i < kas.berhenti; i++) x.petugas = berhentiKasHabis(x.petugas);
+    x.berhenti += kas.berhenti;
+    r.arusPo.forEach((a, i) => (x.po[i]!.xp += (a / cfg.tycoon.kapasitas.penumpangPerBus) * jam * ef));
+    xp = r.arusPo.reduce((p, q) => p + q, 0) * jam * ef;
+    x.xpTerminal += xp;
+  }
+  if (x.proyekDetik > 0) {
+    x.proyekDetik -= detik;
+    if (x.proyekDetik <= 1e-9) {
+      x.proyekDetik = 0;
+      x.perluasan++;
+    }
+  }
+  return { s: x, laba, xp };
+}
+
+/** Aturan baris tujuan (documents/14 bagian 3.1): sesudah merekrut Manajer, laba rata-rata ≥ 0 dan laba offline sehari terminal ≥ 0. */
+function manajerUntungSim(s: SimTycoon, cfg: KonfigEkonomi): boolean {
+  if (s.petugas.includes('manajerOperasional')) return false;
+  const x = { ...salinSim(s), petugas: rekrut(s.petugas, 'manajerOperasional') };
+  return labaRata(x, cfg) >= 0 && majukanOffline(x, DETIK_HARI, cfg).laba >= 0;
+}
+
+export interface SesiKasual {
+  readonly hari: number;
+  readonly sesi: number;
+  /** Keputusan sepanjang sesi: aksi berbayar atau PO baru. */
+  readonly keputusan: number;
+}
+
+export interface HasilKasual {
+  /** Hari nyata (dari 1) saat kelas terminal pertama kali tercapai (1 Tipe B, 2 Tipe A, 3 Terpadu), dilihat di awal & akhir tiap sesi. */
+  readonly hariKelas: ReadonlyMap<number, number>;
+  /** Hari nyata saat tahap perluasan ke-i selesai (dilihat seperti hariKelas). */
+  readonly hariPerluasan: readonly number[];
+  /** Porsi XP terminal yang didapat offline. */
+  readonly porsiXpOffline: number;
+  readonly sesi: readonly SesiKasual[];
+  /** Hari Manajer Operasional direkrut (null = tidak pernah). */
+  readonly hariManajer: number | null;
+  /** Keadaan akhir (berhenti = petugas yang berhenti karena kas habis, main aktif & offline). */
+  readonly akhir: SimTycoon;
+}
+
+/**
+ * Pemain kasual (documents/15 bagian 2.1): pemain serakah bermain di jam dinding jadwal (langkah 10 detik
+ * main, keputusan tiap jam terminal, seperti jalankanSerakah); di antara sesi terminal berjalan offline.
+ * Manajer Operasional direkrut di akhir sesi begitu aturan baris tujuan terpenuhi.
+ */
+export function jalankanKasual(jadwal: JadwalKasual, hari: number, cfg: KonfigEkonomi = EKONOMI): HasilKasual {
+  const DT = 10;
+  let s = buatSim(cfg);
+  const catatan: Catatan[] = [];
+  const hariKelas = new Map<number, number>();
+  const hariPerluasan: number[] = [];
+  const sesi: SesiKasual[] = [];
+  let xpOffline = 0;
+  let xpAktif = 0;
+  let akhirSesi: number | null = null;
+  let hariManajer: number | null = null;
+  const lihat = (h: number): void => {
+    const kelas = kelasDariLevel(levelTerminalSim(s, cfg), cfg);
+    for (let k = 1; k <= kelas; k++) if (!hariKelas.has(k)) hariKelas.set(k, h);
+    while (hariPerluasan.length < s.perluasan) hariPerluasan.push(h);
+  };
+  for (let h = 1; h <= hari; h++) {
+    jadwal.sesi.forEach(([jamMulai, menit], i) => {
+      const mulai = ((h - 1) * 24 + jamMulai) * 3600;
+      if (akhirSesi !== null) {
+        const o = majukanOffline(s, mulai - akhirSesi, cfg);
+        s = o.s;
+        xpOffline += o.xp;
+      }
+      lihat(h);
+      const awal = catatan.length;
+      const selesai = s.detik + menit * 60;
+      for (let n = 0; s.detik < selesai; n++) {
+        if (n % 6 === 0) s = putuskan(s, catatan, cfg);
+        const xp = s.xpTerminal;
+        s = majukan(s, DT, cfg);
+        xpAktif += s.xpTerminal - xp;
+      }
+      const keputusan = catatan.slice(awal).filter((c) => c.biaya > 0 || c.aksi.startsWith('po:')).length;
+      sesi.push({ hari: h, sesi: i + 1, keputusan });
+      if (manajerUntungSim(s, cfg)) {
+        s = { ...s, petugas: rekrut(s.petugas, 'manajerOperasional') };
+        hariManajer ??= h;
+      }
+      lihat(h);
+      akhirSesi = mulai + menit * 60;
+    });
+  }
+  return { hariKelas, hariPerluasan, porsiXpOffline: xpOffline / Math.max(1, xpOffline + xpAktif), sesi, hariManajer, akhir: s };
+}
+

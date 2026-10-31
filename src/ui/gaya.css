@@ -1589,6 +1589,12 @@ body {
   }
 }
 
+/* Landscape pendek: popup bergulir, bukan terpotong di atas & bawah (baris tantangan menambah tingginya). */
+.popup-kepuasan {
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+}
+
 .popup-kepuasan .kepuasan-wajah {
   font-size: 44px;
   line-height: 1;
@@ -1599,6 +1605,13 @@ body {
   margin: 4px 0 10px;
   color: #a9bcff;
   font-weight: 700;
+}
+
+.kepuasan-tantangan {
+  margin: 4px 0 0;
+  color: #f9a8d4;
+  font-weight: 800;
+  font-size: 14px;
 }
 
 .kepuasan-daftar {
@@ -2724,8 +2737,35 @@ body {
   grid-column: 2;
 }
 
-.tantangan-baris .bar {
+.tantangan-bilah {
   grid-column: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* "kini {k}% ›" (tantangan kepuasan): teks kecil, area ketuk 44 px tanpa menambah tinggi baris. */
+.tantangan-kini {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -19px 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: #a9bcff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tantangan-kini:focus-visible {
+  outline: 2px solid #a9bcff;
+  outline-offset: -2px;
+  border-radius: 6px;
 }
 
 .tantangan-angka {

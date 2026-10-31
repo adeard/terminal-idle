@@ -176,6 +176,24 @@ export function manajerUntung(state: GameState, cfg: KonfigEkonomi = EKONOMI): b
   return hitungOffline(pergi, DETIK_SEHARI * 1000, cfg).laba >= 0;
 }
 
+/**
+ * Unit yang disarankan, bagian kunci tujuan "area" (perbaikan U-2, documents/15 bagian 3.4): nomor jalur,
+ * biaya jendela, id modernisasi, peran petugas. Unit berikutnya jadi tujuan baru yang dinilai lagi dengan
+ * cadangan B, bukan lewat histeresis "sudah tampil".
+ */
+function unitPerbaikan(p: PerbaikanArea): string | number {
+  switch (p.jenis) {
+    case 'jalur':
+      return p.nomor;
+    case 'jendela':
+      return p.biaya;
+    case 'teknologi':
+      return p.teknologi;
+    case 'rekrut':
+      return p.petugas;
+  }
+}
+
 /** PO yang disarankan untuk didaftarkan: yang pertama (urutan tab PO) di antara yang bisa. */
 function poBisaDidaftarkan(state: GameState, cfg: KonfigEkonomi): PoId | null {
   return [...PO_IDS].sort((a, b) => urutanPo(a, cfg) - urutanPo(b, cfg)).find((id) => bisaDaftarPo(state, id, cfg)) ?? null;
@@ -186,7 +204,8 @@ function poBisaDidaftarkan(state: GameState, cfg: KonfigEkonomi): PoId | null {
  * Calon tingkat 2–3 yang belum aman tidak dimasukkan; perluasan yang levelnya cukup tapi belum aman
  * menjadi "menabung" (tingkat 4).
  * @param kunciTampil tujuan yang sedang tampil: tujuan berbiaya tetap berlaku selama kas ≥ biayanya
- *   (tanpa cadangan), supaya tidak hilang-muncul saat kas naik-turun di sekitar ambang.
+ *   (tanpa cadangan), supaya tidak hilang-muncul saat kas naik-turun di sekitar ambang. Kunci tujuan
+ *   berbiaya memuat unitnya (jalur ke-n, biaya jendela/bangunan), jadi histeresis hanya berlaku untuk unit itu.
  */
 export function daftarTujuan(state: GameState, kunciTampil: string | null, cfg: KonfigEkonomi = EKONOMI): TujuanDinilai[] {
   const hasil: TujuanDinilai[] = [];
@@ -266,13 +285,13 @@ export function daftarTujuan(state: GameState, kunciTampil: string | null, cfg: 
     if ((area === 'peron' || area === 'keberangkatan') && biayaJalur !== null)
       calon.push({ perbaikan: { jenis: 'jalur', nomor: state.terminal.bangunan.jalur + 1, biaya: biayaJalur }, aksi: { jenis: 'bangun', bangunan: 'jalur' }, gaji: false });
     for (const c of calon) {
-      const kunci = `area:${area}:${c.perbaikan.jenis}`;
+      const kunci = `area:${area}:${c.perbaikan.jenis}:${unitPerbaikan(c.perbaikan)}`;
       if (aman(kunci, c.aksi, c.gaji)) hasil.push({ jenis: 'area', tingkat: 3, kunci, siap: true, aksi: c.aksi, area, perbaikan: c.perbaikan });
     }
   }
   const kp = perbaikanKepuasan(state, cfg);
   if (kp) {
-    const kunci = `kepuasan:${kp.komponen}:${kp.perbaikan.jenis === 'rekrut' ? kp.perbaikan.petugas : kp.perbaikan.bangunan}`;
+    const kunci = `kepuasan:${kp.komponen}:${kp.perbaikan.jenis === 'rekrut' ? kp.perbaikan.petugas : `${kp.perbaikan.bangunan}:${kp.perbaikan.biaya}`}`;
     if (aman(kunci, kp.aksi, kp.perbaikan.jenis === 'rekrut'))
       hasil.push({ jenis: 'kepuasan', tingkat: 3, kunci, siap: true, aksi: kp.aksi, komponen: kp.komponen, nilai: kp.nilai, perbaikan: kp.perbaikan });
   }

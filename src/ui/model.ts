@@ -15,6 +15,7 @@ import { AREA_IDS, dayaTarikTycoon, penumpangMenunggu, type AreaId } from '../si
 import { maksPetugas } from '../sim/petugas';
 import {
   acuanHarian,
+  ambangTantangan,
   biayaBangunState,
   bisaBangun,
   bisaBeliTeknologi,
@@ -36,6 +37,7 @@ import {
   jumlahRincian,
   kelasBusBeroperasi,
   kelasTerminal,
+  kepuasanTerminal,
   keuanganSekarang,
   kurangPerpanjangPo,
   labaDenganKontrak,
@@ -124,6 +126,8 @@ export interface ModelKepuasan {
   readonly satpam: AdaPerlu;
   /** Fasilitas yang belum ada (toilet, kios & toko, lahan parkir). */
   readonly fasilitasKurang: readonly BangunanId[];
+  /** Tantangan kepuasan minggu ini yang belum selesai (baris atas popup), null bila tidak ada. */
+  readonly tantangan: { readonly ambang: number; readonly menit: number; readonly targetMenit: number } | null;
 }
 
 /** Jam terminal di HUD. */
@@ -405,6 +409,8 @@ export interface ModelTantangan {
   readonly rasio: number;
   readonly selesai: boolean;
   readonly diklaim: boolean;
+  /** Tantangan kepuasan: kepuasan minimal yang dijaga (null untuk jenis lain). */
+  readonly ambang: number | null;
 }
 
 /** Tantangan minggu ini; hadiah tiap tantangan sama (sekian menit laba). */
@@ -412,7 +418,8 @@ export interface ModelMingguan {
   readonly selesaiMs: number;
   readonly daftar: readonly ModelTantangan[];
   readonly hadiah: number;
-  readonly kepuasanMin: number;
+  /** Kepuasan penumpang sekarang ("kini {k}% ›" di baris tantangan kepuasan). */
+  readonly kepuasanKini: number;
 }
 
 /** Rekor pribadi & hitungan hari terminal ini. */
@@ -485,6 +492,7 @@ export function buatModel(state: GameState, cfg: KonfigEkonomi = EKONOMI): Model
   const k = op.kepuasan;
   const kp = cfg.tycoon.kepuasan;
   const hariIni = state.keuangan.hariIni;
+  const puas = state.tantangan.daftar.find((x) => x.jenis === 'kepuasan' && x.progres < x.target);
   const kepuasan: ModelKepuasan = {
     nilai: k.nilai,
     kelancaran: k.kelancaran,
@@ -500,6 +508,7 @@ export function buatModel(state: GameState, cfg: KonfigEkonomi = EKONOMI): Model
     petugasKebersihan: { ada: n.kebersihan, perlu: Math.ceil(op.arusPuncak / kp.arusPerPetugasKebersihan - 1e-9) },
     satpam: { ada: n.satpam, perlu: b.jalur },
     fasilitasKurang: (['toilet', 'kios', 'lahanParkir'] as const).filter((id) => (id === 'kios' ? b.kios + b.toko : b[id]) === 0),
+    tantangan: puas ? { ambang: ambangTantangan(puas, cfg), menit: Math.floor(puas.progres / 60), targetMenit: Math.round(puas.target / 60) } : null,
   };
   return {
     hud: {
@@ -845,7 +854,7 @@ function modelTarget(
       : {
           selesaiMs: tg.selesaiMs,
           hadiah: hadiahTantangan(state, cfg),
-          kepuasanMin: cfg.tantangan.kepuasanMin,
+          kepuasanKini: kepuasanTerminal(state, cfg).nilai,
           daftar: tg.daftar.map((x) => ({
             jenis: x.jenis,
             target: x.target,
@@ -853,6 +862,7 @@ function modelTarget(
             rasio: x.target > 0 ? Math.min(1, x.progres / x.target) : 1,
             selesai: x.progres >= x.target,
             diklaim: x.diklaim,
+            ambang: x.jenis === 'kepuasan' ? ambangTantangan(x, cfg) : null,
           })),
         };
   const hariIni = state.keuangan.hariIni;

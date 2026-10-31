@@ -3,11 +3,11 @@ import { butirLencana, cadanganKas, daftarTujuan, jumlahLencana, kasMenipis, man
 import { cocokUntukTutorial } from '../src/app/tutorial';
 import { EKONOMI } from '../src/config/economy.config';
 import { PO_IDS, TEKNOLOGI_IDS, type PoId } from '../src/sim/fitur';
-import { acuanHarian, aturTarif, bangun, beliTeknologi, buatStateBaru, daftarPo, DETIK_SEHARI, hitungOffline, mulaiPerluasan, rekrutPetugas, type GameState } from '../src/sim/state';
+import { acuanHarian, aturTarif, bangun, beliTeknologi, biayaBangunState, buatStateBaru, daftarPo, DETIK_SEHARI, hitungOffline, mulaiPerluasan, rekrutPetugas, type GameState } from '../src/sim/state';
 import { gayaTujuan, sasaranTujuan, teksTujuan } from '../src/ui/baris-tujuan';
 import { buatModel } from '../src/ui/model';
 import { NAMA_PO, TEKS } from '../src/ui/teks';
-import { denganBangunan, denganLevelTerminal, denganPerluasan, denganPetugas, kaya, stateOtomatis, T0 } from './helpers';
+import { denganBangunan, denganLevelTerminal, denganPerluasan, denganPetugas, denganPo, kaya, stateOtomatis, T0 } from './helpers';
 
 const P1 = EKONOMI.mitra.perluasan[0]!;
 const jenis = (d: readonly TujuanDinilai[]): JenisTujuan[] => d.map((t) => t.jenis);
@@ -201,6 +201,41 @@ describe('daftarTujuan: tingkat 3 hanya yang aman', () => {
     expect(adaModern(harga + P1.biaya + cadanganB + 1)).toBe(true);
     // Tanpa perluasan terbuka (Lv 2), modernisasi + cadangan sudah cukup.
     expect(daftarTujuan({ ...denganLevelTerminal(t, 2), kas: harga + cadanganKas(beliTeknologi(denganLevelTerminal(t, 2), tek), EKONOMI, 1) + 1 }, null).some((x) => x.jenis === 'area' && x.perbaikan.jenis === 'teknologi')).toBe(true);
+  });
+
+  it('kunci tujuan berbiaya memuat unitnya: nomor jalur, biaya jendela, id modernisasi, peran petugas, biaya bangunan kepuasan (perbaikan U-2)', () => {
+    const kunci = (s: GameState): string[] => daftarTujuan(kaya(s), null).map((t) => t.kunci);
+    const s = duaPo(stateOtomatis());
+    expect(kunci(s)).toEqual(expect.arrayContaining(['area:peron:rekrut:peron', 'area:peron:teknologi:rambuHalte', 'area:peron:jalur:2']));
+    const loket = denganBangunan(s, { jalur: 2 });
+    expect(kunci(loket)).toContain(`area:loket:jendela:${biayaBangunState(loket, 'jendela')}`);
+    const fasilitas = denganPetugas(denganBangunan(s, { jalur: 2 }), ['kebersihan', 'satpam']);
+    expect(kunci(fasilitas)).toContain(`kepuasan:fasilitas:toilet:${biayaBangunState(fasilitas, 'toilet')}`);
+  });
+
+  it('perbaikan U-2: setelah Jalur 3 dibeli dengan saran tampil, saran Jalur 4 dinilai dengan cadangan B (AC-GP-05)', () => {
+    // Enam PO menyewa 3 jendela: Peron paling lambat, sebelum dan sesudah Jalur 3.
+    const s = (['ondelOndel', 'peuyeumKilat', 'lumpiaKilat', 'bakpiaRasa', 'wayangLestari', 'arekEkspres'] as const).reduce(
+      (x, id) => denganPo(x, id, { level: 3, loket: 3 }),
+      stateOtomatis({ jalur: 2 }),
+    );
+    const jalur = (d: readonly TujuanDinilai[]): Extract<TujuanDinilai, { jenis: 'area' }> | undefined =>
+      d.find((t): t is Extract<TujuanDinilai, { jenis: 'area' }> => t.jenis === 'area' && t.perbaikan.jenis === 'jalur');
+    const saran3 = jalur(daftarTujuan(kaya(s), null))!;
+    expect(saran3).toMatchObject({ kunci: 'area:peron:jalur:3', area: 'peron', perbaikan: { jenis: 'jalur', nomor: 3 } });
+    // Saran Jalur 3 tampil, lalu dibeli.
+    const s3 = { ...bangun(kaya(s), 'jalur'), kas: 0 };
+    expect(s3.terminal.bangunan.jalur).toBe(3);
+    const biaya4 = biayaBangunState(s3, 'jalur')!;
+    const cadanganB = cadanganKas(bangun(kaya(s3), 'jalur'), EKONOMI, 1);
+    expect(cadanganB).toBeGreaterThan(0);
+    // Kas cukup untuk Jalur 4 tapi tidak untuk cadangannya: kunci yang tampil (Jalur 3) tidak meloloskannya.
+    const tipis = { ...s3, kas: biaya4 + cadanganB - 1 };
+    expect(jalur(daftarTujuan(tipis, saran3.kunci))).toBeUndefined();
+    expect(jalur(daftarTujuan({ ...s3, kas: biaya4 + cadanganB + 1 }, saran3.kunci))).toMatchObject({ kunci: 'area:peron:jalur:4', perbaikan: { nomor: 4, biaya: biaya4 } });
+    // Histeresis tetap berlaku untuk unit yang sedang tampil: Jalur 4 sekali tampil bertahan selama kas ≥ biayanya.
+    expect(jalur(daftarTujuan(tipis, 'area:peron:jalur:4'))).toMatchObject({ kunci: 'area:peron:jalur:4' });
+    expect(jalur(daftarTujuan({ ...s3, kas: biaya4 - 1 }, 'area:peron:jalur:4'))).toBeUndefined();
   });
 
   it('kepuasan < 75%: komponen berbobot paling kurang yang punya perbaikan (di sini kebersihan → petugas kebersihan)', () => {

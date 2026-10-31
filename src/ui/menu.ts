@@ -894,7 +894,7 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
 // Tantangan mingguan & rekor
 
 /** Tugas satu tantangan mingguan. */
-function teksTantangan(t: ModelTantangan, m: ModelMingguan): string {
+function teksTantangan(t: ModelTantangan): string {
   switch (t.jenis) {
     case 'penumpang':
       return TEKS.tantanganPenumpang(formatAngka(t.target));
@@ -903,7 +903,7 @@ function teksTantangan(t: ModelTantangan, m: ModelMingguan): string {
     case 'bangun':
       return TEKS.tantanganBangun(t.target);
     case 'kepuasan':
-      return TEKS.tantanganKepuasan(persen(m.kepuasanMin), Math.round(t.target / 60));
+      return TEKS.tantanganKepuasan(persen(t.ambang ?? 0), Math.round(t.target / 60));
   }
 }
 
@@ -920,14 +920,25 @@ function angkaTantangan(t: ModelTantangan): string {
   }
 }
 
-/** Kartu tantangan mingguan: tiga baris berbilah dengan tombol klaim. */
-function buatKartuTantangan(kirim: Kirim): { readonly elemen: HTMLElement; perbarui(m: ModelMingguan | null): void } {
+/**
+ * Kartu tantangan mingguan: tiga baris berbilah dengan tombol klaim. Baris tantangan kepuasan yang belum
+ * selesai menampilkan "kini {k}% ›" di kanan bilah, yang membuka popup kepuasan (documents/15 bagian 5.2).
+ */
+function buatKartuTantangan(kirim: Kirim, bukaKepuasan?: () => void): { readonly elemen: HTMLElement; perbarui(m: ModelMingguan | null): void } {
   const elemen = el('div', 'target-kartu kartu-kolom tantangan-kartu');
   const judul = el('div', 'target-judul');
   const daftar = el('div', 'tantangan-daftar');
   const catatan = el('div', 'kelas-berikut', TEKS.tantanganCatatan);
   elemen.append(judul, daftar, catatan);
-  const baris: { readonly elemen: HTMLElement; readonly label: HTMLElement; readonly isi: HTMLElement; readonly angka: HTMLElement; readonly tombol: HTMLButtonElement; readonly besar: HTMLElement }[] = [];
+  const baris: {
+    readonly elemen: HTMLElement;
+    readonly label: HTMLElement;
+    readonly isi: HTMLElement;
+    readonly kini: HTMLButtonElement;
+    readonly angka: HTMLElement;
+    readonly tombol: HTMLButtonElement;
+    readonly besar: HTMLElement;
+  }[] = [];
   return {
     elemen,
     perbarui(m) {
@@ -940,9 +951,17 @@ function buatKartuTantangan(kirim: Kirim): { readonly elemen: HTMLElement; perba
         if (!b) {
           const e = el('div', 'tantangan-baris');
           const label = el('div', 'tantangan-label');
+          const bilah = el('div', 'tantangan-bilah');
           const bar = el('div', 'bar');
           const isi = el('div', 'bar-isi');
           bar.append(isi);
+          const kini = el('button', 'tantangan-kini');
+          kini.type = 'button';
+          kini.setAttribute('aria-label', TEKS.tantanganKepuasanBuka);
+          kini.title = TEKS.tantanganKepuasanBuka;
+          kini.hidden = true;
+          kini.addEventListener('click', () => bukaKepuasan?.());
+          bilah.append(bar, kini);
           const angka = el('div', 'tantangan-angka');
           const tombol = el('button', 'tombol tombol-beli tombol-klaim');
           tombol.type = 'button';
@@ -950,13 +969,16 @@ function buatKartuTantangan(kirim: Kirim): { readonly elemen: HTMLElement; perba
           const besar = el('span', 'tombol-besar');
           tombol.append(kecil, besar);
           tombol.addEventListener('click', () => kirim({ jenis: 'klaimTantangan', indeks: i }));
-          e.append(label, tombol, bar, angka);
+          e.append(label, tombol, bilah, angka);
           daftar.append(e);
-          b = { elemen: e, label, isi, angka, tombol, besar };
+          b = { elemen: e, label, isi, kini, angka, tombol, besar };
           baris[i] = b;
         }
-        setTeks(b.label, teksTantangan(t, m));
+        setTeks(b.label, teksTantangan(t));
         setStyle(b.isi, 'width', `${(t.rasio * 100).toFixed(1)}%`);
+        const adaKini = t.jenis === 'kepuasan' && !t.selesai && bukaKepuasan !== undefined;
+        setHidden(b.kini, !adaKini);
+        if (adaKini) setTeks(b.kini, TEKS.tantanganKepuasanKini(persen(m.kepuasanKini)));
         setTeks(b.angka, t.diklaim ? TEKS.diklaim : angkaTantangan(t));
         setTeks(b.besar, `+${formatUang(m.hadiah)}`);
         setHidden(b.tombol, t.diklaim);
@@ -1001,10 +1023,12 @@ export interface OpsiTabTarget {
   readonly iklan?: IklanMenu;
   /** Kartu papan peringkat (ui/peringkat.ts), di bawah tantangan mingguan. */
   readonly kartuPeringkat?: { readonly elemen: HTMLElement; perbarui(m: ModelTampilan): void };
+  /** Buka popup kepuasan ("kini {k}% ›" di tantangan kepuasan; tanpa ini tautannya tidak ada). */
+  readonly bukaKepuasan?: () => void;
 }
 
 export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
-  const { iklan, kartuPeringkat } = o;
+  const { iklan, kartuPeringkat, bukaKepuasan } = o;
   let menonton = false;
   /** Tonton iklan lalu kirim aksi klaim ganda; satu iklan pada satu waktu. */
   const klaimGanda = (tempat: 'target2x' | 'penghargaan2x', aksi: Aksi): void => {
@@ -1058,7 +1082,7 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
   tombolKanan.append(gandaTarget.tombol, tombolTarget);
   kartu.append(kiri, tombolKanan);
   const judulPenghargaan = el('div', 'judul-bagian', TEKS.penghargaan);
-  const kartuTantangan = buatKartuTantangan(kirim);
+  const kartuTantangan = buatKartuTantangan(kirim, bukaKepuasan);
   const kartuRekor = buatKartuRekor();
   elemen.append(kartuEvent, kartu, kartuTantangan.elemen, ...(kartuPeringkat ? [kartuPeringkat.elemen] : []), kartuRekor.elemen, judulPenghargaan);
   const baris = PENCAPAIAN_IDS.map((id: PencapaianId) => {

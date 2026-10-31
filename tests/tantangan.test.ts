@@ -5,22 +5,35 @@ import { EKONOMI } from '../src/config/economy.config';
 import { WAKTU } from '../src/config/waktu.config';
 import { terapkanAksi } from '../src/sim/aksi';
 import { tengahMalamWib } from '../src/sim/event';
-import { deserialisasi, serialisasi } from '../src/sim/save';
+import { deserialisasi, serialisasi, VERSI_SKEMA } from '../src/sim/save';
 import {
+  acuanHarian,
+  ambangKepuasan,
   aturTarif,
   bangun,
   beliTeknologi,
   bisaKlaimTantangan,
+  buatStateBaru,
+  buatTargetHarian,
+  daftarPo,
+  DETIK_SEHARI,
   hadiahTantangan,
   kepuasanTerminal,
+  keuanganSekarang,
   klaimTantangan,
+  kontrakPerJam,
+  labaDenganKontrak,
   perbaruiTantangan,
+  perpanjangPo,
+  putusPo,
   tandaiWaktu,
+  tick,
   type GameState,
 } from '../src/sim/state';
 import { JENIS_TANTANGAN, jenisTantanganMinggu, mingguWib } from '../src/sim/tantangan';
 import { buatModel } from '../src/ui/model';
-import { denganBangunan, denganPetugas, denganPo, jalankan, kaya, padaJam, stateOtomatis } from './helpers';
+import { TEKS } from '../src/ui/teks';
+import { denganBangunan, denganNilaiKontrak, denganPetugas, denganPo, jalankan, kaya, padaJam, stateOtomatis } from './helpers';
 
 const wib = (tahun: number, bulan: number, tanggal: number, jam = 12): number => tengahMalamWib(tahun, bulan, tanggal) + jam * 3_600_000;
 const RABU = wib(2026, 9, 30);
@@ -145,6 +158,136 @@ describe('tantangan mingguan di game', () => {
     penyimpanan.isi.set(KUNCI_SAVE, serialisasi(tandaiWaktu(siap(), RABU - 60_000)));
     const { sesi } = await SesiGame.mulai({ slot: slotLokal(penyimpanan), jam: () => RABU });
     expect(sesi.pengendali.state.tantangan.minggu).toBe('2026-09-28');
+  });
+});
+
+describe('saran 6: laba dirata-rata & ambang kepuasan (documents/15 bagian 5)', () => {
+  /** Minggu yang mengundi kepuasan, laba, & penumpang. */
+  const MINGGU = RABU + 14 * 86_400_000;
+  const siap = (): GameState => kaya(denganPo(stateOtomatis({ jalur: 3 }), 'ondelOndel', { loket: 4 }));
+  const tantanganUji = (s: GameState, jenis: (typeof JENIS_TANTANGAN)[number], ambang?: number): GameState => ({
+    ...s,
+    tantangan: { minggu: 'uji', selesaiMs: RABU, daftar: [{ jenis, target: 1e15, progres: 0, diklaim: false, ...(ambang !== undefined ? { ambang } : {}) }], penumpang: 0 },
+  });
+  const hariLaba = (s: GameState): GameState => ({ ...s, harian: { ...s.harian, jenis: 'laba', target: 1e15, progres: 0, diklaim: false } });
+  const kemajuan = (s: GameState): number => s.tantangan.daftar[0]!.progres;
+
+  it('kontrak yang dibayar sekaligus (daftar, perpanjang) tidak menambah kemajuan laba; kompensasi putus tidak menguranginya (AC-GP-09)', () => {
+    const s = hariLaba(tantanganUji(stateOtomatis({}, 1e9), 'laba'));
+    const daftar = daftarPo(s, 'peuyeumKilat');
+    expect(daftar.kas).toBeGreaterThan(s.kas);
+    expect(kemajuan(daftar)).toBe(0);
+    expect(daftar.harian.progres).toBe(0);
+    const tawaran = { ...daftar, mitra: { ...daftar.mitra, terdaftar: daftar.mitra.terdaftar.map((p) => ({ ...p, kontrakDetik: DETIK_SEHARI })) } };
+    const perpanjang = perpanjangPo(tawaran, 'ondelOndel');
+    expect(perpanjang.kas).toBeGreaterThan(tawaran.kas);
+    expect(kemajuan(perpanjang)).toBe(0);
+    expect(perpanjang.harian.progres).toBe(0);
+    const berjalan = { ...daftar, tantangan: { ...daftar.tantangan, daftar: [{ ...daftar.tantangan.daftar[0]!, progres: 1e6 }] }, harian: { ...daftar.harian, progres: 1e6 } };
+    const putus = putusPo(berjalan, 'peuyeumKilat');
+    expect(putus.kas).toBeLessThan(berjalan.kas);
+    expect(kemajuan(putus)).toBe(1e6);
+    expect(putus.harian.progres).toBe(1e6);
+  });
+
+  it('kemajuan laba tiap tick = (laba operasi + kontrak PO per jam) × jam terminal, untuk tantangan & target harian (AC-GP-09)', () => {
+    const s = hariLaba(tantanganUji(denganNilaiKontrak(siap(), 70_000_000), 'laba'));
+    const perJam = keuanganSekarang(s).laba + kontrakPerJam(s);
+    expect(kontrakPerJam(s)).toBeGreaterThan(0);
+    expect(perJam).toBeGreaterThan(keuanganSekarang(s).laba);
+    const dt = 1;
+    const b = tick(s, dt);
+    expect(kemajuan(b)).toBeCloseTo((perJam * dt) / WAKTU.detikPerJam, 3);
+    expect(b.harian.progres).toBeCloseTo((perJam * dt) / WAKTU.detikPerJam, 3);
+  });
+
+  it('target harian laba = laba rata-rata sehari dengan kontrak × 12 jam (dibulatkan), paling sedikit batas bawah hadiah (AC-GP-09)', () => {
+    const s = denganNilaiKontrak(siap(), 70_000_000);
+    const a = acuanHarian(s);
+    const perkiraan = Math.max(labaDenganKontrak(a), EKONOMI.hadiah.minPerMenit) * 24 * EKONOMI.harian.fraksiLaba;
+    expect(labaDenganKontrak(a) * 12).toBeGreaterThan(EKONOMI.hadiah.minPerMenit * 12);
+    const h = buatTargetHarian(s, 1);
+    expect(h.jenis).toBe('laba');
+    // Dibulatkan ke 2 angka penting.
+    expect(h.target).toBeGreaterThanOrEqual(perkiraan * 0.95);
+    expect(h.target).toBeLessThanOrEqual(perkiraan * 1.05);
+    // Tanpa kontrak berjalan: batas bawahnya, seperti dulu.
+    expect(buatTargetHarian(siap(), 1).target).toBe(Math.round(EKONOMI.hadiah.minPerMenit * 12));
+  });
+
+  it('ambang kepuasan: kepuasan awal minggu dibulatkan ke bawah ke 5 %, dijepit 50–75 % (AC-GP-10)', () => {
+    expect(ambangKepuasan(0.28)).toBeCloseTo(0.5, 9);
+    expect(ambangKepuasan(0.56)).toBeCloseTo(0.55, 9);
+    expect(ambangKepuasan(0.91)).toBeCloseTo(0.75, 9);
+    expect(ambangKepuasan(0.55)).toBeCloseTo(0.55, 9);
+    expect(ambangKepuasan(0.6999)).toBeCloseTo(0.65, 9);
+    expect(ambangKepuasan(0)).toBeCloseTo(0.5, 9);
+    expect(ambangKepuasan(1)).toBeCloseTo(0.75, 9);
+  });
+
+  it('minggu baru: tantangan kepuasan mendapat ambang dari kepuasan saat itu (game baru 28 % → 50 %, 56 % → 55 %, 95 % → 75 %)', () => {
+    expect(jenisTantanganMinggu(mingguWib(MINGGU).kunci)).toContain('kepuasan');
+    const ambang = (s: GameState): number | undefined => perbaruiTantangan(s, MINGGU).tantangan.daftar.find((x) => x.jenis === 'kepuasan')?.ambang;
+    const baru = buatStateBaru(MINGGU);
+    expect(kepuasanTerminal(baru).nilai).toBeCloseTo(0.28, 2);
+    expect(ambang(baru)).toBeCloseTo(0.5, 9);
+    expect(kepuasanTerminal(siap()).nilai).toBeCloseTo(0.56, 2);
+    expect(ambang(siap())).toBeCloseTo(0.55, 9);
+    const puas = denganPetugas(denganBangunan(siap(), { kursi: 2, kios: 3, toilet: 1, lahanParkir: 1 }), ['kebersihan', 'kebersihan', 'satpam', 'satpam', 'satpam', 'petugasToilet']);
+    expect(kepuasanTerminal(puas).nilai).toBeGreaterThan(0.9);
+    expect(ambang(puas)).toBeCloseTo(0.75, 9);
+    // Hanya tantangan kepuasan yang punya ambang.
+    expect(perbaruiTantangan(siap(), MINGGU).tantangan.daftar.filter((x) => x.ambang !== undefined).map((x) => x.jenis)).toEqual(['kepuasan']);
+  });
+
+  it('kemajuan kepuasan bertambah selama kepuasan ≥ ambang tantangannya (bukan lagi 75 %)', () => {
+    const s = siap();
+    expect(kepuasanTerminal(s).nilai).toBeLessThan(EKONOMI.tantangan.kepuasanMin);
+    expect(kemajuan(jalankan(tantanganUji(s, 'kepuasan', 0.55), 10))).toBeCloseTo(10, 6);
+    expect(kemajuan(jalankan(tantanganUji(s, 'kepuasan', 0.6), 10))).toBe(0);
+  });
+
+  it('save: ambang tersimpan (skema tetap 3); save lama tanpa ambang atau ambang tidak sah dihitung ulang dari kepuasan saat dimuat (AC-GP-10)', () => {
+    expect(VERSI_SKEMA).toBe(3);
+    const s = perbaruiTantangan(siap(), MINGGU);
+    const i = s.tantangan.daftar.findIndex((x) => x.jenis === 'kepuasan');
+    expect(deserialisasi(serialisasi(s), MINGGU).tantangan).toEqual(s.tantangan);
+    // Save lama (sebelum field ambang), dimuat saat kepuasan sudah 95 %: ambang dari kepuasan sekarang.
+    const puas = denganPetugas(denganBangunan(s, { kursi: 2, kios: 3, toilet: 1, lahanParkir: 1 }), ['kebersihan', 'kebersihan', 'satpam', 'satpam', 'satpam', 'petugasToilet']);
+    const mentah = (nilai: unknown): string => {
+      const o = JSON.parse(serialisasi(puas)) as { tantangan: { daftar: Record<string, unknown>[] } };
+      if (nilai === undefined) delete o.tantangan.daftar[i]!['ambang'];
+      else o.tantangan.daftar[i]!['ambang'] = nilai;
+      return JSON.stringify(o);
+    };
+    expect(JSON.parse(mentah(undefined)).tantangan.daftar[i]).not.toHaveProperty('ambang');
+    for (const nilai of [undefined, 0.9, 0.3, 'x', null]) expect(deserialisasi(mentah(nilai), MINGGU).tantangan.daftar[i]!.ambang).toBeCloseTo(0.75, 9);
+    // Ambang sah dipertahankan; field ambang di tantangan jenis lain dibuang.
+    expect(deserialisasi(mentah(0.6), MINGGU).tantangan.daftar[i]!.ambang).toBe(0.6);
+    const lain = JSON.parse(serialisasi(s)) as { tantangan: { daftar: Record<string, unknown>[] } };
+    const j = s.tantangan.daftar.findIndex((x) => x.jenis !== 'kepuasan');
+    lain.tantangan.daftar[j]!['ambang'] = 0.6;
+    expect(deserialisasi(JSON.stringify(lain), MINGGU).tantangan.daftar[j]).not.toHaveProperty('ambang');
+  });
+
+  it('model: ambang & kepuasan kini di tantangan kepuasan, baris tantangan di popup kepuasan selama belum selesai (AC-GP-10)', () => {
+    const s = perbaruiTantangan(siap(), MINGGU);
+    const i = s.tantangan.daftar.findIndex((x) => x.jenis === 'kepuasan');
+    const m = buatModel(s);
+    expect(m.mingguan!.daftar[i]!.ambang).toBeCloseTo(0.55, 9);
+    expect(m.mingguan!.daftar.filter((x) => x.jenis !== 'kepuasan').every((x) => x.ambang === null)).toBe(true);
+    expect(m.mingguan!.kepuasanKini).toBeCloseTo(kepuasanTerminal(s).nilai, 9);
+    expect(m.hud.kepuasan.tantangan).toEqual({ ambang: m.mingguan!.daftar[i]!.ambang, menit: 0, targetMenit: EKONOMI.tantangan.kepuasanDetik / 60 });
+    const berjalan = jalankan(s, 90);
+    expect(buatModel(berjalan).hud.kepuasan.tantangan).toMatchObject({ menit: 1 });
+    const selesai = { ...s, tantangan: { ...s.tantangan, daftar: s.tantangan.daftar.map((x) => ({ ...x, progres: x.target })) } };
+    expect(buatModel(selesai).hud.kepuasan.tantangan).toBeNull();
+    expect(buatModel(siap()).hud.kepuasan.tantangan).toBeNull();
+    // Teks (documents/15 bagian 5.2–5.3).
+    expect(TEKS.tantanganKepuasan(55, 60)).toBe('Jaga kepuasan ≥ 55% selama 60 menit main');
+    expect(TEKS.tantanganKepuasanKini(56)).toBe('kini 56% ›');
+    expect(TEKS.kepuasanTantangan(55, 12, 60)).toBe('🎯 Tantangan: ≥ 55% · 12/60 menit main');
+    expect(TEKS.tantanganCatatan).toBe('Tantangan baru tiap Senin (WIB). Laba dihitung seperti Laba/hari: kontrak PO dirata-rata.');
   });
 });
 

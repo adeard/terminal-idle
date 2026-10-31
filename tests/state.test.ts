@@ -255,13 +255,14 @@ describe('buku harian, rekor, target harian', () => {
     expect(b.harian.jenis).toBe('penumpang');
   });
 
-  it('target laba: progres dari laba bersih & kontrak PO yang diterima; selesai → hadiah sekian menit laba', () => {
+  it('target laba: progres dari laba bersih (kontrak PO dirata-rata, bukan uang kontrak sekaligus); selesai → hadiah sekian menit laba', () => {
     const harian = { hariKe: 0, jenis: 'laba' as const, target: 50_000, progres: 0, diklaim: false, jumlahSelesai: 0 };
     const s = { ...stateOtomatis({ posRetribusi: 1, lahanParkir: 1 }), harian };
     const b = jalankan(s, JAM);
     expect(b.harian.progres).toBe(50_000);
     expect(b.harian.jumlahSelesai).toBe(1);
-    expect(daftarPo({ ...stateOtomatis(), harian }, 'peuyeumKilat').harian.progres).toBe(50_000);
+    // documents/15 bagian 5.1: uang kontrak yang masuk sekaligus tidak menambah kemajuan.
+    expect(daftarPo({ ...stateOtomatis(), harian }, 'peuyeumKilat').harian.progres).toBe(0);
     const hadiah = hadiahMenit(b, EKONOMI.harian.hadiahMenit);
     expect(klaimTarget(b).kas).toBe(b.kas + hadiah);
     expect(klaimTarget(b, EKONOMI, true).kas).toBe(b.kas + 2 * hadiah);

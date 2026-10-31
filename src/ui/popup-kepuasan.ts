@@ -1,5 +1,6 @@
 /**
- * Rincian kepuasan penumpang (dibuka dari pil kepuasan di HUD): nilai,
+ * Rincian kepuasan penumpang (dibuka dari pil kepuasan di HUD atau tantangan
+ * kepuasan di tab Target): nilai, tantangan kepuasan yang sedang berjalan,
  * tambahan calon penumpang, lalu enam komponen berbilah dengan saran yang
  * langsung bisa dikerjakan pemain (area paling lambat, kursi, petugas
  * kebersihan, satpam, fasilitas, tarif).
@@ -50,6 +51,9 @@ export function tampilkanPopupKepuasan(akar: HTMLElement, m: ModelKepuasan): voi
   const wajah = el('div', 'kepuasan-wajah', wajahKepuasan(m.nilai));
   const judul = el('h2', undefined, TEKS.kepuasanJudul(persen(m.nilai)));
   judul.id = 'popup-kepuasan-judul';
+  // Selama tantangan kepuasan minggu ini belum selesai: ambang & kemajuannya (documents/15 bagian 5.2).
+  const t = m.tantangan;
+  const tantangan = t ? [el('p', 'kepuasan-tantangan', TEKS.kepuasanTantangan(persen(t.ambang), t.menit, t.targetMenit))] : [];
   const penumpang = el('p', 'kepuasan-penumpang', TEKS.kepuasanPenumpang(persen(m.tambahanPenumpang)));
   const baris = (label: string, nilai: number, saran: string): HTMLElement => {
     const b = el('div', 'kepuasan-baris');
@@ -75,7 +79,7 @@ export function tampilkanPopupKepuasan(akar: HTMLElement, m: ModelKepuasan): voi
   const catatan = el('p', 'popup-catatan', TEKS.kepuasanCatatan);
   const tutupB = el('button', 'tombol tombol-hijau popup-tombol', TEKS.kepuasanTutup);
   tutupB.type = 'button';
-  kotak.append(wajah, judul, penumpang, daftar, catatan, tutupB);
+  kotak.append(wajah, judul, ...tantangan, penumpang, daftar, catatan, tutupB);
   latar.append(kotak);
   akar.append(latar);
   const tutup = (): void => {

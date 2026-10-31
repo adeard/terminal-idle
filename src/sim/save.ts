@@ -36,6 +36,7 @@ import { tingkatPo } from './mitra';
 import { rapikanPetugas } from './petugas';
 import { rapikanNamaTerminal } from './profil';
 import {
+  ambangSah,
   buatBukuHarian,
   buatKeuanganAwal,
   buatMitraAwal,
@@ -44,6 +45,7 @@ import {
   buatTantanganAwal,
   DETIK_SEHARI,
   ID_TERMINAL_AWAL,
+  lengkapiAmbangTantangan,
   type BukuHarian,
   type EventState,
   type GameState,
@@ -291,7 +293,7 @@ function dariSaveV3(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
   const bangunan = bacaBangunan(terminalMentah['bangunan'], perkembangan.perluasan, mitra, cfg);
   const statistik = bacaStatistik(akar['statistik'], awal.statistik);
   const hariKe = waktuTerminal(statistik.waktuMainDetik).hariKe;
-  return {
+  const state: GameState = {
     kas: wajibAngkaNonNegatif(akar['kas'], 'kas'),
     terminal: {
       id: opsional(terminalMentah['id'], ID_TERMINAL_AWAL, wajibString, 'terminal.id'),
@@ -311,9 +313,10 @@ function dariSaveV3(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
     event: bacaEvent(akar['event'], awal.event),
     profil: bacaProfil(akar['profil']),
     rekor: bacaRekor(akar['rekor']),
-    tantangan: bacaTantangan(akar['tantangan']),
+    tantangan: bacaTantangan(akar['tantangan'], cfg),
     waktuTerakhirMs: opsional(akar['waktuTerakhirMs'], sekarangMs, wajibAngkaNonNegatif, 'waktuTerakhirMs'),
   };
+  return lengkapiAmbangTantangan(state, cfg);
 }
 
 /**
@@ -503,8 +506,12 @@ function bacaRekor(nilai: unknown): RekorState {
   return { penumpangHarian: angka('penumpangHarian'), labaHarian: angka('labaHarian'), arusTertinggi: angka('arusTertinggi') };
 }
 
-/** Tantangan mingguan; jenis yang tidak dikenal (mis. dari versi lain) dibuang. */
-function bacaTantangan(nilai: unknown): TantanganState {
+/**
+ * Tantangan mingguan; jenis yang tidak dikenal (mis. dari versi lain) dibuang. `ambang` (field opsional,
+ * hanya tantangan kepuasan) dibaca bila sah; tidak ada atau tidak sah → dihitung ulang dari kepuasan saat
+ * dimuat (lengkapiAmbangTantangan di dariSaveV3).
+ */
+function bacaTantangan(nilai: unknown, cfg: KonfigEkonomi): TantanganState {
   const o = opsionalObjek(nilai, 'tantangan');
   if (!o) return buatTantanganAwal();
   const minggu = o['minggu'];
@@ -521,6 +528,7 @@ function bacaTantangan(nilai: unknown): TantanganState {
         target: wajibAngkaNonNegatif(x['target'], `tantangan.daftar.${i}.target`),
         progres: wajibAngkaNonNegatif(x['progres'], `tantangan.daftar.${i}.progres`),
         diklaim: wajibBoolean(x['diklaim'], `tantangan.daftar.${i}.diklaim`),
+        ...(x['jenis'] === 'kepuasan' && ambangSah(x['ambang'], cfg) ? { ambang: x['ambang'] } : {}),
       })),
     penumpang: opsional(o['penumpang'], 0, wajibAngkaNonNegatif, 'tantangan.penumpang'),
   };

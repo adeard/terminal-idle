@@ -125,6 +125,7 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     po: buatTabPo(kirim),
     terminal: buatTabTerminal(kirim, { ubahNama: () => void mintaNama() }),
     target: buatTabTarget(kirim, {
+      bukaKepuasan: () => tampilkanPopupKepuasan(akar, buatModel(pengendali.state).hud.kepuasan),
       ...(opsi.iklan ? { iklan: opsi.iklan } : {}),
       ...(opsi.peringkat
         ? { kartuPeringkat: buatKartuPeringkat(akar, { ...opsi.peringkat, ambilModel: () => buatModel(pengendali.state).peringkat, mintaNama }) }
