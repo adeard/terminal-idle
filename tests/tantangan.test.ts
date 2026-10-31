@@ -287,7 +287,7 @@ describe('saran 6: laba dirata-rata & ambang kepuasan (documents/15 bagian 5)', 
     expect(TEKS.tantanganKepuasan(55, 60)).toBe('Jaga kepuasan ≥ 55% selama 60 menit main');
     expect(TEKS.tantanganKepuasanKini(56)).toBe('kini 56% ›');
     expect(TEKS.kepuasanTantangan(55, 12, 60)).toBe('🎯 Tantangan: ≥ 55% · 12/60 menit main');
-    expect(TEKS.tantanganCatatan).toBe('Tantangan baru tiap Senin (WIB). Laba dihitung seperti Laba/hari: kontrak PO dirata-rata.');
+    expect(TEKS.tantanganCatatan).toBe('Tantangan baru tiap Senin (WIB). Laba dihitung seperti Laba/hari: kontrak PO dirata-rata. 🚌 Armada selalu untuk PO berlevel terendah.');
   });
 });
 

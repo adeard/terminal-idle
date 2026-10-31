@@ -24,6 +24,7 @@ import {
   lepasBusEmas,
   mulaiPerluasan,
   pakaiSaranTarif,
+  percepatProyek,
   perpanjangPo,
   putusPo,
   rekrutPetugas,
@@ -68,6 +69,8 @@ export type Aksi =
   | { readonly jenis: 'lepasBusEmas' }
   | { readonly jenis: 'klaimBusEmas' }
   | { readonly jenis: 'klaimBonusOffline' }
+  /** Proyek perluasan dipercepat (documents/15 bagian 4.2), hanya bila sisanya cukup panjang. */
+  | { readonly jenis: 'percepatProyek' }
   /** Ganti nama terminal (profil pemain). */
   | { readonly jenis: 'aturNamaTerminal'; readonly nama: string }
   /** Ikut/keluar papan peringkat (lihat app/peringkat.ts; keluar dikirim setelah server menghapus skornya). */
@@ -118,6 +121,8 @@ export function terapkanAksi(state: GameState, aksi: Aksi, cfg: KonfigEkonomi = 
       return klaimBusEmas(state, cfg);
     case 'klaimBonusOffline':
       return klaimBonusOffline(state);
+    case 'percepatProyek':
+      return percepatProyek(state, cfg);
     case 'aturNamaTerminal':
       return aturNamaTerminal(state, aksi.nama);
     case 'aturIkutPeringkat':

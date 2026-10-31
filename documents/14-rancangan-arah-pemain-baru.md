@@ -1,6 +1,6 @@
 # 14 · Rancangan Arah Pemain Baru: tujuan berikutnya & menit pertama
 
-> **Status: disetujui owner 29 Oktober 2026 ("APPROVE semua" via Telegram), dalam pembangunan.** Keputusan owner a–c ada di bagian 8. Brief `docs/tasks/20261029-arah-pemain-baru.md` (repo tim). Dasar: evaluasi keseruan 0.3.1, saran 1 dan 2. Catatan kerja, bukti simulasi lengkap, dan screenshot pembanding ada di `docs/design/20261029-arah-pemain-baru.md` (repo tim, tidak ikut repo game).
+> **Status: dibangun 31 Oktober 2026 (aa21f53), belum dirilis.** Disetujui owner 29 Oktober 2026 ("APPROVE semua" via Telegram). Keputusan owner a–c ada di bagian 8. Brief `docs/tasks/20261029-arah-pemain-baru.md` (repo tim). Dasar: evaluasi keseruan 0.3.1, saran 1 dan 2. Catatan kerja, bukti simulasi lengkap, dan screenshot pembanding ada di `docs/design/20261029-arah-pemain-baru.md` (repo tim, tidak ikut repo game).
 >
 > Tidak mengubah angka ekonomi, tempo, hadiah, atau target. Tidak mengubah save (skema 3, tanpa field baru). Tidak ada iklan baru. Satu peristiwa analitik baru, `tujuan_ketuk` (keputusan c, bagian 6), tanpa data pribadi baru; kebijakan privasi tidak berubah. Yang berubah: tampilan, teks, kamera portrait, dan peristiwa itu.
 >

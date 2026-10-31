@@ -1,10 +1,10 @@
 # 15 · Rancangan Fondasi: patokan kasual, izin level, hadiah armada, tantangan yang adil
 
-> **Status: disetujui owner 31 Oktober 2026 (Telegram, "APPROVE semua"), dalam pembangunan dua ronde.** Ronde 1: saran 3, saran 6, perbaikan U-2. Ronde 2: saran 4, saran 5, patokan tempo baru. Jawaban owner atas pertanyaan a–c dan keputusan Sapto atas CHANGE REQUEST ada di bagian 10. Brief `docs/tasks/20261031-fondasi-saran-3-6.md` (repo tim, status APPROVED). Dasar: evaluasi keseruan 0.3.1 saran 3–6 dan tahap 0 peta jalan ADR 004. Catatan kerja, semua tabel bukti, dan harness simulasi ada di `docs/design/20261031-fondasi-saran-3-6.md` dan folder `sim/`-nya (repo tim, tidak ikut repo game).
+> **Status: dibangun 31 Oktober 2026, belum dirilis.** Disetujui owner hari yang sama (Telegram, "APPROVE semua"). Dibangun dalam tiga ronde: ronde 1 = saran 3, saran 6, perbaikan U-2; ronde 2 = saran 4, saran 5, patokan tempo baru; ronde perbaikan teks dari playtest ronde 2 (bagian 3.5 dan 4.4). Jawaban owner atas pertanyaan a–c, keputusan Sapto atas CHANGE REQUEST, dan hasil playtest ada di bagian 10. Brief `docs/tasks/20261031-fondasi-saran-3-6.md` (repo tim). Dasar: evaluasi keseruan 0.3.1 saran 3–6 dan tahap 0 peta jalan ADR 004. Catatan kerja, semua tabel bukti, dan harness simulasi ada di `docs/design/20261031-fondasi-saran-3-6.md` dan folder `sim/`-nya. Laporan playtest: `docs/design/20261031-fondasi-saran-3-6-playtest.md`. Keduanya di repo tim, tidak ikut repo game.
 >
 > **Yang berubah:** angka ekonomi (slot jendela, jalur, petak bus, slot PO), tempo pemain aktif (Tipe A dan Terpadu lebih cepat), isi hadiah target, tantangan, dan iklan berhadiah, serta cara menghitung tantangan laba, target harian laba, dan tantangan kepuasan. **Save:** satu field opsional baru (`TantanganAktif.ambang`), skema tetap 3. **Analitik:** tanpa peristiwa baru. **Adegan 3D:** tidak ada model baru. Aturan offline (Manajer, 8 jam, 60 %) tidak berubah.
 >
-> Dokumen 13 sudah diperbarui (31 Oktober 2026) di bagian 2, 4.1, 6.5, 8, 10, 11, 14, dan 15 (daftar di bagian 9). Yang baru dibangun di ronde 2 ditandai di sana sebagai "ronde 2".
+> Dokumen 13 sudah diperbarui (31 Oktober 2026) di bagian 2, 4.1, 6.5, 8, 10, 11, 14, 15, dan 16 (daftar di bagian 9). Penanda "ronde 1" dan "ronde 2" di sana sudah dihapus, karena semuanya kini ada di kode.
 
 ## Ringkasan
 
@@ -21,7 +21,7 @@
    - target harian laba ikut tumbuh, tidak lagi selalu Rp 2,4 jt;
    - tantangan kepuasan memakai ambang dari kepuasan awal minggu, dan barisnya membuka popup kepuasan.
 5. **Satu perbaikan wajib (U-2):** kunci histeresis baris tujuan memuat unit yang disarankan. Tanpa perbaikan ini, saran berbiaya berikutnya lolos tanpa cadangan kas, dan izin level memperlihatkannya.
-6. **Dampak tempo aktif** (pemain serakah): Tipe A 6,3 → 5,1 jam, Terpadu 13,1 → 10,9 jam. Ini di bawah patokan Terpadu sekarang (12–17,5 jam), jadi butuh keputusan owner. Tempo kasual tidak berubah, karena offline yang menentukan.
+6. **Dampak tempo aktif** (pemain serakah): Tipe A 6,3 → 5,1 jam, Terpadu 13,1 → 10,9 jam. Ini di bawah patokan Terpadu lama (12–17,5 jam); owner menyetujui patokan baru (bagian 10). Di kode: Tipe A 5,08 jam, Terpadu 10,91 jam. Tempo kasual tidak berubah, karena offline yang menentukan.
 
 ## 1. Masalah, tujuan, cara mengukur
 
@@ -94,7 +94,7 @@ Isinya pindahan bagian B harness `docs/design/20261031-fondasi-saran-3-6/sim/fon
 
 ### 2.3 Batas tes (disetujui owner 31 Oktober 2026)
 
-Batas ini penjaga, bukan sasaran. Gunanya supaya perubahan angka yang menggeser hari nyata pemain kasual terlihat di CI. Sasaran jangka panjang (keputusan di hari 8–30) adalah tugas tahap 1 Musim Terminal.
+Batas ini penjaga, bukan sasaran. Gunanya supaya perubahan angka yang menggeser hari nyata pemain kasual terlihat di CI. Sasaran jangka panjang (keputusan di hari 8–30) adalah tugas tahap 1 Musim Terminal. Sejak ronde 2, `tests/tycoon-kasual.test.ts` memakai kolom ronde 2.
 
 | Assert | Ronde 1 (tanpa saran 4) | Ronde 2 (dengan saran 4) |
 |---|---|---|
@@ -164,15 +164,19 @@ Hasilnya masih 126 menit buntu (Lv 16). Tiap bagian paket dibutuhkan: tanpa bonu
 
 | Tempat | Teks |
 |---|---|
-| Toast naik level (menggantikan `🏢 Terminal naik ke Lv {L}` bila ada izin) | `🏢 Terminal naik ke Lv {L}: {izin}` · `{izin}` ∈ `slot jendela loket +1`, `slot jalur +1`, digabung " & " bila dua |
-| Toast slot PO (dokumen 14 bagian 3.7) | tetap |
-| Baris tujuan tingkat 5 (`naikLevel`): izin terdekat bila lebih dekat dari perluasan berikut | `⬆️ Lv {L}: {izin} · kini Lv {K}` · contoh `⬆️ Lv 17: slot PO ke-7 · kini Lv 16` (≤ 60 karakter) |
+| Toast naik level (menggantikan `🏢 Terminal naik ke Lv {L}` bila ada izin) | `🏢 Terminal naik ke Lv {L}: {izin}` · `{izin}` ∈ `slot jendela loket +1`, `slot jalur +1`, digabung " & " bila dua · contoh `🏢 Terminal naik ke Lv 16: slot jendela loket +1 & slot jalur +1`. Bila level itu juga membuka slot PO, yang tampil toast slot PO |
+| Toast slot PO (dokumen 14 bagian 3.7), ada jendela untuk PO baru | `🅿️ Slot PO ke-{n} terbuka! Daftarkan PO di tab PO` (tetap) |
+| Toast slot PO, slot jendela penuh | `🅿️ Slot PO ke-{n} terbuka: jendela loket penuh sampai Lv {L}` bila slot jendela berikutnya datang dari izin level, `… sampai Perluasan {N}` bila dari perluasan, `🅿️ Slot PO ke-{n} terbuka: jendela loket penuh` bila tidak ada slot berikutnya. Menggantikan `… PO baru butuh jendela dari perluasan` (playtest P-4) |
+| Tab PO, status PO tersedia, slot jendela penuh | `Jendela penuh · +1 di Lv {L}` · `Jendela penuh · Perluasan {N}` · `Jendela penuh` bila tidak ada slot berikutnya. Menggantikan `Slot jendela loket penuh: bangun perluasan terminal` (P-4). Paling banyak 28 karakter, jadi tidak terpotong di landscape |
+| Baris tujuan tingkat 5 (`naikLevel`): izin terdekat bila lebih dekat dari perluasan berikut | `⬆️ Lv {L}: {izin} · kini Lv {K}` · contoh `⬆️ Lv 17: slot jendela loket +1 & slot PO ke-7 · kini Lv 16` (≤ 60 karakter) |
 | Tab Bangun, slot penuh, izin lebih dulu dari perluasan | `Slot penuh: +1 di Lv {L}` |
 | Tab Bangun, Perluasan 3 belum ada, Lv ≥ 11 | `Slot penuh: bertambah di Perluasan 3` (teks yang ada) |
 | Kartu level, tab Terminal (baris baru) | `Izin berikutnya: Lv {L} {izin} · Lv {L2} {izin2}` |
 | Popup offline bila naik level selama pergi | `🎫 Izin baru: jendela +{j}, jalur +{n}, slot PO ke-{p}` (yang ada saja) |
 
 Izin yang terbuka langsung masuk baris tujuan lewat aturan yang ada: area paling lambat untuk jendela dan jalur (tingkat 3), daftarkan PO untuk slot PO (tingkat 2).
+
+Status tab PO dan toast slot PO memakai sumber yang sama dengan tab Bangun: slot jendela berikutnya (`slotBerikut` jendela di model tab Bangun). Sejak Perluasan 3, slot jendela berikutnya hampir selalu datang dari naik level, jadi teks lama "bangun perluasan terminal" menyuruh pemain menabung untuk Perluasan 4 (Lv 20, Rp 800 jt) padahal satu level lagi sudah cukup.
 
 ### 3.6 Keadaan khusus
 
@@ -232,20 +236,39 @@ Kunci config baru di `EKONOMI.hadiah`: `armadaHarian: 0.5`, `armadaTantangan: 1`
 | uang saja (harian + Bus Emas, sepertiga ditonton) | 5,1 | 10,6 | 49 (Lv 17) |
 | armada harian + semua Bus Emas ditonton (batas atas) | 5,0 | 10,1 | 75 (Lv 28) |
 | percepat 2× tiap proyek | 4,9 | 10,7 | 48 (Lv 7) |
+| proyek selesai seketika: 2 iklan percepat + klaim target 2× (batas atas) | 4,7 | 10,5 | 55 (Lv 6) |
+
+Baris terakhir diukur sesudah dibangun (QA S-1, playtest ronde 2). Dua iklan percepat (1440 → 720 dtk) ditambah klaim target harian 2× (−720 dtk) menyelesaikan proyek seketika. Ini sesuai aturan: iklan paling banyak 2× per proyek, dan percepat dari target adalah hadiah target yang ikut digandakan. **Diterima tanpa perubahan** (Sapto, 31 Oktober 2026):
+
+- batas atasnya tetap di dalam patokan;
+- butuh 3 iklan dan target harian yang sudah selesai saat proyek berjalan, sekali per hari terminal, dan hanya ada 5 proyek;
+- tidak mengambil apa pun dari pemain tanpa iklan.
+
+Bila owner ingin "paling banyak 12 menit lewat iklan" berlaku mutlak, variannya adalah klaim 2× tidak menggandakan percepat. Itu menyentuh tempo, jadi perlu APPROVE.
 
 Armada dari tantangan mingguan (3 × 100 % per minggu, setara 6 klaim target harian) tidak disimulasikan terpisah, karena pemain serakah tidak mengenal minggu nyata. Armada menggeser tempo kira-kira sama dengan hadiah uang yang sudah ada. Pemain yang mengklaim hadiah bisa mendapat satu bentang 48–49 menit, sedikit di atas gerbang 45 (bagian 10, risiko).
 
 ### 4.4 Teks
 
+Teks yang dibangun, termasuk ronde perbaikan teks dari playtest ronde 2 (P-1 sampai P-3) dan dua penyimpangan Raka yang diterima Sapto.
+
 | Tempat | Teks |
 |---|---|
-| Baris target harian, hadiah | `+{uang} · 🚌 {po} +50%` (+ ` · 🏗️ −6 mnt` bila ada proyek) |
-| Toast setelah klaim | `🚌 Armada baru {po}: {a}% → {b}% menuju Lv {L}` · bila naik level: `🚌 {po} naik ke Lv {L}: {kelas/jurusan baru}` |
-| Baris tantangan, hadiah | `+{uang} · 🚌 {po} +1 level` |
-| Popup Bus Emas | `Bus istimewa membawa rombongan. Tonton iklan untuk {uang} dan armada baru {po} (+25%).` |
+| Kartu target harian, hadiah | `Hadiah: +{uang} · 🚌 {po} +½ level` (+ ` · 🏗️ −6 mnt` bila ada proyek) |
+| Tombol 2× target (iklan) | label kecil `▶ 2× semua` bila paket berisi armada atau percepat, karena seluruh paket digandakan; angka besar tetap `+{uang × 2}`. Tombol 2× lain (penghargaan) tetap `▶ 2×` |
+| Kartu tantangan, hadiah | sekali per kartu: `Hadiah tiap tantangan: +{uang} · 🚌 {po} +1 level`. Tombol Klaim tiap baris menyebut uangnya |
+| Catatan kartu tantangan | `Tantangan baru tiap Senin (WIB). Laba dihitung seperti Laba/hari: kontrak PO dirata-rata. 🚌 Armada selalu untuk PO berlevel terendah.` |
+| Teks penjelasan tab PO | ditambah kalimat `Hadiah armada (target, tantangan, Bus Emas) menaikkan level PO berlevel terendah.` |
+| Popup Bus Emas | `Bus istimewa membawa rombongan. Tonton iklan untuk {uang} dan armada baru {po} (+¼ level).` |
+| Toast setelah klaim | `🚌 Armada baru {po}: {a}% → {b}% menuju Lv {L}`. Bila armada menaikkan level PO, yang tampil teks naik level PO yang sudah ada: `⬆️ {po} naik ke Lv {L}` dengan akhiran `: kelas {…} & jurusan {…}` bila ada yang terbuka, mis. `⬆️ PO Peuyeum Kilat naik ke Lv 6: kelas Eksekutif & jurusan YOGYAKARTA` |
 | Kartu perluasan saat proyek | tombol `▶ Percepat 6 menit` dengan catatan kecil `iklan · maks. 2× per proyek` |
 
-`{po}` = nama PO lengkap ("PO Wayang Lestari"). Target armada ditampilkan **sebelum** diklaim, supaya pemain tahu PO mana yang mendapatnya.
+- `{po}` = nama PO lengkap ("PO Wayang Lestari"). PO sasaran armada ditampilkan **sebelum** diklaim, supaya pemain tahu PO mana yang mendapatnya.
+- **Armada ditulis dalam level**, bukan persen: 1 → `+1 level`, 0,5 → `+½ level`, 0,25 → `+¼ level`, nilai lain `+{persen}% level`. Di sebelah uang, "+50%" terbaca sebagai bonus persen sesuatu, dan tantangan di kartu yang sama memakai "+1 level". Toast tetap memakai persen (`0% → 50% menuju Lv 4`), karena itu kemajuan bilah level PO.
+- **"2× semua":** dengan label "2×" saja, tombol target tampak sama dengan tombol 2× penghargaan yang memang hanya uang, sehingga pemain menimbang iklan dari uangnya saja. Padahal target harian 2× juga memberi armada satu level penuh dan percepat 12 menit. Label 73 px muat di tombol 96 px.
+- **Aturan PO berlevel terendah tertulis** di catatan tantangan dan tab PO. Tanpa itu armada yang berpindah-pindah PO terasa acak (risiko di bagian 10). Seri: PO yang penumpangnya terbanyak (`poArmada`).
+- **Satu kejadian, satu toast** (penyimpangan Raka 1, diterima): toast armada yang menaikkan level PO tidak ditambah toast "🚌". Yang hilang hanya sisa kemajuan setelah naik level.
+- **Hadiah tantangan sekali per kartu** (penyimpangan Raka 2, diterima): muat satu baris di 360 px. Setelah satu klaim, nama PO di baris itu berganti ke PO terendah berikutnya. Menulis paket di tiap baris akan menambah 3 baris di portrait tanpa informasi baru.
 
 ## 5. Saran 6: tantangan dan target harian
 
@@ -282,14 +305,14 @@ Target harian laba = laba rata-rata sehari **dengan kontrak** (tarif bawaan) × 
 | Tempat | Teks |
 |---|---|
 | Baris tantangan kepuasan | `Jaga kepuasan ≥ {a}% selama {m} menit main` · kanan: `kini {k}% ›` |
-| Catatan kartu tantangan | `Tantangan baru tiap Senin (WIB). Laba dihitung seperti Laba/hari: kontrak PO dirata-rata.` |
+| Catatan kartu tantangan | `Tantangan baru tiap Senin (WIB). Laba dihitung seperti Laba/hari: kontrak PO dirata-rata.` Sejak ronde perbaikan teks ditambah kalimat armada (bagian 4.4) |
 | Target harian laba | tidak berubah (`Raih laba bersih {uang} hari ini`); angkanya kini tumbuh |
 
 ## 6. Dampak tempo sebelum dan sesudah
 
 **Pemain aktif** (pemain serakah 1×, `tests/tycoon-tempo.test.ts` dan dokumen 13 bagian 14):
 
-Patokan baru disetujui owner 31 Oktober 2026 (jawaban a, bagian 10) dan berlaku sejak ronde 2. Ronde 1 tidak menggeser tempo aktif, jadi `tests/tycoon-tempo.test.ts` tetap dengan patokan lama sampai ronde 2.
+Patokan baru disetujui owner 31 Oktober 2026 (jawaban a, bagian 10) dan berlaku di `tests/tycoon-tempo.test.ts` sejak ronde 2. Ronde 1 tidak menggeser tempo aktif. Kolom "sesudah ronde 2" diukur ulang di kode sesudah dibangun (playtest ronde 2): Tipe A 5,08 jam, Terpadu 10,91 jam, bentang buntu 41 menit, total 222 menit, laba hari 10 / 40 Rp 197 / 663 jt, sama dengan simulasi rancangan.
 
 | Momen | Patokan lama | Sebelum (0.3.1) | Sesudah ronde 2 | Patokan baru |
 |---|---|---|---|---|
@@ -354,7 +377,7 @@ Level lain (usulan; dalam kurung sekarang): Lv 15 3,1 jam (3,3) · Lv 25 7,7 jam
 
 ## 8. Kriteria penerimaan
 
-Berlaku sebagai bagian brief `docs/tasks/20261031-fondasi-saran-3-6.md` bagian 6. Ronde 1: AC-GP-01 (batas ronde 1), 05, 09, 10, 11, 12. Ronde 2: AC-GP-01 (batas ronde 2), 02, 03, 04, 06, 07, 08, 11, 12, dan AC-PLT-01.
+Berlaku sebagai bagian brief `docs/tasks/20261031-fondasi-saran-3-6.md` bagian 6. Ronde 1: AC-GP-01 (batas ronde 1), 05, 09, 10, 11, 12. Ronde 2: AC-GP-01 (batas ronde 2), 02, 03, 04, 06, 07, 08, 11, 12, dan AC-PLT-01. Ronde perbaikan teks: AC-GP-19 sampai 23 dan 12 (di akhir bagian ini).
 
 **Gameplay & UI**
 
@@ -391,6 +414,18 @@ Berlaku sebagai bagian brief `docs/tasks/20261031-fondasi-saran-3-6.md` bagian 6
   - `docs/design/20261031-fondasi-saran-3-6/sim/tantangan-sim.ts` (K3, K2, A60, 14 hari).
 - **AC-GP-12:** tidak ada peristiwa analitik baru; README bagian Pengelolaan terminal, Hadiah iklan berhadiah, dan Tutorial & analitik diperbarui; `npm run typecheck`, `npx vitest run`, dan `npm run build` lulus.
 
+**Ronde perbaikan teks** (dari playtest ronde 2; teks di bagian 3.5 dan 4.4; tanpa state, aksi, field save, angka ekonomi, atau peristiwa analitik baru):
+
+- **AC-GP-19 (P-1):** tombol 2× target berlabel "2× semua" bila paket berisi armada atau percepat; tombol 2× lain tetap "2×". Tidak meluap di 360×740 dan 900×420.
+- **AC-GP-20 (P-2):** kartu target dan popup Bus Emas menulis armada dalam level ("+½ level", "+¼ level", lainnya "+{persen}% level"); tantangan tetap "+1 level"; toast armada tidak berubah.
+- **AC-GP-21 (P-3):** catatan tantangan dan teks penjelasan tab PO menyebut bahwa hadiah armada selalu untuk PO berlevel terendah.
+- **AC-GP-22 (P-4):** status tab PO dan toast slot PO memakai slot jendela berikutnya:
+  - Lv 17, Perluasan 3, jendela 19/19, slot PO 7 → "Jendela penuh · +1 di Lv 18";
+  - Lv 12, Perluasan 2 → "Jendela penuh · Perluasan 3";
+  - toast "🅿️ Slot PO ke-{n} terbuka: jendela loket penuh sampai Lv {L}" / "… sampai Perluasan {N}";
+  - tes unit di notifikasi/ui-model.
+- **AC-GP-23 (QA S-3):** tes otomatis: aksi `percepatProyek` dan klaim 2× (target, Bus Emas, offline) dikirim hanya setelah iklan selesai dengan hadiah; batal atau gagal tidak mengirim aksi.
+
 **Platform (dikerjakan Raka, keputusan CR 5):** AC-PLT-01: `TempatIklan` mendapat `'percepatProyek'`; iklan contoh dan H5 memakai alur yang sama dengan boost.
 
 **Grafis:** tidak ada.
@@ -418,6 +453,11 @@ File per agen: Raka mendapat semua file di bagian 7 (gameplay), ditambah `src/ap
 - Bagian 15: langkah 8.
 - README dokumen: entri 15 menjadi "Disetujui".
 
+**Sesudah dibangun (Citra, 31 Oktober 2026):**
+
+- Dokumen 13: penanda "ronde 1" dan "ronde 2" dihapus; bagian 8 memakai angka playtest, bukan klaim "tiap level punya sesuatu untuk dikerjakan"; bagian 10 dan 11 memuat teks ronde perbaikan; bagian 14 memakai angka kode; langkah 8 bagian 15 selesai; bagian 16 memuat temuan terbuka dari playtest.
+- README dokumen: entri 15 menjadi "Dibangun".
+
 ## 10. Risiko, pertanyaan, dan keputusan
 
 **Risiko:**
@@ -426,7 +466,7 @@ File per agen: Raka mendapat semua file di bagian 7 (gameplay), ditambah `src/ap
 - **Keputusan mid-game kebanyakan jelas**: beli jendela, daftarkan PO, menabung untuk jalur Rp 1,5–4 M. Ini mengisi waktu dengan kemajuan yang terlihat, tapi belum memberi pilihan yang saling bersaing. Itu tugas saran 7 (sink).
 - **Gerbang tipis.** Tanpa hadiah, bentang terpanjang 41 menit. Dengan hadiah yang diklaim ada satu bentang 48–49 menit (Lv 17 atau Lv 7), dan bila semua Bus Emas ditonton 75 menit (Lv 28). Patokan tes memakai pemain serakah tanpa hadiah, seperti sekarang.
 - **Kepuasan akhir permainan lebih rendah** dengan PO lebih banyak (median 79 → 66 % di 10–13,5 jam). PO premium Sultan Garasi (80 %) lebih sulit dipertahankan. Ambang kepuasan tantangan menyesuaikan.
-- **Armada otomatis bisa terasa acak.** Mitigasi: PO sasaran ditulis sebelum klaim, dan aturannya sederhana (level terendah). Memilih PO sendiri cocok untuk tahap 1.
+- **Armada otomatis bisa terasa acak.** Mitigasi: PO sasaran ditulis sebelum klaim, dan aturannya sederhana (level terendah). Sejak ronde perbaikan teks, aturannya juga tertulis di catatan tantangan dan tab PO (bagian 4.4). Memilih PO sendiri cocok untuk tahap 1.
 - **Laju tonton iklan belum diketahui** (H5 Games Ads belum aktif): angka "sepertiga ditonton" adalah asumsi.
 - **Banyak toast naik level** di Lv 11–30. Izin ditempelkan ke toast level yang sudah ada, bukan toast baru.
 
@@ -455,3 +495,13 @@ Ketiga pertanyaan dijawab "ya":
 | 5 | `TempatIklan` di `src/app/iklan.ts` | Diterima: file dipinjamkan ke Raka di ronde 2, Dodi tidak ikut |
 
 Tidak masuk (brief bagian 3): memilih PO sasaran armada sendiri (tahap 1), kosmetik, dan saran 7–10.
+
+**Sesudah dibangun: playtest ronde 2 dan QA (31 Oktober 2026)**
+
+Laporan: `docs/design/20261031-fondasi-saran-3-6-playtest.md` dan QA gameplay `docs/reviews/20261031-fondasi-saran-3-6-gameplay-r2.md` (repo tim).
+
+- **Tidak memblokir.** Angka di kode sama dengan rancangan: Tipe A 5,08 jam, Terpadu 10,91 jam, bentang buntu terpanjang 41 menit (Lv 7), total 222 menit; kasual K3 dan K2 dengan keputusan sampai hari 12. Kas menipis 0 dan petugas berhenti 0 di semua run. Iklan tetap pilihan, dan teks izin muat di 360 px.
+- **Penyimpangan Raka ronde 2:** (1) toast armada yang menaikkan level PO memakai teks naik level PO, diterima; (2) hadiah tantangan ditulis sekali per kartu, diterima; (3) tombol 2× target hanya menyebut uang, tidak cukup jelas dan diperbaiki lewat P-1. Teksnya di bagian 4.4.
+- **Ronde perbaikan teks P-1 sampai P-4** (keputusan Sapto, bagian dari loop QA fitur yang sudah di-APPROVE, tanpa angka ekonomi): "2× semua", armada dalam level, aturan PO berlevel terendah tertulis, dan status/toast jendela penuh yang menunjuk izin level (bagian 3.5, 4.4, AC-GP-19 sampai 23).
+- **QA S-1** (proyek seketika lewat 2 iklan percepat + klaim target 2×): diterima tanpa tindakan (bagian 4.3).
+- **Temuan untuk tugas berikutnya** (bukan keputusan; P-5 sampai P-9 dan QA S-4): dicatat di dokumen 13 bagian 16. Yang terbesar: izin jendela tiap level jarang berarti bagi pemain yang mengikuti baris tujuan, dan dataran Lv 21–27 terasa sebagai tunggu panjang.

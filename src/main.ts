@@ -1,7 +1,7 @@
 import './ui/gaya.css';
 import { bacaAkunAktif, hapusDataAkun, keluarAkun, masukAkun, SlotAkun } from './app/akun';
 import { PencatatAnalitik, pesanGalat } from './app/analitik';
-import type { TempatIklan } from './app/iklan';
+import { hadiahSetelahIklan, tontonBerhadiah, type TempatIklan } from './app/iklan';
 import { LayananPeringkat } from './app/layanan-peringkat';
 import { SesiGame, slotLokal, type Logger } from './app/sesi';
 import { manajerUntung } from './app/tujuan';
@@ -26,7 +26,7 @@ import { pasangSiklusHidup } from './platform/siklus-hidup';
 import { MesinSuara } from './platform/suara';
 import type { Aksi } from './sim/aksi';
 import { isEventId } from './sim/fitur';
-import { bisaAktifkanBoost, bisaKlaimBonusOffline, hadiahBusEmas, type LaporanOffline } from './sim/state';
+import { bisaAktifkanBoost, bisaKlaimBonusOffline, paketHadiah, type LaporanOffline } from './sim/state';
 import { pasangBingkai } from './ui/bingkai';
 import { pasangOverlay } from './ui/overlay';
 import { tampilkanPopupAkun } from './ui/popup-akun';
@@ -37,7 +37,7 @@ import { pasangTombolAkun } from './ui/tombol-akun';
 import { pasangTombolKamera, type TombolKamera } from './ui/tombol-kamera';
 import { pasangTombolSuara } from './ui/tombol-suara';
 import { pasangTutorial } from './ui/tutorial';
-import { TEKS } from './ui/teks';
+import { NAMA_PO, TEKS, teksBagianLevel } from './ui/teks';
 
 function ambil(id: string): HTMLElement {
   const e = document.getElementById(id);
@@ -117,11 +117,7 @@ async function mulai(): Promise<void> {
   // Iklan berhadiah (platform/iklan.ts): suara game dibisukan selama iklan diputar.
   const bisuSelamaIklan = { sebelum: (): void => {}, sesudah: (): void => {} };
   const iklan = buatPenyediaIklan({ akar: ui, sebelum: () => bisuSelamaIklan.sebelum(), sesudah: () => bisuSelamaIklan.sesudah() });
-  const tontonIklan = async (tempat: TempatIklan): Promise<boolean> => {
-    const hasil = await iklan.tonton(tempat).catch(() => 'gagal' as const);
-    analitik.catat('iklan_hadiah', { tempat, hasil });
-    return hasil === 'ditonton';
-  };
+  const tontonIklan = (tempat: TempatIklan): Promise<boolean> => tontonBerhadiah(iklan, tempat, (hasil) => analitik.catat('iklan_hadiah', { tempat, hasil }));
   // Papan peringkat mingguan (hanya web, seperti akun): tamu hanya melihat, pemain login bisa ikut.
   const apiPeringkat = buatApiPeringkat(() => (uidAktif === null ? Promise.resolve(null) : tokenAkun(uidAktif)));
   const peringkat = bisaLogin
@@ -187,32 +183,38 @@ async function mulai(): Promise<void> {
       catatan: s.hadiah.boostDetik > 0 ? TEKS.boostSisa(formatDurasi(s.hadiah.boostDetik)) : '',
       tombol: bisa ? TEKS.boostTonton : TEKS.boostPenuh(h.boostMaksDetik / 3600),
       bisa,
-      tonton: async () => {
-        if (!(await tontonIklan('boost'))) return false;
-        kirim({ jenis: 'aktifkanBoost' });
-        overlay.notif(TEKS.notifBoost(formatDurasi(sesi.pengendali.state.hadiah.boostDetik)));
-        return true;
-      },
+      tonton: () =>
+        hadiahSetelahIklan(
+          () => tontonIklan('boost'),
+          () => {
+            kirim({ jenis: 'aktifkanBoost' });
+            overlay.notif(TEKS.notifBoost(formatDurasi(sesi.pengendali.state.hadiah.boostDetik)));
+          },
+        ),
     });
   };
   const bukaBusEmas = (): void => {
     kirim({ jenis: 'tahanBusEmas' });
-    const hadiah = hadiahBusEmas(sesi.pengendali.state);
+    // Paket Bus Emas: uang & armada untuk PO yang tertulis di popup (documents/15 bagian 4.4).
+    const paket = paketHadiah(sesi.pengendali.state, 'busEmas');
+    const armada = paket.armada;
     void tampilkanPopupHadiah(ui, {
       kelas: 'hadiah-bus-emas',
       ikon: IKON_BUS_EMAS,
       judul: TEKS.busEmasJudul,
-      teks: TEKS.busEmasTeks(EKONOMI.hadiah.busEmasMenit),
-      hadiah: `+${formatUang(hadiah)}`,
+      teks: armada ? TEKS.busEmasTeks(formatUang(paket.uang), NAMA_PO[armada.po].nama, teksBagianLevel(armada.bagian)) : TEKS.busEmasTeksUang(formatUang(paket.uang)),
+      hadiah: `+${formatUang(paket.uang)}`,
       tombol: TEKS.busEmasTonton,
       bisa: true,
-      tonton: async () => {
-        if (!(await tontonIklan('busEmas'))) return false;
-        const sebelum = sesi.pengendali.state.kas;
-        kirim({ jenis: 'klaimBusEmas' });
-        overlay.notif(TEKS.notifBusEmas(formatUang(sesi.pengendali.state.kas - sebelum)));
-        return true;
-      },
+      tonton: () =>
+        hadiahSetelahIklan(
+          () => tontonIklan('busEmas'),
+          () => {
+            const sebelum = sesi.pengendali.state.kas;
+            kirim({ jenis: 'klaimBusEmas' });
+            overlay.notif(TEKS.notifBusEmas(formatUang(sesi.pengendali.state.kas - sebelum)));
+          },
+        ),
     }).then((diterima) => diterima || kirim({ jenis: 'lepasBusEmas' }));
   };
   const tombolBoost = pasangTombolBoost(overlay.kontrol, () => iklan.siap(), bukaBoost);
@@ -348,14 +350,14 @@ async function mulai(): Promise<void> {
     // Bonus 2× lewat iklan: hanya kalau ada penghasilan offline yang belum digandakan.
     const ganda =
       iklan.siap() && bisaKlaimBonusOffline(s)
-        ? async (): Promise<boolean> => {
-            if (!(await tontonIklan('offline2x'))) return false;
-            kirim({ jenis: 'klaimBonusOffline' });
-            return true;
-          }
+        ? (): Promise<boolean> =>
+            hadiahSetelahIklan(
+              () => tontonIklan('offline2x'),
+              () => kirim({ jenis: 'klaimBonusOffline' }),
+            )
         : undefined;
     // Tanpa Manajer: catatan popup menyarankannya hanya bila ia sudah untung (syarat baris tujuan).
-    void tampilkanPopupOffline(ui, l, ganda, l.tutup && manajerUntung(s));
+    void tampilkanPopupOffline(ui, l, ganda, l.tutup && manajerUntung(s), s.perkembangan.perluasan);
   };
   tampilkanLaporan(laporan);
   saatSaveDiganti = (l) => {

@@ -13,7 +13,7 @@
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { terapkanAksi, type Aksi } from '../sim/aksi';
-import { menurutTahap } from '../sim/bangunan';
+import { izinBerikut, type Izin } from '../sim/bangunan';
 import { PO_IDS, TEKNOLOGI_IDS, type BangunanId, type PetugasId, type PoId, type TeknologiId } from '../sim/fitur';
 import { levelMinimalKelas } from '../sim/level-terminal';
 import { urutanPo } from '../sim/mitra';
@@ -32,6 +32,7 @@ import {
   kurangPerpanjangPo,
   levelTerminal,
   operasiState,
+  slotBangunanState,
   slotPoState,
   syaratTeknologi,
   tawaranKontrakPo,
@@ -89,7 +90,8 @@ export type TujuanDinilai = DasarTujuan &
     | { readonly jenis: 'proyek'; readonly tahap: number; readonly sisaDetik: number }
     /** hanyaCadangan: kas sudah ≥ biaya perluasan, kekurangannya hanya untuk cadangan kas. */
     | { readonly jenis: 'menabung'; readonly tahap: number; readonly kekurangan: number; readonly hanyaCadangan: boolean }
-    | { readonly jenis: 'naikLevel'; readonly tahap: number; readonly level: number; readonly levelSekarang: number }
+    /** izin: izin level terdekat bila lebih dulu dari perluasan berikut (`level` = level izin itu), selain itu null. */
+    | { readonly jenis: 'naikLevel'; readonly tahap: number; readonly level: number; readonly levelSekarang: number; readonly izin: Izin | null }
     | { readonly jenis: 'kelasBerikut'; readonly kelas: number; readonly level: number; readonly levelSekarang: number }
   );
 
@@ -307,9 +309,13 @@ export function daftarTujuan(state: GameState, kunciTampil: string | null, cfg: 
 
   // 5 Naik level (selalu ada)
   const level = levelTerminal(state, cfg);
-  if (berikut && !berikut.levelCukup)
-    hasil.push({ jenis: 'naikLevel', tingkat: 5, kunci: `level:${berikut.tahap}`, siap: false, aksi: null, tahap: berikut.tahap, level: berikut.level, levelSekarang: level });
-  else {
+  if (berikut && !berikut.levelCukup) {
+    // Izin level terdekat (slot jendela, jalur, slot PO) bila lebih dulu dari perluasan berikut (documents/15 bagian 3.5).
+    const iz = izinBerikut(level, p.perluasan, cfg);
+    if (iz && iz.level < berikut.level)
+      hasil.push({ jenis: 'naikLevel', tingkat: 5, kunci: `izin:${iz.level}`, siap: false, aksi: null, tahap: berikut.tahap, level: iz.level, levelSekarang: level, izin: iz.izin });
+    else hasil.push({ jenis: 'naikLevel', tingkat: 5, kunci: `level:${berikut.tahap}`, siap: false, aksi: null, tahap: berikut.tahap, level: berikut.level, levelSekarang: level, izin: null });
+  } else {
     const kelas = kelasTerminal(state, cfg) + 1;
     hasil.push({ jenis: 'kelasBerikut', tingkat: 5, kunci: `kelas:${kelas}`, siap: false, aksi: null, kelas, level: levelMinimalKelas(kelas, cfg), levelSekarang: level });
   }
@@ -418,7 +424,7 @@ export function butirLencana(state: GameState, cfg: KonfigEkonomi = EKONOMI): Bu
   const po: string[] = [];
   const kemitraan = adaPetugas(state, 'manajerKemitraan');
   if (!kemitraan) for (const p of state.mitra.terdaftar) if (kurangPerpanjangPo(state, p.id, cfg) === null) po.push(`perpanjang:${p.id}:${p.kontrakKe}`);
-  if (poBisaDidaftarkan(state, cfg)) po.push(`daftar:${slotPoState(state, cfg)}:${menurutTahap(cfg.tycoon.bangunan.jendela.slot, state.perkembangan.perluasan)}`);
+  if (poBisaDidaftarkan(state, cfg)) po.push(`daftar:${slotPoState(state, cfg)}:${slotBangunanState(state, 'jendela', cfg)}`);
   const kosong = jendelaKosong(state);
   if (!kemitraan && kosong > 0) po.push(`kosong:${kosong}`);
   return { terminal, po };

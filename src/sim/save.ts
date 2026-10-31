@@ -32,6 +32,7 @@ import {
   type TeknologiId,
 } from './fitur';
 import type { RincianBiaya, RincianPendapatan } from './keuangan';
+import { levelTerminalDariXp } from './level-terminal';
 import { tingkatPo } from './mitra';
 import { rapikanPetugas } from './petugas';
 import { rapikanNamaTerminal } from './profil';
@@ -290,7 +291,8 @@ function dariSaveV3(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
   const perkembangan = bacaPerkembangan(akar['perkembangan'], cfg);
   const terminalMentah = wajibObjek(akar['terminal'], 'terminal');
   const mitra = bacaMitra(akar['mitra'], cfg);
-  const bangunan = bacaBangunan(terminalMentah['bangunan'], perkembangan.perluasan, mitra, cfg);
+  // Slot memakai level dari perkembangan (izin level): jendela & jalur izin tidak terpotong saat dimuat.
+  const bangunan = bacaBangunan(terminalMentah['bangunan'], perkembangan.perluasan, levelTerminalDariXp(perkembangan.xpTerminal, cfg), mitra, cfg);
   const statistik = bacaStatistik(akar['statistik'], awal.statistik);
   const hariKe = waktuTerminal(statistik.waktuMainDetik).hariKe;
   const state: GameState = {
@@ -320,18 +322,18 @@ function dariSaveV3(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
 }
 
 /**
- * Bangunan: tiap jenis bilangan bulat dalam slot tahap perluasan sekarang (save
+ * Bangunan: tiap jenis bilangan bulat dalam slot sekarang (tahap perluasan + izin level; save
  * dari versi lain / diubah tangan). Jalur permanen (paling sedikit unit
  * awalnya), jendela loket paling sedikit satu dan sebanyak yang disewa PO.
  */
-function bacaBangunan(nilai: unknown, perluasan: number, mitra: MitraState, cfg: KonfigEkonomi): Record<BangunanId, number> {
+function bacaBangunan(nilai: unknown, perluasan: number, level: number, mitra: MitraState, cfg: KonfigEkonomi): Record<BangunanId, number> {
   const o = opsionalObjek(nilai, 'terminal.bangunan');
   const hasil = {} as Record<BangunanId, number>;
   for (const id of BANGUNAN_IDS) {
     const b = cfg.tycoon.bangunan[id];
     const n = opsional(o?.[id], b.awal, wajibIntegerNonNegatif, `terminal.bangunan.${id}`);
     const min = id === 'jalur' ? b.awal : id === 'jendela' ? 1 : 0;
-    hasil[id] = Math.max(min, Math.min(slotBangunan(id, perluasan, cfg), n));
+    hasil[id] = Math.max(min, Math.min(slotBangunan(id, perluasan, level, cfg), n));
   }
   hasil.jendela = Math.max(hasil.jendela, mitra.terdaftar.reduce((a, p) => a + p.loket, 0));
   return hasil;

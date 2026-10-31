@@ -158,6 +158,21 @@ describe('daftarTujuan: tingkat 2 siap', () => {
     const t = daftarTujuan(semua, null);
     expect(t[t.length - 1]).toMatchObject({ jenis: 'kelasBerikut', tingkat: 5, levelSekarang: 40 });
   });
+
+  it('naik level: izin level terdekat bila lebih dulu dari perluasan berikut (documents/15 bagian 3.5, AC-GP-06)', () => {
+    const naik = (level: number, perluasan: number) => cari(daftarTujuan(denganPerluasan(kaya(denganLevelTerminal(stateOtomatis(), level)), perluasan), null), 'naikLevel');
+    // Perluasan 3 selesai di Lv 15: Lv 16 membuka jendela & jalur, lebih dulu dari Perluasan 4 (Lv 20).
+    const t = naik(15, 3)!;
+    expect(t).toMatchObject({ tingkat: 5, tahap: 4, level: 16, levelSekarang: 15, izin: { jendela: 1, jalur: 1, slotPo: 0 }, kunci: 'izin:16' });
+    expect(teksTujuan(t)).toBe('⬆️ Lv 16: slot jendela loket +1 & slot jalur +1 · kini Lv 15');
+    expect(teksTujuan(naik(26, 4)!)).toBe('⬆️ Lv 27: slot jendela loket +1 & slot PO ke-9 · kini Lv 26');
+    // Slot PO sebelum Perluasan 3 (Lv 6 sama dengan Perluasan 2: perluasan menang).
+    expect(naik(2, 0)).toMatchObject({ level: 3, izin: null });
+    expect(naik(4, 1)).toMatchObject({ tahap: 2, level: EKONOMI.mitra.perluasan[1]!.level, izin: null });
+    // Izin terakhir sebelum Perluasan 5 (Lv 29 jendela) lalu perluasan itu sendiri.
+    expect(naik(28, 4)).toMatchObject({ level: 29, izin: { jendela: 1, jalur: 0, slotPo: 0 } });
+    expect(naik(29, 4)).toMatchObject({ level: EKONOMI.mitra.perluasan[4]!.level, izin: null });
+  });
 });
 
 describe('daftarTujuan: tingkat 3 hanya yang aman', () => {
@@ -338,7 +353,10 @@ describe('baris tujuan: teks, warna, sasaran', () => {
     { ...d, tingkat: 4, siap: false, jenis: 'proyek', tahap: 5, sisaDetik: EKONOMI.mitra.detikProyek },
     { ...d, tingkat: 4, siap: false, jenis: 'menabung', tahap: 5, kekurangan: besar, hanyaCadangan: false },
     { ...d, tingkat: 4, siap: false, jenis: 'menabung', tahap: 5, kekurangan: besar, hanyaCadangan: true },
-    { ...d, tingkat: 5, siap: false, jenis: 'naikLevel', tahap: 5, level: 100, levelSekarang: 99 },
+    { ...d, tingkat: 5, siap: false, jenis: 'naikLevel', tahap: 5, level: 100, levelSekarang: 99, izin: null },
+    // Izin level terpanjang yang bisa tampil (izin hanya sebelum perluasan berikut, jadi Lv < 30): dua izin sekaligus.
+    { ...d, tingkat: 5, siap: false, jenis: 'naikLevel', tahap: 4, level: 16, levelSekarang: 15, izin: { jendela: 1, jalur: 1, slotPo: 0 } },
+    { ...d, tingkat: 5, siap: false, jenis: 'naikLevel', tahap: 5, level: 27, levelSekarang: 26, izin: { jendela: 1, jalur: 0, slotPo: 9 } },
     { ...d, tingkat: 5, siap: false, jenis: 'kelasBerikut', kelas: 14, level: 100, levelSekarang: 99 },
   ];
 

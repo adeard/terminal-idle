@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EKONOMI } from '../src/config/economy.config';
 import { slotBangunan } from '../src/sim/bangunan';
+import { xpKumulatifTerminal } from '../src/sim/level-terminal';
 import { deserialisasi, keSaveV3, migrasikan, muatAtauBaru, SaveTidakValidError, serialisasi, VERSI_SKEMA, type FungsiMigrasi } from '../src/sim/save';
 import { aturTarif, bangun, buatStateBaru, DETIK_SEHARI, putusPo, tandaiWaktu, type GameState } from '../src/sim/state';
 import { tarifBawaan } from '../src/sim/tarif';
@@ -179,12 +180,28 @@ describe('kompatibilitas ke depan', () => {
     const d = ubahTerminal({ ...saveValid(), perkembangan: { xpTerminal: 0, perluasan: 0, proyekDetik: 0 } }, { bangunan: { jalur: 0, jendela: 99, kursi: 0, toilet: 7 } });
     const s = deserialisasi(JSON.stringify(d), T0);
     expect(s.terminal.bangunan.jalur).toBe(1);
-    expect(s.terminal.bangunan.jendela).toBe(slotBangunan('jendela', 0));
+    expect(s.terminal.bangunan.jendela).toBe(slotBangunan('jendela', 0, 1));
     expect(s.terminal.bangunan.kursi).toBe(0);
-    expect(s.terminal.bangunan.toilet).toBe(slotBangunan('toilet', 0));
+    expect(s.terminal.bangunan.toilet).toBe(slotBangunan('toilet', 0, 1));
     const kurang = ubahTerminal(saveValid(), { bangunan: { jendela: 1 } });
     const k = deserialisasi(JSON.stringify(kurang), T0);
     expect(k.terminal.bangunan.jendela).toBeGreaterThanOrEqual(k.mitra.terdaftar.reduce((a, p) => a + p.loket, 0));
+  });
+
+  it('izin level: jendela & jalur di atas slot tahap tidak hilang saat dimuat bila levelnya cukup (documents/15 bagian 3.6, AC-GP-03)', () => {
+    const muat = (level: number, perluasan: number, bangunan: Record<string, number>) =>
+      deserialisasi(JSON.stringify(ubahTerminal({ ...saveValid(), perkembangan: { xpTerminal: xpKumulatifTerminal(level), perluasan, proyekDetik: 0 } }, { bangunan })), T0).terminal.bangunan;
+    // Perluasan 3 di Lv 20: jendela 12 + 10 izin, jalur 5 + 1 izin (Lv 16).
+    expect(muat(20, 3, { jendela: 22, jalur: 6 })).toMatchObject({ jendela: 22, jalur: 6 });
+    // Level kurang: dijepit ke slot level itu (Lv 12: jendela 12 + 2, jalur 5).
+    expect(muat(12, 3, { jendela: 22, jalur: 6 })).toMatchObject({ jendela: 14, jalur: 5 });
+    // Save 0.3.1 (slot jalur lama [5,5,5,5,7,9]): jalur 7 di Perluasan 4 dan 9 di Perluasan 5 tetap utuh di level syarat perluasannya.
+    expect(muat(EKONOMI.mitra.perluasan[3]!.level, 4, { jalur: 7, jendela: 16 })).toMatchObject({ jalur: 7, jendela: 16 });
+    expect(muat(EKONOMI.mitra.perluasan[4]!.level, 5, { jalur: 9, jendela: 20 })).toMatchObject({ jalur: 9, jendela: 20 });
+    // Tidak ada field save baru untuk izin: slot diturunkan dari XP & perluasan.
+    const s = deserialisasi(JSON.stringify(ubahTerminal({ ...saveValid(), perkembangan: { xpTerminal: xpKumulatifTerminal(20), perluasan: 3, proyekDetik: 0 } }, { bangunan: { jendela: 22, jalur: 6 } })), T0);
+    expect(Object.keys(keSaveV3(s).perkembangan).sort()).toEqual(['perluasan', 'proyekDetik', 'xpTerminal']);
+    expect(Object.keys(keSaveV3(s).terminal.bangunan).sort()).toEqual(Object.keys(EKONOMI.tycoon.bangunan).sort());
   });
 
   it('petugas: peran tak dikenal dibuang, yang melebihi batas bangunannya keluar; tarif dirapikan', () => {

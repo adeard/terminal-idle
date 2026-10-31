@@ -245,6 +245,16 @@ export interface KonfigEkonomi {
     readonly busEmasAktifDetik: number;
     /** Hadiah paling sedikit per menit (Rp). */
     readonly minPerMenit: number;
+    /**
+     * Armada (documents/15 bagian 4): XP untuk PO berlevel terendah sebesar bagian ini × kebutuhan
+     * level berikutnya PO itu, dari target harian, tantangan mingguan, dan Bus Emas.
+     */
+    readonly armadaHarian: number;
+    readonly armadaTantangan: number;
+    readonly armadaBusEmas: number;
+    /** Percepat proyek perluasan (detik main): dari target harian saat proyek berjalan, dan lewat iklan bila sisanya > percepatSisaMinDetik. */
+    readonly percepatDetik: number;
+    readonly percepatSisaMinDetik: number;
   };
   /** Mitra PO: tingkat & daftar PO, level PO & terminal, reputasi, kontrak, perluasan. */
   readonly mitra: KonfigMitra;
@@ -300,6 +310,11 @@ export interface KonfigTycoon {
   /** Petak parkir bus setelah tahap perluasan ke-i (indeks 0 = terminal awal). */
   readonly petakBus: readonly number[];
   readonly bangunan: Readonly<Record<BangunanId, KonfigBangunan>>;
+  /**
+   * Izin level (documents/15 bagian 3): sejak tahap perluasan `tahapMinimal`, tiap level di daftar
+   * `jendela` / `jalur` menambah satu slot jenis itu di atas slot tahapnya.
+   */
+  readonly izinLevel: { readonly tahapMinimal: number; readonly jendela: readonly number[]; readonly jalur: readonly number[] };
   /** Gaji satu posisi per hari terminal (Rp): terminal buka 24 jam, jadi satu posisi = tiga shift. */
   readonly gaji: Readonly<Record<PetugasId, number>>;
   readonly tarif: Readonly<Record<TarifId, KonfigTarif>>;
@@ -392,6 +407,13 @@ export interface KonfigSimulasi {
   readonly minDetikPopupOffline: number;
 }
 
+/** Level dari `mulai` sampai `akhir` tiap `langkah` (untuk daftar izin level; hasilnya array angka biasa). */
+function rentangLevel(mulai: number, akhir: number, langkah: number): number[] {
+  const hasil: number[] = [];
+  for (let l = mulai; l <= akhir; l += langkah) hasil.push(l);
+  return hasil;
+}
+
 export const EKONOMI: KonfigEkonomi = {
   jurusan: [
     { nama: 'JAKARTA', peminat: 3 },
@@ -447,6 +469,12 @@ export const EKONOMI: KonfigEkonomi = {
     busEmasSelangDetik: [5 * 60, 10 * 60],
     busEmasAktifDetik: 60,
     minPerMenit: 200_000,
+    // Hadiah non-uang (documents/15 bagian 4.2): armada +50 % / +1 level / +25 % level PO terendah; percepat 6 menit.
+    armadaHarian: 0.5,
+    armadaTantangan: 1,
+    armadaBusEmas: 0.25,
+    percepatDetik: 360,
+    percepatSisaMinDetik: 720,
   },
 
   mitra: {
@@ -539,7 +567,8 @@ export const EKONOMI: KonfigEkonomi = {
       xpK: 2.75,
       levelKelas: [10, 20, 30],
       levelPerBintang: 10,
-      slot: [[1, 2], [3, 3], [6, 4], [10, 5], [14, 6], [20, 7], [25, 8], [30, 9], [40, 10], [50, 11], [60, 12], [70, 13], [80, 14], [90, 15], [100, 16], [110, 17], [120, 18], [130, 19], [140, 20]],
+      // Slot PO 7/8/9 di Lv 17/19/27 (documents/15 bagian 3.2), tetap 20 di Lv 140.
+      slot: [[1, 2], [3, 3], [6, 4], [10, 5], [14, 6], [17, 7], [19, 8], [27, 9], [40, 10], [50, 11], [60, 12], [70, 13], [80, 14], [90, 15], [100, 16], [110, 17], [120, 18], [130, 19], [140, 20]],
       slotTanpaAulaKedua: 8,
       tahapAulaKedua: 4,
     },
@@ -556,9 +585,10 @@ export const EKONOMI: KonfigEkonomi = {
   tycoon: {
     modalAwal: 25_000_000,
     kapasitas: { halte: 100, jendela: 50, gerbang: 150, bonusPetugas: 0.25, penumpangPerBus: 25, jamParkirBus: 0.75 },
-    petakBus: [10, 10, 20, 20, 40, 60],
+    petakBus: [10, 10, 20, 30, 40, 60],
     bangunan: {
-      jalur: { awal: 1, slot: [5, 5, 5, 5, 7, 9], biaya: [15_000_000, 60_000_000, 250_000_000, 800_000_000, 1_500_000_000, 2_500_000_000, 4_000_000_000, 6_000_000_000], pertumbuhan: 1, perawatan: 500_000 },
+      // Slot jalur tahap 4 & 5 ditambah izin Lv 16 & 26 (izinLevel) = 7 & 9 seperti sebelumnya.
+      jalur: { awal: 1, slot: [5, 5, 5, 5, 6, 7], biaya: [15_000_000, 60_000_000, 250_000_000, 800_000_000, 1_500_000_000, 2_500_000_000, 4_000_000_000, 6_000_000_000], pertumbuhan: 1, perawatan: 500_000 },
       jendela: { awal: 1, slot: [4, 6, 8, 12, 16, 20], biaya: [2_000_000], pertumbuhan: 1.25, perawatan: 150_000 },
       kursi: { awal: 1, slot: [4, 4, 4, 8], biaya: [4_000_000], pertumbuhan: 1, perawatan: 50_000 },
       kios: { awal: 0, slot: [3], biaya: [5_000_000], pertumbuhan: 1, perawatan: 100_000 },
@@ -567,6 +597,8 @@ export const EKONOMI: KonfigEkonomi = {
       lahanParkir: { awal: 0, slot: [1, 1, 2], biaya: [6_000_000], pertumbuhan: 1, perawatan: 100_000 },
       posRetribusi: { awal: 0, slot: [1], biaya: [6_000_000], pertumbuhan: 1, perawatan: 100_000 },
     },
+    // Izin level sejak Perluasan 3: jendela tiap level Lv 11–30 lalu tiap level genap s.d. Lv 140; jalur Lv 16 & 26.
+    izinLevel: { tahapMinimal: 3, jendela: [...rentangLevel(11, 30, 1), ...rentangLevel(32, 140, 2)], jalur: [16, 26] },
     gaji: {
       peron: 450_000,
       gerbang: 450_000,

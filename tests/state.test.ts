@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EKONOMI, SIMULASI } from '../src/config/economy.config';
 import { WAKTU } from '../src/config/waktu.config';
 import { biayaUnitBerikutnya, slotBangunan } from '../src/sim/bangunan';
+import { xpKumulatifTerminal } from '../src/sim/level-terminal';
 import { majukanWaktu } from '../src/sim/loop';
 import {
   acuanHarian,
@@ -22,6 +23,7 @@ import {
   klaimTarget,
   kurangPerpanjangPo,
   labaBuku,
+  levelTerminal,
   mulaiPerluasan,
   operasiState,
   pakaiSaranTarif,
@@ -144,7 +146,7 @@ describe('bangun & bongkar', () => {
   });
 
   it('slot penuh atau kas kurang → tidak bisa; slot bertambah lewat perluasan', () => {
-    const s = denganPo(stateOtomatis(), 'ondelOndel', { loket: slotBangunan('jendela', 0) });
+    const s = denganPo(stateOtomatis(), 'ondelOndel', { loket: slotBangunan('jendela', 0, 1) });
     expect(biayaBangunState(s, 'jendela')).toBeNull();
     expect(bangun(s, 'jendela')).toBe(s);
     const miskin = { ...stateOtomatis(), kas: 1000 };
@@ -295,7 +297,7 @@ describe('mitra PO', () => {
     const b = daftarPo(kosong, 'peuyeumKilat');
     expect(b.terminal.bangunan.jendela).toBe(kosong.terminal.bangunan.jendela);
     expect(jendelaKosong(b)).toBe(0);
-    const penuh = denganPo(stateOtomatis(), 'ondelOndel', { loket: slotBangunan('jendela', 0) });
+    const penuh = denganPo(stateOtomatis(), 'ondelOndel', { loket: slotBangunan('jendela', 0, 1) });
     expect(syaratDaftarPoKurang(penuh, 'peuyeumKilat')).toEqual({ jenis: 'jendela' });
   });
 
@@ -352,7 +354,7 @@ describe('perluasan', () => {
     expect(b.perkembangan.proyekDetik).toBe(EKONOMI.mitra.detikProyek);
     const c = tick(b, EKONOMI.mitra.detikProyek);
     expect(c.perkembangan.perluasan).toBe(1);
-    expect(slotBangunan('jendela', c.perkembangan.perluasan)).toBeGreaterThan(slotBangunan('jendela', 0));
+    expect(slotBangunan('jendela', c.perkembangan.perluasan, 1)).toBeGreaterThan(slotBangunan('jendela', 0, 1));
     expect(keuanganSekarang(c).biaya.gedung).toBeCloseTo(EKONOMI.mitra.perluasan[0]!.operasional / 24, 6);
   });
 });
@@ -403,6 +405,18 @@ describe('offline', () => {
       expect(pergi(s, 1).laporan.proyek).toBeNull();
     }
     expect(terapkanOffline(proyek(tanpa, 1000), tanpa.waktuTerakhirMs + 600_000).laporan.tutup).toBe(true);
+  });
+
+  it('laporan menyebut level yang naik selama pergi (izin baru di popup; data sesaat, bukan save)', () => {
+    const s = denganPetugas(stateOtomatis(), ['manajerOperasional']);
+    // Satu penumpang lagi ke Lv 3: semenit offline cukup.
+    const hampir = { ...s, perkembangan: { ...s.perkembangan, xpTerminal: xpKumulatifTerminal(3) - 1 } };
+    expect(levelTerminal(hampir)).toBe(2);
+    expect(pergi(hampir, 1 / 60).laporan.naikLevel).toEqual({ dari: 2, ke: 3 });
+    const lv2 = { ...s, perkembangan: { ...s.perkembangan, xpTerminal: xpKumulatifTerminal(2) } };
+    expect(pergi(lv2, 1 / 3600).laporan.naikLevel).toBeNull();
+    // Tanpa Manajer terminal tutup: tidak ada penumpang, tidak naik level.
+    expect(pergi({ ...hampir, terminal: { ...hampir.terminal, petugas: [] } }, 1).laporan.naikLevel).toBeNull();
   });
 
   it('paling lama 8 jam; jam dimundurkan → 0', () => {

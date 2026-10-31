@@ -6,7 +6,7 @@
 import type { TujuanDinilai } from '../app/tujuan';
 import { formatDurasi, formatUang } from './format';
 import { wajahKepuasan } from './popup-kepuasan';
-import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_BANGUNAN, NAMA_PENDEK_TEKNOLOGI, NAMA_PO, TEKS } from './teks';
+import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_BANGUNAN, NAMA_PENDEK_TEKNOLOGI, NAMA_PO, TEKS, teksIzin } from './teks';
 
 /** Warna baris: tingkat 1 merah, 2–3 kuning (ada yang bisa dikerjakan), 4–5 netral (menunggu). */
 export type GayaTujuan = 'bahaya' | 'siap' | 'netral';
@@ -68,7 +68,7 @@ export function teksTujuan(t: TujuanDinilai): string {
     case 'menabung':
       return (t.hanyaCadangan ? TEKS.tujuanMenabungCadangan : TEKS.tujuanMenabung)(t.tahap, formatUang(t.kekurangan));
     case 'naikLevel':
-      return TEKS.tujuanNaikLevel(t.tahap, t.level, t.levelSekarang);
+      return t.izin ? TEKS.tujuanIzin(t.level, teksIzin(t.izin), t.levelSekarang) : TEKS.tujuanNaikLevel(t.tahap, t.level, t.levelSekarang);
     case 'kelasBerikut':
       return TEKS.tujuanKelas(namaKelas(t.kelas), t.level, t.levelSekarang);
   }

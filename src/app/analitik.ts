@@ -147,6 +147,8 @@ export function peristiwaAksi(aksi: Aksi, lama: GameState, baru: GameState): Per
       return [{ nama: baru.profil.ikutPeringkat ? 'peringkat_ikut' : 'peringkat_keluar' }];
     case 'tahanBusEmas':
     case 'lepasBusEmas':
+    // Percepat proyek tercatat lewat iklan_hadiah (tempat percepatProyek); tidak ada peristiwa baru.
+    case 'percepatProyek':
       return [];
   }
 }

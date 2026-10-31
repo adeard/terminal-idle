@@ -7,7 +7,8 @@ import { urutanPo } from '../src/sim/mitra';
 import { acuanHarian, aturTarif, buatStateBaru, daftarPo, keuanganSekarang, labaBuku, operasiState, tawaranKontrakPo, tick, type GameState } from '../src/sim/state';
 import { AREA_IDS, buatModel } from '../src/ui/model';
 import { tingkatKepuasan, tingkatPilKepuasan } from '../src/ui/popup-kepuasan';
-import { denganBangunan, denganPetugas, denganPo, jalankan, kaya, padaJam, stateOtomatis, T0 } from './helpers';
+import { TEKS, teksJendelaPenuh } from '../src/ui/teks';
+import { denganBangunan, denganLevelTerminal, denganPerluasan, denganPetugas, denganPo, jalankan, kaya, padaJam, stateOtomatis, T0 } from './helpers';
 
 const T = EKONOMI.tycoon;
 
@@ -133,14 +134,59 @@ describe('view model pengelolaan terminal', () => {
   it('tab Bangun: jumlah/slot, biaya, perawatan, bongkar; slot penuh menunjuk perluasan yang menambahnya', () => {
     const s = kaya(stateOtomatis({ toilet: 1 }));
     const b = buatModel(s).bangun;
-    expect(b.bangunan.jendela).toMatchObject({ jumlah: 1, slot: slotBangunan('jendela', 0), biaya: T.bangunan.jendela.biaya[0], bisa: true, bongkar: null });
-    expect(b.bangunan.toilet).toMatchObject({ jumlah: 1, slot: 1, biaya: null, slotBerikut: 3, perawatan: T.bangunan.toilet.perawatan });
+    expect(b.bangunan.jendela).toMatchObject({ jumlah: 1, slot: slotBangunan('jendela', 0, 1), biaya: T.bangunan.jendela.biaya[0], bisa: true, bongkar: null });
+    expect(b.bangunan.toilet).toMatchObject({ jumlah: 1, slot: 1, biaya: null, slotBerikut: { jenis: 'perluasan', tahap: 3 }, perawatan: T.bangunan.toilet.perawatan });
     expect(b.bangunan.toilet.bongkar).toBeGreaterThan(0);
     expect(b.bangunan.posRetribusi.slotBerikut).toBeNull();
     expect(b.petakBus).toBe(T.petakBus[0]);
     expect(b.teknologi.find((t) => t.id === 'eTiket')?.syaratKurang).toBe('mesinTiket');
     // Biaya ikut kelas terminal.
     expect(buatModel({ ...s, perkembangan: { ...s.perkembangan, xpTerminal: 1e9 } }).bangun.bangunan.toilet.perawatan).toBeGreaterThan(T.bangunan.toilet.perawatan);
+  });
+
+  it('izin level (documents/15 bagian 3.5): slot penuh menunjuk level izin bila lebih dulu dari perluasan; kartu level dua izin berikutnya', () => {
+    // Perluasan 3 di Lv 15: jendela 12 + 5 izin = 17, jalur 5; izin Lv 16 (jendela & jalur) lebih dulu dari Perluasan 4 (Lv 20).
+    const s = denganBangunan(kaya(denganPerluasan(denganLevelTerminal(stateOtomatis(), 15), 3)), { jendela: 17, jalur: 5 });
+    const m = buatModel(s);
+    expect(m.bangun.bangunan.jendela).toMatchObject({ jumlah: 17, slot: 17, biaya: null, slotBerikut: { jenis: 'level', level: 16 } });
+    expect(m.bangun.bangunan.jalur).toMatchObject({ jumlah: 5, slot: 5, biaya: null, slotBerikut: { jenis: 'level', level: 16 } });
+    expect(m.terminal.izinBerikut).toEqual([
+      { level: 16, izin: { jendela: 1, jalur: 1, slotPo: 0 } },
+      { level: 17, izin: { jendela: 1, jalur: 0, slotPo: 7 } },
+    ]);
+    // Izin jalur habis (Lv 26): slot jalur berikutnya dari Perluasan 4.
+    const lv26 = denganBangunan(kaya(denganPerluasan(denganLevelTerminal(stateOtomatis(), 26), 3)), { jalur: 7 });
+    expect(buatModel(lv26).bangun.bangunan.jalur).toMatchObject({ slot: 7, biaya: null, slotBerikut: { jenis: 'perluasan', tahap: 4 } });
+    // Sebelum Perluasan 3 tidak ada izin jendela/jalur: slot penuh menunjuk perluasan, kartu level hanya slot PO.
+    const awal = buatModel(denganBangunan(kaya(stateOtomatis()), { jendela: 4 }));
+    expect(awal.bangun.bangunan.jendela.slotBerikut).toEqual({ jenis: 'perluasan', tahap: 1 });
+    expect(awal.terminal.izinBerikut).toEqual([
+      { level: 3, izin: { jendela: 0, jalur: 0, slotPo: 3 } },
+      { level: 6, izin: { jendela: 0, jalur: 0, slotPo: 4 } },
+    ]);
+    // Lv 140 di Terpadu: tidak ada izin lagi.
+    expect(buatModel(denganPerluasan(denganLevelTerminal(stateOtomatis(), 140), 5)).terminal.izinBerikut).toEqual([]);
+  });
+
+  it('tab PO, slot jendela penuh (playtest P-4, AC-GP-22): status PO tersedia menunjuk izin level atau perluasan berikutnya', () => {
+    // Lv 17, Perluasan 3, jendela 19/19 disewa, slot PO ke-7 terbuka: +1 jendela di Lv 18, bukan perluasan.
+    const lv17 = buatModel(denganPo(kaya(denganPerluasan(denganLevelTerminal(stateOtomatis(), 17), 3)), 'ondelOndel', { loket: 19 }));
+    expect(lv17.mitra).toMatchObject({ slot: 7, jendelaKosong: 0 });
+    expect(lv17.bangun.bangunan.jendela).toMatchObject({ jumlah: 19, slot: 19, biaya: null, slotBerikut: { jenis: 'level', level: 18 } });
+    expect(lv17.mitra.tersedia.some((p) => p.kurang?.jenis === 'jendela')).toBe(true);
+    expect(teksJendelaPenuh(lv17.bangun.bangunan.jendela.slotBerikut)).toBe('Jendela penuh · +1 di Lv 18');
+    // Lv 12, Perluasan 2 (jendela 8/8): sebelum Perluasan 3 slot jendela hanya dari perluasan.
+    const lv12 = buatModel(denganPo(kaya(denganPerluasan(denganLevelTerminal(stateOtomatis(), 12), 2)), 'ondelOndel', { loket: 8 }));
+    expect(lv12.mitra.tersedia.some((p) => p.kurang?.jenis === 'jendela')).toBe(true);
+    expect(teksJendelaPenuh(lv12.bangun.bangunan.jendela.slotBerikut)).toBe('Jendela penuh · Perluasan 3');
+    // Tidak ada slot jendela lagi; teks status ≤ 28 karakter supaya tidak terpotong di landscape.
+    expect(teksJendelaPenuh(null)).toBe('Jendela penuh');
+    expect(TEKS.poJendelaPenuhLevel(140).length).toBeLessThanOrEqual(28);
+  });
+
+  it('teks aturan armada (playtest P-3, AC-GP-21): catatan tantangan & tab PO menyebut PO berlevel terendah', () => {
+    expect(TEKS.tantanganCatatan).toBe('Tantangan baru tiap Senin (WIB). Laba dihitung seperti Laba/hari: kontrak PO dirata-rata. 🚌 Armada selalu untuk PO berlevel terendah.');
+    expect(TEKS.poCatatan.endsWith('Manajer Kemitraan menyewakan jendela kosong dan memperpanjang kontrak otomatis. Hadiah armada (target, tantangan, Bus Emas) menaikkan level PO berlevel terendah.')).toBe(true);
   });
 
   it('tab Petugas: jumlah/maks, gaji, kebutuhan; total gaji per hari', () => {

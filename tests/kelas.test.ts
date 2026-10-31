@@ -71,7 +71,7 @@ describe('perluasan terminal', () => {
     expect(mulaiPerluasan(p)).toBe(p); // satu proyek pada satu waktu
     const selesai = jalankan(p, M.detikProyek);
     expect(selesai.perkembangan).toMatchObject({ perluasan: 1, proyekDetik: 0 });
-    expect(slotBangunan('jendela', 1)).toBeGreaterThan(slotBangunan('jendela', 0));
+    expect(slotBangunan('jendela', 1, 1)).toBeGreaterThan(slotBangunan('jendela', 0, 1));
     // Tahap berikutnya butuh level lebih tinggi.
     expect(bisaMulaiPerluasan(selesai)).toBe(levelTerminal(selesai) >= M.perluasan[1]!.level);
   });

@@ -16,7 +16,7 @@ describe('jalur bus (sim)', () => {
   it('game baru: satu jalur; slot jalur sebanyak halte di adegan sampai Gedung Antarpulau', () => {
     const s = stateOtomatis();
     expect(s.terminal.bangunan.jalur).toBe(1);
-    expect(slotBangunan('jalur', 0)).toBe(HALTE_DATANG_X.length);
+    expect(slotBangunan('jalur', 0, 1)).toBe(HALTE_DATANG_X.length);
     expect(HALTE_BERANGKAT_X.length).toBe(HALTE_DATANG_X.length);
     expect(GERBANG_X.length).toBe(HALTE_BERANGKAT_X.length);
   });
@@ -39,7 +39,7 @@ describe('jalur bus (sim)', () => {
     const miskin = { ...stateOtomatis(), kas: J.biaya[0]! - 1 };
     expect(bangun(miskin, 'jalur')).toBe(miskin);
     expect(pengembalianBongkarState(denganBangunan(stateOtomatis(), { jalur: 3 }), 'jalur')).toBeNull();
-    const penuh = denganBangunan(kaya(stateOtomatis()), { jalur: slotBangunan('jalur', 0) });
+    const penuh = denganBangunan(kaya(stateOtomatis()), { jalur: slotBangunan('jalur', 0, 1) });
     expect(biayaBangunState(penuh, 'jalur')).toBeNull();
   });
 
@@ -50,7 +50,7 @@ describe('jalur bus (sim)', () => {
     expect(b.terminal.bangunan.jalur).toBe(2);
     expect(peristiwaAksi(aksi, s, b)).toEqual([{ nama: 'bangun', data: { bangunan: 'jalur', jumlah: 2 } }]);
     const m = buatModel(b).bangun.bangunan.jalur;
-    expect(m).toMatchObject({ jumlah: 2, slot: slotBangunan('jalur', 0), biaya: J.biaya[1], bongkar: null });
+    expect(m).toMatchObject({ jumlah: 2, slot: slotBangunan('jalur', 0, 1), biaya: J.biaya[1], bongkar: null });
   });
 });
 

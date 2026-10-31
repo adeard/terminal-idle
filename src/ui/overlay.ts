@@ -21,7 +21,7 @@ import { gayaTujuan, sasaranTujuan, teksTujuan, type GayaTujuan, type SasaranTuj
 import { formatAngka, formatUang, formatUangBertanda } from './format';
 import { buatTabBangun, buatTabPetugas, buatTabPo, buatTabTarget, buatTabTerminal, type IklanMenu, type IsiTab } from './menu';
 import { buatModel, type ModelEvent, type ModelHud, type ModelTampilan } from './model';
-import { ambilNotif, antreNotif, notifBahaya, notifikasiPerubahan, perluasanBaruTerbuka, teksKepuasanTurun, urutanPesan, type PesanNotif } from './notifikasi';
+import { ambilNotif, antreNotif, notifArmada, notifBahaya, notifikasiPerubahan, perluasanBaruTerbuka, teksKepuasanTurun, urutanPesan, type PesanNotif } from './notifikasi';
 import { tanyaNamaTerminal } from './popup-nama';
 import { tampilkanPopupKepuasan, tingkatPilKepuasan, wajahKepuasan } from './popup-kepuasan';
 import { buatKartuPeringkat, type OpsiPeringkatUi } from './peringkat';
@@ -123,7 +123,7 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     bangun: buatTabBangun(kirim),
     petugas: buatTabPetugas(kirim),
     po: buatTabPo(kirim),
-    terminal: buatTabTerminal(kirim, { ubahNama: () => void mintaNama() }),
+    terminal: buatTabTerminal(kirim, { ubahNama: () => void mintaNama(), ...(opsi.iklan ? { iklan: opsi.iklan } : {}) }),
     target: buatTabTarget(kirim, {
       bukaKepuasan: () => tampilkanPopupKepuasan(akar, buatModel(pengendali.state).hud.kepuasan),
       ...(opsi.iklan ? { iklan: opsi.iklan } : {}),
@@ -296,6 +296,12 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     antre(teks);
     tampilkanBerikut();
   };
+  // Armada dari hadiah berpaket (target, tantangan, Bus Emas): PO penerimanya & kemajuannya (documents/15 bagian 4.4).
+  const lepasPantauArmada = pengendali.pantauAksi((aksi, lama, baru) => {
+    if (aksi.jenis !== 'klaimTarget' && aksi.jenis !== 'klaimTantangan' && aksi.jenis !== 'klaimBusEmas') return;
+    const teks = notifArmada(buatModel(lama), buatModel(baru));
+    if (teks) tampilkanNotif(teks);
+  });
   notif.addEventListener('click', () => {
     if (!notifTampil?.kepuasan) return;
     sembunyikanNotif();
@@ -426,6 +432,7 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   };
   const lepas = (): void => {
     lepasLangganan();
+    lepasPantauArmada();
     pengamatTutorial.disconnect();
     window.removeEventListener('keydown', saatTombol);
     window.clearTimeout(timerNotif);

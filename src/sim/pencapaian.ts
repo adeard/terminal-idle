@@ -46,7 +46,7 @@ export const SYARAT_PENCAPAIAN: Readonly<Record<PencapaianId, (s: GameState, cfg
   kasMiliar: (s) => s.kas >= 1_000_000_000,
   kelasA: (s, cfg) => kelas(s, cfg) >= 2,
   armadaLengkap: (s, cfg) => kelasBusDioperasikan(s.mitra.terdaftar, kelas(s, cfg), cfg).length === KELAS_BUS_IDS.length,
-  // Semua slot jendela loket (setelah semua perluasan) dibangun & disewa PO.
+  // Jendela loket sebanyak slot tahap perluasan terakhir (20, tanpa izin level; documents/15 bagian 3.6) disewa PO.
   loketPenuh: (s, cfg) => loketDisewa(s) >= slotMaks(cfg, 'jendela'),
   terpadu: (s, cfg) => kelas(s, cfg) >= 3,
   penumpangSejuta: (s) => s.statistik.totalPenumpang >= 1_000_000,

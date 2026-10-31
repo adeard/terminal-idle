@@ -13,7 +13,7 @@
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { WAKTU } from '../config/waktu.config';
-import { bangunanAwal, biayaBangun, pengembalianBongkar, type JumlahBangunan } from './bangunan';
+import { bangunanAwal, biayaBangun, pengembalianBongkar, slotBangunan, type JumlahBangunan } from './bangunan';
 import { benihCuacaDari } from './cuaca';
 import { eventPada, jadwalUji } from './event';
 import {
@@ -43,6 +43,7 @@ import {
   tawaranKontrak,
   targetReputasi,
   tingkatPo,
+  xpLevelPo,
   type SyaratDaftarKurang,
   type TawaranKontrak,
 } from './mitra';
@@ -283,6 +284,8 @@ export interface LaporanOffline {
    * popup offline, tidak disimpan.
    */
   readonly proyek: { readonly tahap: number; readonly selesai: boolean; readonly sisaDetik: number } | null;
+  /** Level terminal naik selama pergi (null = tidak): popup offline menyebut izin barunya. Data sesaat, tidak disimpan. */
+  readonly naikLevel: { readonly dari: number; readonly ke: number } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -814,6 +817,73 @@ export function tambahProgresTantangan(t: TantanganState, jenis: JenisTantangan,
 }
 
 // ---------------------------------------------------------------------------
+// Paket hadiah: uang, armada PO, percepat proyek (documents/15 bagian 4)
+
+/** Sumber hadiah berpaket; penghargaan & event tetap uang saja. */
+export type SumberHadiah = 'harian' | 'tantangan' | 'busEmas';
+
+export interface PaketHadiah {
+  /** Rp. */
+  readonly uang: number;
+  /** XP armada untuk PO ini: `bagian` × kebutuhan level berikutnya PO itu (null = tanpa armada). */
+  readonly armada: { readonly po: PoId; readonly bagian: number } | null;
+  /** Detik main proyek perluasan yang dipercepat (0 = tidak ada). */
+  readonly percepatDetik: number;
+}
+
+/**
+ * PO yang menerima armada: level terendah; seri: penumpang rata-rata sehari terbanyak (tarif
+ * bawaan, jadi tetap selama hari berjalan); seri lagi: yang lebih dulu terdaftar. Null bila tanpa PO.
+ */
+export function poArmada(state: GameState, cfg: KonfigEkonomi = EKONOMI): PoId | null {
+  const t = state.mitra.terdaftar;
+  if (t.length === 0) return null;
+  const arus = acuanHarian(state, cfg).arusPo;
+  let pilih = 0;
+  for (let i = 1; i < t.length; i++) {
+    const lv = levelPo(t[i]!, cfg);
+    const lvPilih = levelPo(t[pilih]!, cfg);
+    if (lv < lvPilih || (lv === lvPilih && (arus[i] ?? 0) > (arus[pilih] ?? 0) + 1e-9)) pilih = i;
+  }
+  return t[pilih]!.id;
+}
+
+/** Paket hadiah sumber ini sekarang (ditampilkan sebelum diklaim, jadi PO sasarannya diketahui). */
+export function paketHadiah(state: GameState, sumber: SumberHadiah, cfg: KonfigEkonomi = EKONOMI): PaketHadiah {
+  const h = cfg.hadiah;
+  const menit = sumber === 'harian' ? cfg.harian.hadiahMenit : sumber === 'tantangan' ? cfg.tantangan.hadiahMenit : h.busEmasMenit;
+  const bagian = sumber === 'harian' ? h.armadaHarian : sumber === 'tantangan' ? h.armadaTantangan : h.armadaBusEmas;
+  const po = bagian > 0 ? poArmada(state, cfg) : null;
+  return {
+    uang: hadiahMenit(state, menit, cfg),
+    armada: po ? { po, bagian } : null,
+    // Target harian mempercepat proyek yang sedang berjalan.
+    percepatDetik: sumber === 'harian' && state.perkembangan.proyekDetik > 0 ? h.percepatDetik : 0,
+  };
+}
+
+/** Berikan paket (ganda = klaim 2× setelah iklan: seluruh paket 2×). Proyek yang sisanya habis langsung selesai. */
+export function berikanPaket(state: GameState, paket: PaketHadiah, ganda = false, cfg: KonfigEkonomi = EKONOMI): GameState {
+  const n = ganda ? 2 : 1;
+  let s = tambahKas(state, paket.uang * n);
+  const a = paket.armada;
+  if (a && cariPo(s, a.po)) s = { ...s, mitra: gantiPo(s, a.po, (p) => ({ ...p, xp: p.xp + a.bagian * n * xpLevelPo(levelPo(p, cfg), cfg) })) };
+  if (paket.percepatDetik > 0 && s.perkembangan.proyekDetik > 0) s = { ...s, perkembangan: majukanPerkembangan(s.perkembangan, 0, paket.percepatDetik * n) };
+  return s;
+}
+
+/** Percepat proyek lewat iklan: hanya bila sisanya lebih dari percepatSisaMinDetik (jadi paling banyak dua kali per proyek). */
+export function bisaPercepatProyek(state: GameState, cfg: KonfigEkonomi = EKONOMI): boolean {
+  return state.perkembangan.proyekDetik > cfg.hadiah.percepatSisaMinDetik;
+}
+
+/** Proyek perluasan dipercepat percepatDetik (dikirim UI hanya setelah iklan selesai ditonton). */
+export function percepatProyek(state: GameState, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (!bisaPercepatProyek(state, cfg)) return state;
+  return { ...state, perkembangan: { ...state.perkembangan, proyekDetik: state.perkembangan.proyekDetik - cfg.hadiah.percepatDetik } };
+}
+
+// ---------------------------------------------------------------------------
 // Target harian
 
 /** Bulatkan ke 2 angka penting (target yang enak dibaca: 31.000, bukan 31.680). */
@@ -853,11 +923,10 @@ export function bisaKlaimTarget(state: GameState): boolean {
   return targetHarianSelesai(state) && !state.harian.diklaim;
 }
 
-/** @param ganda hadiah 2× (setelah menonton iklan berhadiah). */
+/** Paket target harian: uang, armada, dan percepat proyek bila ada. @param ganda seluruh paket 2× (setelah menonton iklan berhadiah). */
 export function klaimTarget(state: GameState, cfg: KonfigEkonomi = EKONOMI, ganda = false): GameState {
   if (!bisaKlaimTarget(state)) return state;
-  const hadiah = hadiahMenit(state, cfg.harian.hadiahMenit, cfg) * (ganda ? 2 : 1);
-  return { ...tambahKas(state, hadiah), harian: { ...state.harian, diklaim: true } };
+  return { ...berikanPaket(state, paketHadiah(state, 'harian', cfg), ganda, cfg), harian: { ...state.harian, diklaim: true } };
 }
 
 // ---------------------------------------------------------------------------
@@ -886,9 +955,14 @@ export function klaimPencapaian(state: GameState, id: PencapaianId, cfg: KonfigE
 // ---------------------------------------------------------------------------
 // Bangun & bongkar
 
-/** Biaya membangun satu unit lagi (Rp), atau null bila slotnya penuh (tunggu perluasan). */
+/** Slot jenis bangunan ini sekarang: tabel tahap perluasan + izin level terminal (sim/bangunan.ts). */
+export function slotBangunanState(state: GameState, id: BangunanId, cfg: KonfigEkonomi = EKONOMI): number {
+  return slotBangunan(id, state.perkembangan.perluasan, levelTerminal(state, cfg), cfg);
+}
+
+/** Biaya membangun satu unit lagi (Rp), atau null bila slotnya penuh (tunggu perluasan atau izin level). */
 export function biayaBangunState(state: GameState, id: BangunanId, cfg: KonfigEkonomi = EKONOMI): number | null {
-  return biayaBangun(id, state.terminal.bangunan, state.perkembangan.perluasan, cfg);
+  return biayaBangun(id, state.terminal.bangunan, state.perkembangan.perluasan, levelTerminal(state, cfg), cfg);
 }
 
 /** @param po jendela loket untuk PO ini (hanya jendela; PO harus terdaftar). */
@@ -1053,13 +1127,8 @@ function gantiPo(state: GameState, id: PoId, ubah: (p: PoTerdaftar) => PoTerdaft
 function jendelaPoBaru(state: GameState, id: PoId, cfg: KonfigEkonomi): { readonly dariKosong: number; readonly dibangun: number } {
   const bawaan = tingkatPo(id, cfg).loketBawaan;
   const dariKosong = Math.min(jendelaKosong(state), bawaan);
-  const slot = biayaBangunState(state, 'jendela', cfg) === null ? 0 : Math.max(0, slotJendela(state, cfg) - state.terminal.bangunan.jendela);
+  const slot = biayaBangunState(state, 'jendela', cfg) === null ? 0 : Math.max(0, slotBangunanState(state, 'jendela', cfg) - state.terminal.bangunan.jendela);
   return { dariKosong, dibangun: Math.min(bawaan - dariKosong, slot) };
-}
-
-function slotJendela(state: GameState, cfg: KonfigEkonomi): number {
-  const s = cfg.tycoon.bangunan.jendela.slot;
-  return s[Math.min(s.length - 1, Math.max(0, state.perkembangan.perluasan))] ?? 0;
 }
 
 /**
@@ -1416,7 +1485,7 @@ function jalankanOffline(state: GameState, detik: number, cfg: KonfigEkonomi): H
   };
   return {
     state: hasil,
-    laporan: { detik, dibatasi: false, tutup: false, pendapatan, biaya, laba: pendapatan - biaya, detikBoost: jamBoost * WAKTU.detikPerJam, berhenti, proyek: null },
+    laporan: { detik, dibatasi: false, tutup: false, pendapatan, biaya, laba: pendapatan - biaya, detikBoost: jamBoost * WAKTU.detikPerJam, berhenti, proyek: null, naikLevel: null },
   };
 }
 
@@ -1437,7 +1506,7 @@ export function terapkanOffline(state: GameState, sekarangMs: number, cfg: Konfi
   const dibatasi = (sekarangMs - state.waktuTerakhirMs) / 1000 > cfg.tycoon.offline.batasDetik;
   const tutup = !adaManajerOperasional(state);
   let s = state;
-  let laporan: LaporanOffline = { detik, dibatasi, tutup, pendapatan: 0, biaya: 0, laba: 0, detikBoost: 0, berhenti: 0, proyek: null };
+  let laporan: LaporanOffline = { detik, dibatasi, tutup, pendapatan: 0, biaya: 0, laba: 0, detikBoost: 0, berhenti: 0, proyek: null, naikLevel: null };
   if (detik > 0 && !tutup) {
     const h = jalankanOffline(state, detik, cfg);
     s = h.state;
@@ -1449,6 +1518,9 @@ export function terapkanOffline(state: GameState, sekarangMs: number, cfg: Konfi
     // Proyek tetap dibangun kontraktor, dengan atau tanpa Manajer: disebut di popup offline.
     if (p.proyekDetik > 0) laporan = { ...laporan, proyek: { tahap: p.perluasan + 1, selesai: s.perkembangan.proyekDetik <= 0, sisaDetik: s.perkembangan.proyekDetik } };
   }
+  const dari = levelTerminal(state, cfg);
+  const ke = levelTerminal(s, cfg);
+  if (ke > dari) laporan = { ...laporan, naikLevel: { dari, ke } };
   // Bonus 2× hanya untuk laba offline laporan ini; boost berkurang selama pergi.
   const hadiah = { ...s.hadiah, boostDetik: Math.max(0, s.hadiah.boostDetik - detik), bonusOffline: Math.max(0, Math.floor(laporan.laba)) };
   return { state: perbaruiPencapaian({ ...tandaiWaktu(s, sekarangMs), hadiah }, cfg), laporan };
@@ -1490,7 +1562,7 @@ export function klaimBusEmas(state: GameState, cfg: KonfigEkonomi = EKONOMI): Ga
   if (!busEmasAktif(state)) return state;
   const b = state.hadiah.busEmas;
   const busEmas = { tungguDetik: selangBusEmas(state, b.jumlah + 1, cfg), aktifDetik: 0, jumlah: b.jumlah + 1 };
-  return { ...tambahKas(state, hadiahBusEmas(state, cfg)), hadiah: { ...state.hadiah, busEmas } };
+  return { ...berikanPaket(state, paketHadiah(state, 'busEmas', cfg), false, cfg), hadiah: { ...state.hadiah, busEmas } };
 }
 
 /**
@@ -1637,7 +1709,7 @@ export function perbaruiTantangan(state: GameState, sekarangMs: number, cfg: Kon
   const m = mingguWib(sekarangMs);
   if (state.tantangan.minggu === m.kunci) return state;
   let s = state;
-  for (const x of state.tantangan.daftar) if (!x.diklaim && x.progres >= x.target) s = tambahKas(s, hadiahTantangan(s, cfg));
+  for (const x of state.tantangan.daftar) if (!x.diklaim && x.progres >= x.target) s = berikanPaket(s, paketHadiah(s, 'tantangan', cfg), false, cfg);
   const daftar = jenisTantanganMinggu(m.kunci).map(
     (jenis): TantanganAktif => ({
       jenis,
@@ -1658,7 +1730,7 @@ export function bisaKlaimTantangan(state: GameState, indeks: number): boolean {
 export function klaimTantangan(state: GameState, indeks: number, cfg: KonfigEkonomi = EKONOMI): GameState {
   if (!bisaKlaimTantangan(state, indeks)) return state;
   const daftar = state.tantangan.daftar.map((x, i) => (i === indeks ? { ...x, diklaim: true } : x));
-  return { ...tambahKas(state, hadiahTantangan(state, cfg)), tantangan: { ...state.tantangan, daftar } };
+  return { ...berikanPaket(state, paketHadiah(state, 'tantangan', cfg), false, cfg), tantangan: { ...state.tantangan, daftar } };
 }
 
 /** Semua yang mengikuti jam nyata: event musiman & tantangan mingguan (dipanggil sesi). */

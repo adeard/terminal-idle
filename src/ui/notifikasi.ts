@@ -4,11 +4,12 @@
  * mitra PO, penghargaan, rekor, …). Murni, tanpa DOM; ditampilkan oleh overlay.ts.
  */
 import { kepuasanTurunBerlaku, type KepuasanTurun } from '../app/kepuasan-turun';
+import { izinAntara } from '../sim/bangunan';
 import type { PoId } from '../sim/fitur';
 import { formatAngka } from './format';
-import type { ModelTampilan } from './model';
+import type { ModelPoTerdaftar, ModelTampilan } from './model';
 import { wajahKepuasan } from './popup-kepuasan';
-import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_EVENT, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, TEKS } from './teks';
+import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_EVENT, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, TEKS, teksIzin, teksSlotTanpaJendela } from './teks';
 
 /**
  * @param diputus PO yang diputus pemain sendiri: keluarnya bukan karena kontrak habis.
@@ -40,9 +41,15 @@ export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diput
     const j = p.jurusan.find((x) => x.aktif && x.feri !== null && !antarpulauLalu.has(x.jurusan));
     if (j) return TEKS.notifAntarpulau(j.nama, NAMA_PO[p.id].nama);
   }
-  // Slot PO baru yang belum bisa diisi (slot jendela penuh) tidak menyuruh mendaftarkan PO.
-  if (t.slot > tl.slot) return m.mitra.tersedia.some((p) => p.bisa) ? TEKS.notifSlotBaru(t.slot) : TEKS.notifSlotTanpaJendela(t.slot);
-  if (t.level > tl.level) return TEKS.notifLevelTerminal(t.level);
+  // Slot PO baru yang belum bisa diisi (slot jendela penuh) tidak menyuruh mendaftarkan PO, tapi menyebut
+  // kapan slot jendela berikutnya datang (level izin atau perluasan; playtest P-4).
+  if (t.slot > tl.slot) return m.mitra.tersedia.some((p) => p.bisa) ? TEKS.notifSlotBaru(t.slot) : teksSlotTanpaJendela(t.slot, m.bangun.bangunan.jendela.slotBerikut);
+  if (t.level > tl.level) {
+    // Izin level jendela & jalur ditempel ke toast naik level (slot PO punya toast sendiri di atas).
+    const iz = izinAntara(tl.level, t.level, t.perluasan.selesai);
+    const izin = teksIzin({ ...iz, slotPo: 0 });
+    return izin ? TEKS.notifLevelTerminalIzin(t.level, izin) : TEKS.notifLevelTerminal(t.level);
+  }
   const kelasBusBaru = t.kelasBus.find((k, i) => k.beroperasi && !tl.kelasBus[i]?.beroperasi);
   if (kelasBusBaru) return TEKS.notifKelasBus(NAMA_KELAS_BUS[kelasBusBaru.id].nama);
   const hampirHabis = m.mitra.terdaftar.find((p) => {
@@ -63,8 +70,31 @@ export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diput
     const l = sebelum.get(p.id);
     return l !== undefined && p.level > l.level;
   });
-  if (poNaik) return TEKS.notifPoLevel(NAMA_PO[poNaik.id].nama, poNaik.level);
+  if (poNaik) return TEKS.notifPoLevel(NAMA_PO[poNaik.id].nama, poNaik.level, barangBaruPo(sebelum.get(poNaik.id)!, poNaik));
   if (m.target.selesai && !lalu.target.selesai && !m.target.diklaim) return TEKS.notifTarget;
+  return null;
+}
+
+/** Kelas bus & jurusan yang baru terbuka di PO ini di antara dua pembaruan (teks; kosong bila tidak ada). */
+function barangBaruPo(l: ModelPoTerdaftar, p: ModelPoTerdaftar): string {
+  const kelas = p.kelas.filter((k) => !l.kelas.includes(k)).map((k) => TEKS.poBaruKelas(NAMA_KELAS_BUS[k].nama));
+  const jurusan = p.jurusan.filter((j, i) => j.aktif && !l.jurusan[i]?.aktif).map((j) => TEKS.poBaruJurusan(j.nama));
+  return [...kelas, ...jurusan].join(' & ');
+}
+
+/**
+ * Toast armada setelah klaim hadiah berarmada (documents/15 bagian 4.4): kemajuan level PO yang
+ * menerimanya, atau, bila ia naik level, teks naik level PO yang sama dengan notifikasiPerubahan
+ * (jadi tidak tampil dua kali) beserta kelas bus & jurusan barunya. Null bila tidak ada armada.
+ */
+export function notifArmada(lalu: ModelTampilan, m: ModelTampilan): string | null {
+  const sebelum = new Map(lalu.mitra.terdaftar.map((p) => [p.id, p]));
+  for (const p of m.mitra.terdaftar) {
+    const l = sebelum.get(p.id);
+    if (!l) continue;
+    if (p.level > l.level) return TEKS.notifPoLevel(NAMA_PO[p.id].nama, p.level, barangBaruPo(l, p));
+    if (p.xpDalamLevel > l.xpDalamLevel + 1e-9) return TEKS.notifArmada(NAMA_PO[p.id].nama, Math.round(l.rasioXp * 100), Math.round(p.rasioXp * 100), p.level + 1);
+  }
   return null;
 }
 

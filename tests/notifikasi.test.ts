@@ -3,9 +3,10 @@ import type { PoId } from '../src/sim/fitur';
 import { aturTarif, bangun, daftarPo, DETIK_SEHARI, mulaiPerluasan, putusPo, type GameState } from '../src/sim/state';
 import { buatModel } from '../src/ui/model';
 import { EKONOMI } from '../src/config/economy.config';
-import { antreNotif, MAKS_ANTREAN_NOTIF, notifBahaya, notifikasiPerubahan, perluasanBaruTerbuka, teksPerluasanTerbuka, urutanPesan, type PesanNotif } from '../src/ui/notifikasi';
-import { NAMA_KELAS_BUS, namaKelas, NAMA_PERLUASAN, NAMA_PO, TEKS } from '../src/ui/teks';
-import { denganLevelTerminal, denganPetugas, denganPo, kaya, stateOtomatis } from './helpers';
+import { xpLevelPo } from '../src/sim/mitra';
+import { antreNotif, MAKS_ANTREAN_NOTIF, notifArmada, notifBahaya, notifikasiPerubahan, perluasanBaruTerbuka, teksPerluasanTerbuka, urutanPesan, type PesanNotif } from '../src/ui/notifikasi';
+import { NAMA_KELAS_BUS, namaKelas, NAMA_PERLUASAN, NAMA_PO, TEKS, teksSlotTanpaJendela } from '../src/ui/teks';
+import { denganLevelTerminal, denganPerluasan, denganPetugas, denganPo, kaya, stateOtomatis } from './helpers';
 
 const notif = (lalu: GameState, sekarang: GameState, diputus?: ReadonlySet<PoId>): string | null => notifikasiPerubahan(buatModel(lalu), buatModel(sekarang), diputus);
 
@@ -29,6 +30,29 @@ describe('notifikasi perubahan', () => {
     expect(notif(s, denganLevelTerminal(s, 2))).toBe(TEKS.notifLevelTerminal(2));
     expect(notif(s, denganLevelTerminal(s, 3))).toBe(TEKS.notifSlotBaru(3));
     expect(notif(s, denganLevelTerminal(s, 10))).toBe(TEKS.notifNaikKelas(namaKelas(1)));
+  });
+
+  it('naik level dengan izin (documents/15 bagian 3.5, AC-GP-06): izin jendela & jalur ditempel ke toast level; slot PO punya toast sendiri', () => {
+    const p3 = denganPerluasan(stateOtomatis(), 3);
+    expect(notif(denganLevelTerminal(p3, 15), denganLevelTerminal(p3, 16))).toBe('🏢 Terminal naik ke Lv 16: slot jendela loket +1 & slot jalur +1');
+    expect(notif(denganLevelTerminal(p3, 11), denganLevelTerminal(p3, 12))).toBe('🏢 Terminal naik ke Lv 12: slot jendela loket +1');
+    // Sebelum Perluasan 3: toast level biasa.
+    expect(notif(denganLevelTerminal(stateOtomatis(), 11), denganLevelTerminal(stateOtomatis(), 12))).toBe(TEKS.notifLevelTerminal(12));
+    // Slot PO ke-7 di Lv 17: toast slot PO (tetap).
+    const p4 = denganPerluasan(kaya(stateOtomatis()), 4);
+    expect(notif(denganLevelTerminal(p4, 16), denganLevelTerminal(p4, 17))).toMatch(/^🅿️ Slot PO ke-7 terbuka/);
+  });
+
+  it('toast armada setelah klaim (documents/15 bagian 4.4): kemajuan level PO penerima, atau naik level dengan kelas bus/jurusan baru', () => {
+    const s = denganPo(stateOtomatis(), 'ondelOndel', { level: 4 });
+    const lalu = buatModel(s);
+    const separuh = { ...s, mitra: { ...s.mitra, terdaftar: s.mitra.terdaftar.map((p) => ({ ...p, xp: p.xp + xpLevelPo(4) * 0.5 })) } };
+    expect(notifArmada(lalu, buatModel(separuh))).toBe(`🚌 Armada baru ${NAMA_PO.ondelOndel.nama}: 0% → 50% menuju Lv 5`);
+    expect(notifArmada(lalu, lalu)).toBeNull();
+    // Lv 2 → 3 membuka Patas: teksnya sama dengan toast naik level PO (antrean membuang duplikat).
+    const lv2 = denganPo(stateOtomatis(), 'ondelOndel', { level: 2 });
+    const lv3 = denganPo(stateOtomatis(), 'ondelOndel', { level: 3 });
+    expect(notifArmada(buatModel(lv2), buatModel(lv3))).toBe(`⬆️ ${NAMA_PO.ondelOndel.nama} naik ke Lv 3: kelas ${NAMA_KELAS_BUS.patas.nama}`);
   });
 
   it('perluasan diresmikan; jalur baru dibuka', () => {
@@ -72,7 +96,18 @@ describe('notifikasi perubahan', () => {
     expect(s.terminal.bangunan.jendela).toBe(4);
     const naik = denganLevelTerminal(s, 3);
     expect(buatModel(naik).mitra.tersedia.some((p) => p.bisa)).toBe(false);
-    expect(notif(s, naik)).toBe(TEKS.notifSlotTanpaJendela(3));
+    expect(notif(s, naik)).toBe('🅿️ Slot PO ke-3 terbuka: jendela loket penuh sampai Perluasan 1');
+  });
+
+  it('slot PO baru tanpa jendela menyebut sasaran slot jendela berikutnya (playtest P-4, AC-GP-22): level izin atau perluasan', () => {
+    // Perluasan 3, jendela 19/19 di Lv 17: slot PO ke-7, jendela berikutnya dari izin Lv 18.
+    const p3 = denganPo(kaya(denganPerluasan(stateOtomatis(), 3)), 'ondelOndel', { loket: 19 });
+    expect(notif(denganLevelTerminal(p3, 16), denganLevelTerminal(p3, 17))).toBe('🅿️ Slot PO ke-7 terbuka: jendela loket penuh sampai Lv 18');
+    // Perluasan 2 (jendela 8/8) di Lv 14: slot PO ke-6, jendela berikutnya dari Perluasan 3.
+    const p2 = denganPo(kaya(denganPerluasan(stateOtomatis(), 2)), 'ondelOndel', { loket: 8 });
+    expect(notif(denganLevelTerminal(p2, 13), denganLevelTerminal(p2, 14))).toBe('🅿️ Slot PO ke-6 terbuka: jendela loket penuh sampai Perluasan 3');
+    // Tidak ada slot jendela lagi: tanpa sasaran.
+    expect(teksSlotTanpaJendela(20, null)).toBe('🅿️ Slot PO ke-20 terbuka: jendela loket penuh');
   });
 
   it('perluasan baru terbuka: sekali saat levelnya tercapai (atau di awal sesi), tidak saat proyek berjalan', () => {

@@ -5,7 +5,7 @@
 import { kasMenipis } from '../app/tujuan';
 import { EKONOMI, type KonfigEkonomi, type TingkatPo } from '../config/economy.config';
 import { WAKTU } from '../config/waktu.config';
-import { menurutTahap, petakBus, pengaliBiayaKelas, perawatanHarian } from '../sim/bangunan';
+import { izinBerikut, levelIzinBerikut, menurutTahap, petakBus, pengaliBiayaKelas, perawatanHarian, type Izin } from '../sim/bangunan';
 import { cuacaTerminalState } from '../sim/cuaca';
 import { BANGUNAN_IDS, EVENT_IDS, KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, PO_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type EventId, type JenisTarget, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
@@ -25,6 +25,7 @@ import {
   bisaKlaimTantangan,
   bisaKlaimTarget,
   bisaMulaiPerluasan,
+  bisaPercepatProyek,
   bisaPutusPo,
   bisaRekrutPetugas,
   DETIK_SEHARI,
@@ -45,9 +46,11 @@ import {
   levelPo,
   levelTerminal,
   operasiState,
+  paketHadiah,
   pengaliBoost,
   pengaliEvent,
   pengembalianBongkarState,
+  slotBangunanState,
   slotPoState,
   pengembalianPutus,
   syaratDaftarPoKurang,
@@ -59,6 +62,7 @@ import {
   type GameState,
   type KurangDaftarPo,
   type KurangPerpanjang,
+  type PaketHadiah,
 } from '../sim/state';
 import type { TahapId } from '../sim/tahap';
 import type { JenisTantangan } from '../sim/tantangan';
@@ -160,8 +164,11 @@ export interface ModelBangunan {
   readonly id: BangunanId;
   readonly jumlah: number;
   readonly slot: number;
-  /** Tahap perluasan (1 = pertama) berikutnya yang menambah slot; null = tidak ada lagi. */
-  readonly slotBerikut: number | null;
+  /**
+   * Yang menambah slot berikutnya: tahap perluasan (1 = pertama) atau level terminal (izin level, bila
+   * lebih dulu dari perluasan yang menambah slot); null = tidak ada lagi.
+   */
+  readonly slotBerikut: { readonly jenis: 'perluasan'; readonly tahap: number } | { readonly jenis: 'level'; readonly level: number } | null;
   /** Biaya unit berikutnya; null = slot penuh. */
   readonly biaya: number | null;
   readonly bisa: boolean;
@@ -313,8 +320,8 @@ export interface ModelMitra {
 export interface ModelPerluasan {
   readonly selesai: number;
   readonly jumlah: number;
-  /** Proyek yang sedang dibangun: tahap (1-based), sisa detik main, kemajuan 0–1. */
-  readonly proyek: { readonly tahap: number; readonly sisaDetik: number; readonly rasio: number } | null;
+  /** Proyek yang sedang dibangun: tahap (1-based), sisa detik main, kemajuan 0–1, dan bisa dipercepat lewat iklan. */
+  readonly proyek: { readonly tahap: number; readonly sisaDetik: number; readonly rasio: number; readonly bisaPercepat: boolean } | null;
   /** Tahap berikutnya (null = semua sudah dibangun). */
   readonly berikut: { readonly tahap: number; readonly level: number; readonly biaya: number; readonly operasional: number; readonly bisa: boolean; readonly levelKurang: boolean } | null;
 }
@@ -363,6 +370,8 @@ export interface ModelTerminal {
   /** Level saat kelas berikutnya tercapai. */
   readonly levelKelasBerikut: number;
   readonly slot: number;
+  /** Dua izin level berikutnya (kartu level; documents/15 bagian 3.5); kosong = tidak ada lagi. */
+  readonly izinBerikut: readonly { readonly level: number; readonly izin: Izin }[];
   readonly perluasan: ModelPerluasan;
   readonly tarif: readonly ModelTarif[];
   readonly keuangan: ModelKeuangan;
@@ -418,6 +427,8 @@ export interface ModelMingguan {
   readonly selesaiMs: number;
   readonly daftar: readonly ModelTantangan[];
   readonly hadiah: number;
+  /** Paket hadiah tiap tantangan sekarang (uang & armada). */
+  readonly paket: PaketHadiah;
   /** Kepuasan penumpang sekarang ("kini {k}% ›" di baris tantangan kepuasan). */
   readonly kepuasanKini: number;
 }
@@ -452,6 +463,8 @@ export interface ModelTarget {
   readonly selesai: boolean;
   readonly diklaim: boolean;
   readonly hadiah: number;
+  /** Paket hadiah sekarang: uang, armada (PO sasaran), percepat proyek. */
+  readonly paket: PaketHadiah;
 }
 
 export interface ModelPencapaian {
@@ -550,6 +563,20 @@ function tahapTambahSlot(slot: readonly number[], perluasan: number): number | n
   return null;
 }
 
+/**
+ * Yang menambah slot jenis ini berikutnya: izin level bila levelnya lebih dulu dari level yang dibutuhkan
+ * perluasan berikutnya yang menambah slot (dan perluasan itu belum terbuka), selain itu perluasan itu.
+ */
+function slotBerikut(id: BangunanId, state: GameState, cfg: KonfigEkonomi): ModelBangunan['slotBerikut'] {
+  const perluasan = state.perkembangan.perluasan;
+  const level = levelTerminal(state, cfg);
+  const tahap = tahapTambahSlot(cfg.tycoon.bangunan[id].slot, perluasan);
+  const izin = levelIzinBerikut(id, level, perluasan, cfg);
+  const levelTahap = tahap === null ? Number.POSITIVE_INFINITY : Math.max(level, cfg.mitra.perluasan[tahap - 1]?.level ?? 0);
+  if (izin !== null && izin < levelTahap) return { jenis: 'level', level: izin };
+  return tahap === null ? null : { jenis: 'perluasan', tahap };
+}
+
 function modelBangun(state: GameState, cfg: KonfigEkonomi): ModelBangun {
   const op = operasiState(state, cfg);
   const perluasan = state.perkembangan.perluasan;
@@ -561,8 +588,8 @@ function modelBangun(state: GameState, cfg: KonfigEkonomi): ModelBangun {
     bangunan[id] = {
       id,
       jumlah: state.terminal.bangunan[id],
-      slot: menurutTahap(c.slot, perluasan),
-      slotBerikut: tahapTambahSlot(c.slot, perluasan),
+      slot: slotBangunanState(state, id, cfg),
+      slotBerikut: slotBerikut(id, state, cfg),
       biaya,
       bisa: bisaBangun(state, id, null, cfg),
       perawatan: c.perawatan * pengali,
@@ -741,6 +768,13 @@ function modelBuku(b: BukuHarian): ModelBuku {
   };
 }
 
+/** Dua izin level berikutnya dengan tahap perluasan sekarang. */
+function duaIzinBerikut(level: number, perluasan: number, cfg: KonfigEkonomi): { readonly level: number; readonly izin: Izin }[] {
+  const pertama = izinBerikut(level, perluasan, cfg);
+  const kedua = pertama ? izinBerikut(pertama.level, perluasan, cfg) : null;
+  return [pertama, kedua].filter((x) => x !== null);
+}
+
 /** Level & kelas terminal, perluasan, tarif, keuangan. */
 function modelTerminal(state: GameState, rata: AcuanHarian, cfg: KonfigEkonomi): ModelTerminal {
   const level = levelTerminal(state, cfg);
@@ -753,7 +787,10 @@ function modelTerminal(state: GameState, rata: AcuanHarian, cfg: KonfigEkonomi):
   const perluasan: ModelPerluasan = {
     selesai: p.perluasan,
     jumlah: cfg.mitra.perluasan.length,
-    proyek: p.proyekDetik > 0 ? { tahap: p.perluasan + 1, sisaDetik: p.proyekDetik, rasio: 1 - p.proyekDetik / cfg.mitra.detikProyek } : null,
+    proyek:
+      p.proyekDetik > 0
+        ? { tahap: p.perluasan + 1, sisaDetik: p.proyekDetik, rasio: 1 - p.proyekDetik / cfg.mitra.detikProyek, bisaPercepat: bisaPercepatProyek(state, cfg) }
+        : null,
     berikut:
       tahapBerikut && p.proyekDetik <= 0
         ? {
@@ -784,6 +821,7 @@ function modelTerminal(state: GameState, rata: AcuanHarian, cfg: KonfigEkonomi):
     rasio: xpBerikut > xpLevel ? Math.min(1, Math.max(0, (xp - xpLevel) / (xpBerikut - xpLevel))) : 1,
     levelKelasBerikut: levelMinimalKelas(kelas + 1, cfg),
     slot: slotPoState(state, cfg),
+    izinBerikut: duaIzinBerikut(level, p.perluasan, cfg),
     perluasan,
     tarif,
     keuangan: {
@@ -845,6 +883,7 @@ function modelTarget(
     selesai: targetHarianSelesai(state),
     diklaim: h.diklaim,
     hadiah: hadiahMenit(state, cfg.harian.hadiahMenit, cfg),
+    paket: paketHadiah(state, 'harian', cfg),
   };
   const pencapaian = PENCAPAIAN_IDS.map((id): ModelPencapaian => ({ id, tercapai: state.pencapaian.tercapai.includes(id), diklaim: state.pencapaian.diklaim.includes(id) }));
   const tg = state.tantangan;
@@ -854,6 +893,7 @@ function modelTarget(
       : {
           selesaiMs: tg.selesaiMs,
           hadiah: hadiahTantangan(state, cfg),
+          paket: paketHadiah(state, 'tantangan', cfg),
           kepuasanKini: kepuasanTerminal(state, cfg).nilai,
           daftar: tg.daftar.map((x) => ({
             jenis: x.jenis,

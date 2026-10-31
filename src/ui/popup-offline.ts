@@ -5,6 +5,7 @@
  * laba), mengetuk area gelap di luar kotak, atau tombol Esc.
  */
 import { EKONOMI } from '../config/economy.config';
+import { izinAntara } from '../sim/bangunan';
 import type { LaporanOffline } from '../sim/state';
 import { formatDurasi, formatUang, formatUangBertanda } from './format';
 import { IKON_PUTAR } from './popup-hadiah';
@@ -27,11 +28,25 @@ export function teksCatatanOffline(laporan: LaporanOffline, manajerUntung: boole
 }
 
 /**
+ * Izin level yang terbuka karena terminal naik level selama pergi (murni; documents/15 bagian 3.5):
+ * "🎫 Izin baru: jendela +3, jalur +1, slot PO ke-7" (yang ada saja); kosong bila tidak ada.
+ * @param perluasan tahap perluasan yang sudah selesai sekarang (sesudah offline).
+ */
+export function teksIzinOffline(laporan: LaporanOffline, perluasan: number): string {
+  const n = laporan.naikLevel;
+  if (!n) return '';
+  const iz = izinAntara(n.dari, n.ke, perluasan);
+  const bagian = [iz.jendela > 0 ? TEKS.offlineIzinJendela(iz.jendela) : '', iz.jalur > 0 ? TEKS.offlineIzinJalur(iz.jalur) : '', iz.slotPo > 0 ? TEKS.izinSlotPo(iz.slotPo) : ''].filter(Boolean);
+  return bagian.length > 0 ? TEKS.offlineIzin(bagian.join(', ')) : '';
+}
+
+/**
  * @param ganda kalau ada: tombol "Ambil 2×" lewat iklan berhadiah; true = iklan
  *   selesai & bonus sudah diberikan pemanggil.
  * @param manajerUntung merekrut Manajer Operasional sekarang sudah untung (lihat teksCatatanOffline).
+ * @param perluasan tahap perluasan yang sudah selesai sekarang (izin level, lihat teksIzinOffline).
  */
-export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline, ganda: (() => Promise<boolean>) | undefined, manajerUntung: boolean): Promise<void> {
+export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline, ganda: (() => Promise<boolean>) | undefined, manajerUntung: boolean, perluasan: number): Promise<void> {
   akar.querySelector('.popup-latar.latar-offline')?.remove();
 
   const latar = document.createElement('div');
@@ -71,6 +86,10 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
   catatan.className = 'popup-catatan';
   catatan.textContent = teksCatatanOffline(laporan, manajerUntung);
 
+  const izin = document.createElement('p');
+  izin.className = 'popup-catatan offline-izin';
+  izin.textContent = teksIzinOffline(laporan, perluasan);
+
   const berhenti = document.createElement('p');
   berhenti.className = 'popup-catatan offline-berhenti';
   berhenti.textContent = laporan.berhenti > 0 ? TEKS.offlineBerhenti(laporan.berhenti) : '';
@@ -96,6 +115,7 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
   kotak.append(judul, durasi);
   if (!laporan.tutup) kotak.append(jumlah, rincian);
   if (pr) kotak.append(proyek);
+  if (izin.textContent !== '') kotak.append(izin);
   if (laporan.detikBoost > 0) kotak.append(boost);
   if (laporan.berhenti > 0) kotak.append(berhenti);
   kotak.append(catatan);

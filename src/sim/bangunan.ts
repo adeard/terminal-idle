@@ -1,11 +1,12 @@
 /**
  * Bangunan di slot denah (murni): berapa slot tiap jenis bangunan setelah
- * tahap perluasan, biaya membangun unit berikutnya, pengembalian saat
+ * tahap perluasan dan izin level, biaya membangun unit berikutnya, pengembalian saat
  * dibongkar, petak parkir bus, dan biaya perawatan harian. Rancangan: bagian 4
  * documents/13-rancangan-tycoon.md; angka di EKONOMI.tycoon.
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { BANGUNAN_IDS, TEKNOLOGI_IDS, type BangunanId, type TeknologiId } from './fitur';
+import { slotPo } from './level-terminal';
 
 /** Jumlah unit tiap jenis bangunan. */
 export type JumlahBangunan = Readonly<Record<BangunanId, number>>;
@@ -21,9 +22,64 @@ export function bangunanAwal(cfg: KonfigEkonomi = EKONOMI): JumlahBangunan {
   return Object.fromEntries(BANGUNAN_IDS.map((id) => [id, b[id].awal])) as Record<BangunanId, number>;
 }
 
-/** Slot jenis bangunan ini setelah sekian tahap perluasan selesai. */
-export function slotBangunan(id: BangunanId, perluasan: number, cfg: KonfigEkonomi = EKONOMI): number {
-  return menurutTahap(cfg.tycoon.bangunan[id].slot, perluasan);
+/**
+ * Slot tambahan dari izin level (documents/15 bagian 3): sejak tahap perluasan `izinLevel.tahapMinimal`,
+ * tiap level izin jenis ini (jendela loket, jalur) yang sudah dicapai menambah satu slot. Izin yang
+ * levelnya lewat sebelum tahap itu selesai aktif sekaligus saat tahapnya diresmikan.
+ */
+export function bonusIzin(id: BangunanId, level: number, perluasan: number, cfg: KonfigEkonomi = EKONOMI): number {
+  const iz = cfg.tycoon.izinLevel;
+  if (perluasan < iz.tahapMinimal || (id !== 'jendela' && id !== 'jalur')) return 0;
+  return iz[id].filter((l) => level >= l).length;
+}
+
+/** Level berikutnya (di atas `level`) yang menambah slot jenis ini lewat izin level dengan tahap perluasan sekarang; null = tidak ada. */
+export function levelIzinBerikut(id: BangunanId, level: number, perluasan: number, cfg: KonfigEkonomi = EKONOMI): number | null {
+  const iz = cfg.tycoon.izinLevel;
+  if (perluasan < iz.tahapMinimal || (id !== 'jendela' && id !== 'jalur')) return null;
+  return iz[id].find((l) => l > level) ?? null;
+}
+
+/** Slot jenis bangunan ini setelah sekian tahap perluasan selesai, di level terminal ini (tabel tahap + izin level). */
+export function slotBangunan(id: BangunanId, perluasan: number, level: number, cfg: KonfigEkonomi = EKONOMI): number {
+  return menurutTahap(cfg.tycoon.bangunan[id].slot, perluasan) + bonusIzin(id, level, perluasan, cfg);
+}
+
+/** Slot yang terbuka dari naik level: jendela loket & jalur (izin level), dan slot PO ke-n (0 = tidak ada). */
+export interface Izin {
+  readonly jendela: number;
+  readonly jalur: number;
+  readonly slotPo: number;
+}
+
+/** Izin yang terbuka saat naik dari level `dari` ke `ke` dengan sekian tahap perluasan selesai. */
+export function izinAntara(dari: number, ke: number, perluasan: number, cfg: KonfigEkonomi = EKONOMI): Izin {
+  const po = slotPo(ke, perluasan, cfg);
+  return {
+    jendela: bonusIzin('jendela', ke, perluasan, cfg) - bonusIzin('jendela', dari, perluasan, cfg),
+    jalur: bonusIzin('jalur', ke, perluasan, cfg) - bonusIzin('jalur', dari, perluasan, cfg),
+    slotPo: po > slotPo(dari, perluasan, cfg) ? po : 0,
+  };
+}
+
+export function adaIzin(izin: Izin): boolean {
+  return izin.jendela > 0 || izin.jalur > 0 || izin.slotPo > 0;
+}
+
+/** Izin yang terbuka tepat di level ini. */
+export function izinPadaLevel(level: number, perluasan: number, cfg: KonfigEkonomi = EKONOMI): Izin {
+  return izinAntara(level - 1, level, perluasan, cfg);
+}
+
+/** Level berikutnya (di atas `level`) yang membuka izin dengan tahap perluasan sekarang; null = tidak ada lagi. */
+export function izinBerikut(level: number, perluasan: number, cfg: KonfigEkonomi = EKONOMI): { readonly level: number; readonly izin: Izin } | null {
+  const iz = cfg.tycoon.izinLevel;
+  const maks = Math.max(...iz.jendela, ...iz.jalur, ...cfg.mitra.terminal.slot.map(([l]) => l));
+  for (let l = Math.floor(level) + 1; l <= maks; l++) {
+    const izin = izinPadaLevel(l, perluasan, cfg);
+    if (adaIzin(izin)) return { level: l, izin };
+  }
+  return null;
 }
 
 /**
@@ -39,8 +95,8 @@ export function biayaUnitBerikutnya(id: BangunanId, jumlah: number, cfg: KonfigE
 }
 
 /** Biaya membangun satu unit lagi, atau null bila slotnya sudah penuh. */
-export function biayaBangun(id: BangunanId, bangunan: JumlahBangunan, perluasan: number, cfg: KonfigEkonomi = EKONOMI): number | null {
-  return bangunan[id] < slotBangunan(id, perluasan, cfg) ? biayaUnitBerikutnya(id, bangunan[id], cfg) : null;
+export function biayaBangun(id: BangunanId, bangunan: JumlahBangunan, perluasan: number, level: number, cfg: KonfigEkonomi = EKONOMI): number | null {
+  return bangunan[id] < slotBangunan(id, perluasan, level, cfg) ? biayaUnitBerikutnya(id, bangunan[id], cfg) : null;
 }
 
 /** Paling sedikit setelah dibongkar: jendela loket satu, supaya tiket tetap terjual. */

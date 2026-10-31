@@ -6,6 +6,7 @@
  * tiap pembaruan state hanya mengubah teks/kelas yang berubah.
  */
 import type { Aksi } from '../sim/aksi';
+import { hadiahSetelahIklan } from '../app/iklan';
 import { EKONOMI } from '../config/economy.config';
 import { LIVERY_PO, type Livery } from '../config/livery.config';
 import { KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
@@ -13,8 +14,9 @@ import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import type { AreaId } from '../sim/operasi';
 import { keHexCss, WARNA_AREA as WARNA_AREA_ANGKA, WARNA_TAHAP } from '../config/tema';
 import { formatAngka, formatDurasi, formatUang, formatUangBertanda } from './format';
-import type { ModelBuku, ModelMingguan, ModelMitra, ModelPoTerdaftar, ModelPoTersedia, ModelTampilan, ModelTantangan, ModelTarif } from './model';
+import type { ModelBangunan, ModelBuku, ModelMingguan, ModelMitra, ModelPoTerdaftar, ModelPoTersedia, ModelTampilan, ModelTantangan, ModelTarif } from './model';
 import {
+  labelGandaTarget,
   namaKelas,
   NAMA_AREA,
   NAMA_BANGUNAN,
@@ -32,6 +34,9 @@ import {
   NAMA_TINGKAT_PO,
   sisaWaktuEvent,
   TEKS,
+  teksIzin,
+  teksJendelaPenuh,
+  teksPaket,
 } from './teks';
 
 export interface IsiTab {
@@ -46,20 +51,22 @@ type Kirim = (aksi: Aksi) => void;
 /** Iklan berhadiah untuk klaim 2× (lihat app/iklan.ts); `tonton` true = selesai ditonton. */
 export interface IklanMenu {
   siap(): boolean;
-  tonton(tempat: 'target2x' | 'penghargaan2x'): Promise<boolean>;
+  tonton(tempat: 'target2x' | 'penghargaan2x' | 'percepatProyek'): Promise<boolean>;
 }
 
 const IKON_PUTAR_KECIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M10 9l5 3-5 3z" fill="currentColor"/></svg>';
 
-/** Tombol klaim 2× lewat iklan: ikon layar + "2×" + besar hadiah. */
-function tombolGanda(): { tombol: HTMLButtonElement; besar: HTMLSpanElement } {
+/** Tombol klaim 2× lewat iklan: ikon layar + label ("2×", atau "2× semua" di target) + besar hadiah. */
+function tombolGanda(): { tombol: HTMLButtonElement; label: Text; besar: HTMLSpanElement } {
   const tombol = el('button', 'tombol tombol-iklan tombol-ganda');
   tombol.type = 'button';
   const kecil = el('span', 'tombol-kecil');
-  kecil.innerHTML = `${IKON_PUTAR_KECIL}${TEKS.klaimGanda}`;
+  kecil.innerHTML = IKON_PUTAR_KECIL;
+  const label = document.createTextNode(TEKS.klaimGanda);
+  kecil.append(label);
   const besar = el('span', 'tombol-besar');
   tombol.append(kecil, besar);
-  return { tombol, besar };
+  return { tombol, label, besar };
 }
 
 /** Tombol beli dua baris: teks kecil (aksi) di atas harga. */
@@ -200,8 +207,9 @@ function buatBarisBangunan(id: BangunanId, warna: string, kirim: Kirim): BarisBa
       const b = m.bangun.bangunan[id];
       setTeks(r.level, TEKS.bangunanJumlah(b.jumlah, b.slot));
       const kosong = id === 'jendela' && m.bangun.jendelaKosong > 0 ? ` · ${TEKS.jendelaKosong(m.bangun.jendelaKosong)}` : '';
-      const teksStatus =
-        b.biaya === null ? (b.slotBerikut !== null ? TEKS.slotPenuhPerluasan(b.slotBerikut) : TEKS.slotPenuh) : `${TEKS.perawatanPerHari(formatUang(b.perawatan))}${kosong}`;
+      const s = b.slotBerikut;
+      const penuh = s === null ? TEKS.slotPenuh : s.jenis === 'level' ? TEKS.slotPenuhLevel(s.level) : TEKS.slotPenuhPerluasan(s.tahap);
+      const teksStatus = b.biaya === null ? penuh : `${TEKS.perawatanPerHari(formatUang(b.perawatan))}${kosong}`;
       setTeks(status, teksStatus);
       status.classList.toggle('penuh', b.biaya === null);
       setHidden(r.tombol, b.biaya === null);
@@ -547,15 +555,15 @@ function buatKartuPo(id: PoId, kirim: Kirim): KartuPo {
   };
 }
 
-/** Status PO yang belum terdaftar: syarat yang kurang, atau catatan riwayat. */
-function statusTersedia(p: ModelPoTersedia): string {
+/** Status PO yang belum terdaftar: syarat yang kurang, atau catatan riwayat. `jendela`: slot jendela berikutnya (tab Bangun). */
+function statusTersedia(p: ModelPoTersedia, jendela: ModelBangunan['slotBerikut']): string {
   const k = p.kurang;
   if (!k) return p.levelRiwayat !== null ? TEKS.poRiwayat(p.levelRiwayat) : '';
   switch (k.jenis) {
     case 'slot':
       return TEKS.poSlotPenuh;
     case 'jendela':
-      return TEKS.poJendelaPenuh;
+      return teksJendelaPenuh(jendela);
     case 'mitra':
       return TEKS.poMenolakBergabung(persen(k.perkiraan));
     case 'jeda':
@@ -573,7 +581,7 @@ function statusTersedia(p: ModelPoTersedia): string {
 
 interface BarisTersedia {
   readonly elemen: HTMLElement;
-  perbarui(p: ModelPoTersedia): void;
+  perbarui(p: ModelPoTersedia, jendela: ModelBangunan['slotBerikut']): void;
 }
 
 function buatBarisTersedia(id: PoId, kirim: Kirim): BarisTersedia {
@@ -585,10 +593,10 @@ function buatBarisTersedia(id: PoId, kirim: Kirim): BarisTersedia {
   r.tombol.addEventListener('click', () => kirim({ jenis: 'daftarPo', po: id }));
   return {
     elemen: r.elemen,
-    perbarui(p) {
+    perbarui(p, jendela) {
       setTeks(r.level, NAMA_TINGKAT_PO[p.tingkat]);
       setTeks(r.keterangan, `${NAMA_PO[id].asal} · ${TEKS.poJurusanDaftar(p.jurusan.join(', '))}`);
-      const teks = statusTersedia(p);
+      const teks = statusTersedia(p, jendela);
       setTeks(status, teks);
       setHidden(status, teks === '');
       // Kelas terminal & event: masih jauh, jadi tanpa tombol.
@@ -648,7 +656,7 @@ export function buatTabPo(kirim: Kirim): IsiTab {
           b = buatBarisTersedia(p.id, kirim);
           tersedia.set(p.id, b);
         }
-        b.perbarui(p);
+        b.perbarui(p, m.bangun.bangunan.jendela.slotBerikut);
       }
       susunUrut(daftarTersedia, mi.tersedia.map((p) => tersedia.get(p.id)!.elemen));
     },
@@ -661,6 +669,8 @@ export function buatTabPo(kirim: Kirim): IsiTab {
 export interface OpsiTabTerminal {
   /** Membuka popup nama terminal (lihat popup-nama.ts). */
   readonly ubahNama?: () => void;
+  /** Iklan berhadiah untuk tombol percepat proyek (tanpa ini tombolnya tidak ada). */
+  readonly iklan?: IklanMenu;
 }
 
 /** Kartu ber-bilah: judul, baris utama, keterangan, bilah & angka di kiri, tombol di kanan. */
@@ -807,6 +817,9 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
   const barisJudul = el('div', 'kelas-judul-baris');
   level.judul.replaceWith(barisJudul);
   barisJudul.append(level.judul, tombolNama);
+  // Izin level berikutnya (documents/15 bagian 3.5), di bawah bilah XP.
+  const izinLevel = el('div', 'kelas-berikut kartu-izin');
+  level.kiri.append(izinLevel);
   // Perluasan: tahap berikutnya & tombol bangun, atau proyek yang sedang berjalan.
   const perluasan = kartuBilah('perluasan-kartu');
   perluasan.judul.textContent = TEKS.perluasanJudul;
@@ -818,6 +831,24 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
   const kananPerluasan = el('div', 'target-tombol');
   kananPerluasan.append(tombolPerluasan.tombol);
   perluasan.elemen.append(kananPerluasan);
+  // Percepat proyek lewat iklan (documents/15 bagian 4.2): hanya saat iklan siap dan sisanya cukup panjang.
+  const percepat = el('button', 'tombol tombol-iklan tombol-percepat');
+  percepat.type = 'button';
+  const percepatBesar = el('span', 'tombol-besar', TEKS.percepatTombol(Math.round(EKONOMI.hadiah.percepatDetik / 60)));
+  percepat.append(percepatBesar, el('span', 'tombol-kecil', TEKS.percepatCatatan));
+  let menontonPercepat = false;
+  percepat.addEventListener('click', () => {
+    const iklan = o.iklan;
+    if (!iklan || menontonPercepat) return;
+    menontonPercepat = true;
+    setDisabled(percepat, true);
+    void hadiahSetelahIklan(() => iklan.tonton('percepatProyek'), () => kirim({ jenis: 'percepatProyek' })).finally(() => {
+      menontonPercepat = false;
+      setDisabled(percepat, false);
+    });
+  });
+  percepat.hidden = true;
+  perluasan.kiri.append(percepat);
   const keuangan = buatKartuKeuangan();
   const tarif = TARIF_IDS.map((id) => ({ id, ...buatBarisTarif(id, kirim) }));
   // Kelas bus yang dioperasikan PO terdaftar.
@@ -850,6 +881,8 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
       setTeks(level.judul, TEKS.kelasJudul(namaKelas(t.kelas), t.nama));
       setTeks(level.tugas, TEKS.level(t.level));
       setTeks(level.ket, `${TEKS.terminalKelasBerikut(namaKelas(t.kelas + 1), t.levelKelasBerikut)} · ${TEKS.terminalSlot(t.slot)}`);
+      setTeks(izinLevel, TEKS.terminalIzinBerikut(t.izinBerikut.map((x) => TEKS.izinBerikut(x.level, teksIzin(x.izin))).join(' · ')));
+      setHidden(izinLevel, t.izinBerikut.length === 0);
       setStyle(level.isi, 'width', `${(t.rasio * 100).toFixed(1)}%`);
       setTeks(level.angka, TEKS.terminalXp(formatAngka(Math.floor(t.xp)), formatAngka(Math.ceil(t.xpBerikut))));
       keuangan.perbarui(m);
@@ -867,6 +900,7 @@ export function buatTabTerminal(kirim: Kirim, o: OpsiTabTerminal = {}): IsiTab {
       setTeks(perluasan.ket, efek);
       setHidden(perluasan.ket, efek === '');
       setHidden(perluasan.bar, p.proyek === null);
+      setHidden(percepat, !(p.proyek?.bisaPercepat === true && (o.iklan?.siap() ?? false)));
       setStyle(perluasan.isi, 'width', `${((p.proyek?.rasio ?? 0) * 100).toFixed(1)}%`);
       setHidden(perluasan.angka, true);
       setHidden(kananPerluasan, p.berikut === null);
@@ -927,9 +961,10 @@ function angkaTantangan(t: ModelTantangan): string {
 function buatKartuTantangan(kirim: Kirim, bukaKepuasan?: () => void): { readonly elemen: HTMLElement; perbarui(m: ModelMingguan | null): void } {
   const elemen = el('div', 'target-kartu kartu-kolom tantangan-kartu');
   const judul = el('div', 'target-judul');
+  const hadiah = el('div', 'target-hadiah');
   const daftar = el('div', 'tantangan-daftar');
   const catatan = el('div', 'kelas-berikut', TEKS.tantanganCatatan);
-  elemen.append(judul, daftar, catatan);
+  elemen.append(judul, hadiah, daftar, catatan);
   const baris: {
     readonly elemen: HTMLElement;
     readonly label: HTMLElement;
@@ -946,6 +981,8 @@ function buatKartuTantangan(kirim: Kirim, bukaKepuasan?: () => void): { readonly
       if (!m) return;
       const sisa = m.selesaiMs - Date.now();
       setTeks(judul, sisa > 0 ? TEKS.tantanganJudul(sisaWaktuEvent(sisa)) : TEKS.tantanganBerakhir);
+      setTeks(hadiah, TEKS.tantanganHadiah(teksPaket(m.paket)));
+      setHidden(hadiah, m.daftar.every((t) => t.diklaim));
       m.daftar.forEach((t, i) => {
         let b = baris[i];
         if (!b) {
@@ -1034,10 +1071,7 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
   const klaimGanda = (tempat: 'target2x' | 'penghargaan2x', aksi: Aksi): void => {
     if (!iklan || menonton) return;
     menonton = true;
-    void iklan
-      .tonton(tempat)
-      .then((ok) => ok && kirim(aksi))
-      .finally(() => (menonton = false));
+    void hadiahSetelahIklan(() => iklan.tonton(tempat), () => kirim(aksi)).finally(() => (menonton = false));
   };
   const elemen = el('div', 'isi-tab daftar-item');
   // Event musiman: sisa waktu, pengali pasar, tahap target & klaim hadiahnya.
@@ -1068,6 +1102,8 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
   const barIsi = el('div', 'bar-isi');
   bar.append(barIsi);
   const angka = el('div', 'target-angka');
+  // Isi paket hadiah sebelum diklaim (PO sasaran armada tertulis).
+  const hadiahTarget = el('div', 'target-hadiah');
   const tombolTarget = el('button', 'tombol tombol-beli tombol-klaim');
   tombolTarget.type = 'button';
   const targetKecil = el('span', 'tombol-kecil');
@@ -1077,7 +1113,7 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
   const gandaTarget = tombolGanda();
   gandaTarget.tombol.addEventListener('click', () => klaimGanda('target2x', { jenis: 'klaimTarget', ganda: true }));
   const kiri = el('div', 'target-kiri');
-  kiri.append(judul, tugas, bar, angka);
+  kiri.append(judul, tugas, bar, angka, hadiahTarget);
   const tombolKanan = el('div', 'target-tombol');
   tombolKanan.append(gandaTarget.tombol, tombolTarget);
   kartu.append(kiri, tombolKanan);
@@ -1125,9 +1161,13 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
       setTeks(angka, t.jenis === 'laba' ? `${formatUang(Math.floor(t.progres))} / ${formatUang(t.target)}` : `${formatAngka(Math.floor(t.progres))} / ${formatAngka(t.target)}`);
       setTeks(targetKecil, t.diklaim ? '' : TEKS.klaim);
       setTeks(targetBesar, t.diklaim ? TEKS.diklaim : `+${formatUang(t.hadiah)}`);
+      setTeks(hadiahTarget, TEKS.targetHadiah(teksPaket(t.paket)));
+      setHidden(hadiahTarget, t.diklaim);
       setDisabled(tombolTarget, !t.selesai || t.diklaim);
       const bisaIklan = iklan?.siap() ?? false;
       setHidden(gandaTarget.tombol, !bisaIklan || !t.selesai || t.diklaim);
+      const labelGanda = labelGandaTarget(t.paket);
+      if (gandaTarget.label.data !== labelGanda) gandaTarget.label.data = labelGanda;
       setTeks(gandaTarget.besar, `+${formatUang(t.hadiah * 2)}`);
       kartu.classList.toggle('siap', t.selesai && !t.diklaim);
       for (const b of baris) {

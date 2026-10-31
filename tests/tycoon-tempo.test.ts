@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jalankanSerakah, type HasilSimulasi } from './tycoon-sim';
+import { bentangBuntu, jalankanSerakah, type HasilSimulasi } from './tycoon-sim';
 
 /**
  * Patokan tempo ekonomi tycoon (documents/13 bagian 14) untuk pemain aktif yang
@@ -29,18 +29,26 @@ describe('tempo tycoon (pemain serakah)', () => {
     expect(Math.max(...jeda)).toBeLessThanOrEqual(25 * MENIT);
   });
 
-  it('kelas terminal: Tipe B ±1,5 jam, Tipe A ±6 jam, Terpadu ±12–17 jam; semua perluasan selesai', { timeout: 60_000 }, () => {
+  // Patokan baru (documents/15 bagian 6, disetujui owner 31 Oktober 2026): izin level membuat Tipe A & Terpadu lebih cepat.
+  it('kelas terminal: Tipe B ±1,5 jam, Tipe A 4,5–8,5 jam, Terpadu 10–17,5 jam; semua perluasan selesai', { timeout: 60_000 }, () => {
     const h = simulasi();
     const lv = (l: number): number => h.level.get(l) ?? Number.POSITIVE_INFINITY;
     expect(lv(6)).toBeGreaterThan(15 * MENIT);
     expect(lv(6)).toBeLessThan(45 * MENIT);
     expect(lv(10)).toBeGreaterThan(75 * MENIT);
     expect(lv(10)).toBeLessThan(130 * MENIT);
-    expect(lv(20)).toBeGreaterThan(5 * JAM);
+    expect(lv(20)).toBeGreaterThan(4.5 * JAM);
     expect(lv(20)).toBeLessThan(8.5 * JAM);
-    expect(lv(30)).toBeGreaterThan(12 * JAM);
+    expect(lv(30)).toBeGreaterThan(10 * JAM);
     expect(lv(30)).toBeLessThan(17.5 * JAM);
     expect(h.perluasan).toHaveLength(5);
+  });
+
+  it('tidak ada bentang buntu lebih dari 45 menit main sebelum Terpadu (gerbang tahap 0, ADR 004)', { timeout: 60_000 }, () => {
+    const h = simulasi();
+    const terpadu = h.level.get(30) ?? Number.POSITIVE_INFINITY;
+    const bentang = bentangBuntu(h.menit, terpadu);
+    expect(Math.max(0, ...bentang.map((b) => b.panjang))).toBeLessThanOrEqual(45);
   });
 
   it('laba tumbuh, biaya terasa tapi tidak mencekik, dan strategi wajar tidak pernah kehabisan kas', { timeout: 60_000 }, () => {

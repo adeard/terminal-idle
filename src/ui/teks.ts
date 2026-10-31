@@ -1,11 +1,15 @@
 /** Semua teks yang tampil ke pemain. */
 import type { KodeGalatPeringkat } from '../app/peringkat';
 import type { TingkatPo } from '../config/economy.config';
+import type { Izin } from '../sim/bangunan';
 import type { BangunanId, EventId, KelasBusId, PencapaianId, PetugasId, PoId, TarifId, TeknologiId } from '../sim/fitur';
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import type { AreaId } from '../sim/operasi';
 import type { TahapId } from '../sim/tahap';
+import type { PaketHadiah } from '../sim/state';
 import type { TingkatKeramaian } from '../sim/waktu';
+import { formatUang } from './format';
+import type { ModelBangunan } from './model';
 
 export const NAMA_TAHAP: Readonly<Record<TahapId, string>> = {
   peron: 'Peron',
@@ -107,13 +111,13 @@ export const NAMA_TINGKAT_PO: Readonly<Record<TingkatPo, string>> = {
 export const NAMA_PERLUASAN: readonly { readonly nama: string; readonly deskripsi: string }[] = [
   { nama: 'Aula loket diperluas', deskripsi: 'Slot jendela loket +2' },
   { nama: 'Pangkalan diperluas', deskripsi: 'Petak bus +10, jendela loket +2, lahan parkir kedua' },
-  { nama: 'Lantai 2 gedung utama', deskripsi: 'Food court & ruang tunggu: jendela +4, kursi, toko, toilet' },
-  { nama: 'Gedung parkir bus', deskripsi: 'Gedung Antarpulau: jalur +2, petak bus +20, aula loket kedua' },
-  { nama: 'Terminal Terpadu', deskripsi: 'Dek parkir ketiga & lantai 3: jalur +2, petak bus +20, jendela +4' },
+  { nama: 'Lantai 2 gedung utama', deskripsi: 'Food court & ruang tunggu: jendela +4, petak bus +10, kursi, toko, toilet; sesudahnya naik level menambah slot jendela & jalur' },
+  { nama: 'Gedung parkir bus', deskripsi: 'Gedung Antarpulau: jalur +1, petak bus +10, aula loket kedua' },
+  { nama: 'Terminal Terpadu', deskripsi: 'Dek parkir ketiga & lantai 3: jalur +1, petak bus +20, jendela +4' },
 ];
 
 /** Efek singkat tiap tahap perluasan (baris tujuan & notifikasi perluasan terbuka), urut NAMA_PERLUASAN. */
-export const EFEK_PERLUASAN: readonly string[] = ['slot jendela loket +2', 'petak bus +10, jendela +2', 'lantai 2, jendela +4', 'jalur +2, petak bus +20', 'jalur +2, jendela +4'];
+export const EFEK_PERLUASAN: readonly string[] = ['slot jendela loket +2', 'petak bus +10, jendela +2', 'lantai 2, jendela +4, izin level', 'jalur +1, petak bus +10', 'jalur +1, jendela +4'];
 
 /** Event musiman: nama lengkap, nama singkat (HUD), dan ikon notifikasi. */
 export const NAMA_EVENT: Readonly<Record<EventId, { readonly nama: string; readonly singkat: string; readonly ikon: string }>> = {
@@ -164,6 +168,50 @@ export function namaKelas(kelas: number): string {
   return `Terpadu ★${kelas - 2}`;
 }
 
+/** Izin level jadi teks: "slot jendela loket +1 & slot PO ke-7" (yang ada saja; kosong bila tidak ada). */
+export function teksIzin(izin: Izin): string {
+  return [izin.jendela > 0 ? TEKS.izinJendela(izin.jendela) : '', izin.jalur > 0 ? TEKS.izinJalur(izin.jalur) : '', izin.slotPo > 0 ? TEKS.izinSlotPo(izin.slotPo) : '']
+    .filter(Boolean)
+    .join(' & ');
+}
+
+/** Bagian level armada dalam teks (playtest P-2): 1 → "1", 0,5 → "½", 0,25 → "¼", lainnya "{persen}%" ("+75% level"). */
+export function teksBagianLevel(bagian: number): string {
+  if (Number.isInteger(bagian)) return String(bagian);
+  if (bagian === 0.5) return '½';
+  if (bagian === 0.25) return '¼';
+  return `${Math.round(bagian * 100)}%`;
+}
+
+/** Isi paket hadiah sebelum diklaim (documents/15 bagian 4.4): "+Rp 3 jt · 🚌 PO Wayang Lestari +½ level · 🏗️ −6 mnt". */
+export function teksPaket(p: PaketHadiah): string {
+  const a = p.armada;
+  return [
+    `+${formatUang(p.uang)}`,
+    a ? TEKS.hadiahArmada(NAMA_PO[a.po].nama, teksBagianLevel(a.bagian)) : '',
+    p.percepatDetik > 0 ? TEKS.hadiahPercepat(Math.round(p.percepatDetik / 60)) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Label tombol 2× target harian (playtest P-1): "2× semua" bila paketnya juga berisi armada atau percepat. */
+export function labelGandaTarget(p: PaketHadiah): string {
+  return p.armada !== null || p.percepatDetik > 0 ? TEKS.klaimGandaPaket : TEKS.klaimGanda;
+}
+
+/** Status PO yang terhalang slot jendela (playtest P-4): dari mana slot jendela berikutnya datang. */
+export function teksJendelaPenuh(s: ModelBangunan['slotBerikut']): string {
+  if (s === null) return TEKS.poJendelaPenuh;
+  return s.jenis === 'level' ? TEKS.poJendelaPenuhLevel(s.level) : TEKS.poJendelaPenuhPerluasan(s.tahap);
+}
+
+/** Toast slot PO baru saat slot jendela penuh (playtest P-4): penuh sampai level izin atau perluasan berikutnya. */
+export function teksSlotTanpaJendela(slot: number, s: ModelBangunan['slotBerikut']): string {
+  if (s === null) return TEKS.notifSlotTanpaJendela(slot);
+  return TEKS.notifSlotTanpaJendelaSampai(slot, s.jenis === 'level' ? `Lv ${s.level}` : `Perluasan ${s.tahap}`);
+}
+
 export const NAMA_TEKNOLOGI: Readonly<Record<TeknologiId, string>> = {
   rambuHalte: 'Marka & rambu halte',
   pengaturBus: 'Sistem pengatur bus',
@@ -209,7 +257,7 @@ export const NAMA_PENCAPAIAN: Readonly<Record<PencapaianId, { readonly nama: str
   kasMiliar: { nama: 'Kas Miliaran', deskripsi: 'Kas terminal mencapai Rp 1 M' },
   kelasA: { nama: 'Terminal Tipe A', deskripsi: 'Terminal naik ke Tipe A' },
   armadaLengkap: { nama: 'Armada Lengkap', deskripsi: 'Kelima kelas bus beroperasi, sampai Double Decker' },
-  loketPenuh: { nama: 'Aula Penuh', deskripsi: 'Semua 20 jendela loket disewa PO' },
+  loketPenuh: { nama: 'Aula Penuh', deskripsi: '20 jendela loket disewa PO' },
   terpadu: { nama: 'Terminal Terpadu', deskripsi: 'Terminal naik ke Terpadu' },
   penumpangSejuta: { nama: 'Sejuta Perjalanan', deskripsi: 'Berangkatkan 1 juta penumpang' },
   lintasNusantara: { nama: 'Lintas Nusantara', deskripsi: 'Layani semua rute sampai Banda Aceh sekaligus' },
@@ -262,6 +310,7 @@ export const TEKS = {
   tujuanMenabungCadangan: (tahap: number, uang: string) => `🏗️ Perluasan ${tahap}: kumpulkan ${uang} lagi untuk cadangan`,
   tujuanNaikLevel: (tahap: number, level: number, kini: number) => `⬆️ Perluasan ${tahap} terbuka di Lv ${level} · kini Lv ${kini}`,
   tujuanKelas: (kelas: string, level: number, kini: number) => `⭐ Naik ke ${kelas} di Lv ${level} · kini Lv ${kini}`,
+  tujuanIzin: (level: number, izin: string, kini: number) => `⬆️ Lv ${level}: ${izin} · kini Lv ${kini}`,
   // Toast kepuasan turun (app/kepuasan-turun.ts; documents/14 bagian 4.2).
   notifKepuasanTurun: (wajah: string, dari: number, ke: number, sebab: string) => `${wajah} Kepuasan turun ${dari}% → ${ke}%: ${sebab}. Ketuk untuk rincian`,
   sebabAntreanDi: (area: string) => `antrean di ${area}`,
@@ -300,7 +349,7 @@ export const TEKS = {
   tantanganMenit: (ada: number, target: number) => `${ada} / ${target} menit`,
   tantanganKepuasanKini: (persen: number) => `kini ${persen}% ›`,
   tantanganKepuasanBuka: 'Buka rincian kepuasan penumpang',
-  tantanganCatatan: 'Tantangan baru tiap Senin (WIB). Laba dihitung seperti Laba/hari: kontrak PO dirata-rata.',
+  tantanganCatatan: 'Tantangan baru tiap Senin (WIB). Laba dihitung seperti Laba/hari: kontrak PO dirata-rata. 🚌 Armada selalu untuk PO berlevel terendah.',
   notifTantangan: '🎯 Tantangan mingguan selesai! Klaim di tab Target',
   rekorJudul: '🏅 Rekor terminal',
   rekorHariIni: (p: string, rp: string) => `Hari ini: ${p} penumpang · laba ${rp}`,
@@ -389,6 +438,7 @@ export const TEKS = {
   bangunanJumlah: (jumlah: number, slot: number) => `${jumlah}/${slot}`,
   slotPenuh: 'Slot penuh',
   slotPenuhPerluasan: (tahap: number) => `Slot penuh: bertambah di Perluasan ${tahap}`,
+  slotPenuhLevel: (level: number) => `Slot penuh: +1 di Lv ${level}`,
   perawatanPerHari: (rp: string) => `Perawatan ${rp}/hari`,
   bongkar: (rp: string) => `Bongkar · +${rp}`,
   bongkarYakin: 'Yakin bongkar?',
@@ -442,23 +492,37 @@ export const TEKS = {
   judulPoTersedia: 'Daftarkan PO',
   poJurusanDaftar: (daftar: string) => `Jurusan ${daftar}`,
   poSlotPenuh: 'Slot PO penuh: naikkan level terminal',
-  poJendelaPenuh: 'Slot jendela loket penuh: bangun perluasan terminal',
+  // Slot jendela penuh (playtest P-4): sasaran dari ModelBangunan.slotBerikut jendela (teksJendelaPenuh).
+  poJendelaPenuh: 'Jendela penuh',
+  poJendelaPenuhLevel: (level: number) => `Jendela penuh · +1 di Lv ${level}`,
+  poJendelaPenuhPerluasan: (tahap: number) => `Jendela penuh · Perluasan ${tahap}`,
   poMenolakBergabung: (persen: number) => `Menolak bergabung (kepuasan mitra ±${persen}%): turunkan sewa loket atau retribusi`,
   poJeda: (hari: string) => `Baru bisa didaftarkan lagi dalam ${hari} hari`,
   poRiwayat: (level: number) => `Pernah bergabung, lanjut dari Lv ${level}`,
   poHadiahKelas: (kelas: string) => `Hadiah Terminal ${kelas}`,
   poCatatan:
-    'Tiap PO punya jendela loket, jurusan, kelas bus, dan reputasinya sendiri, dan menjual tiketnya sendiri (uang tiket untuk PO). Terminal menerima kontrak PO (dibayar di muka saat bergabung & tiap perpanjangan; panjangnya ditawarkan PO, nilainya naik dengan tingkat & level PO serta kelas terminal), sewa jendela, dan retribusi bus. Jumlah PO dibatasi slot yang bertambah seiring level terminal. Bus yang berangkat menaikkan level PO: jurusan & kelas busnya bertambah. Manajer Kemitraan menyewakan jendela kosong dan memperpanjang kontrak otomatis.',
+    'Tiap PO punya jendela loket, jurusan, kelas bus, dan reputasinya sendiri, dan menjual tiketnya sendiri (uang tiket untuk PO). Terminal menerima kontrak PO (dibayar di muka saat bergabung & tiap perpanjangan; panjangnya ditawarkan PO, nilainya naik dengan tingkat & level PO serta kelas terminal), sewa jendela, dan retribusi bus. Jumlah PO dibatasi slot yang bertambah seiring level terminal. Bus yang berangkat menaikkan level PO: jurusan & kelas busnya bertambah. Manajer Kemitraan menyewakan jendela kosong dan memperpanjang kontrak otomatis. Hadiah armada (target, tantangan, Bus Emas) menaikkan level PO berlevel terendah.',
   // Tab Terminal: level & kelas, perluasan, tarif, laporan keuangan, kelas bus.
   terminalXp: (ada: string, perlu: string) => `${ada} / ${perlu} penumpang`,
   terminalKelasBerikut: (kelas: string, level: number) => `Naik ke ${kelas} di Lv ${level}`,
   terminalSlot: (slot: number) => `${slot} slot PO`,
+  // Izin level (documents/15 bagian 3.5): slot tambahan dari naik level.
+  izinJendela: (n: number) => `slot jendela loket +${n}`,
+  izinJalur: (n: number) => `slot jalur +${n}`,
+  izinSlotPo: (ke: number) => `slot PO ke-${ke}`,
+  izinBerikut: (level: number, izin: string) => `Lv ${level} ${izin}`,
+  terminalIzinBerikut: (daftar: string) => `Izin berikutnya: ${daftar}`,
+  offlineIzin: (daftar: string) => `🎫 Izin baru: ${daftar}`,
+  offlineIzinJendela: (n: number) => `jendela +${n}`,
+  offlineIzinJalur: (n: number) => `jalur +${n}`,
   terminalCatatan: 'Level terminal naik dari penumpang yang diberangkatkan. Kelas terminal ikut level dan tidak pernah turun; terminal yang lebih besar menarik lebih banyak penumpang, tapi gaji & perawatannya ikut naik.',
   perluasanJudul: 'Perluasan terminal',
   perluasanTahap: (tahap: number, jumlah: number, nama: string) => `Tahap ${tahap}/${jumlah}: ${nama}`,
   perluasanOperasional: (rp: string) => `operasional gedung ${rp}/hari`,
   perluasanSyarat: (level: number) => `Butuh Terminal Lv ${level}`,
   perluasanProyek: (sisa: string) => `Sedang dibangun · selesai dalam ${sisa}`,
+  percepatTombol: (menit: number) => `▶ Percepat ${menit} menit`,
+  percepatCatatan: 'iklan · maks. 2× per proyek',
   perluasanSelesai: 'Semua tahap perluasan sudah dibangun',
   perluasanCatatan: 'Pembangunan butuh sehari terminal dan tetap berjalan saat game ditutup. Tiap tahap menambah slot bangunan.',
   tarifJudul: 'Tarif terminal',
@@ -517,10 +581,17 @@ export const TEKS = {
   // Notifikasi mitra PO, level terminal, perluasan, kas.
   notifNaikKelas: (kelas: string) => `⭐ Selamat! Terminal naik ke ${kelas}`,
   notifLevelTerminal: (level: number) => `🏢 Terminal naik ke Lv ${level}`,
+  notifLevelTerminalIzin: (level: number, izin: string) => `🏢 Terminal naik ke Lv ${level}: ${izin}`,
   notifSlotBaru: (slot: number) => `🅿️ Slot PO ke-${slot} terbuka! Daftarkan PO di tab PO`,
-  notifSlotTanpaJendela: (slot: number) => `🅿️ Slot PO ke-${slot} terbuka: PO baru butuh jendela dari perluasan`,
+  /** Slot jendela penuh (playtest P-4, teksSlotTanpaJendela); `sampai`: "Lv 18" atau "Perluasan 3". */
+  notifSlotTanpaJendela: (slot: number) => `🅿️ Slot PO ke-${slot} terbuka: jendela loket penuh`,
+  notifSlotTanpaJendelaSampai: (slot: number, sampai: string) => `🅿️ Slot PO ke-${slot} terbuka: jendela loket penuh sampai ${sampai}`,
   notifPo: (nama: string) => `🚌 ${nama} bergabung & membayar kontraknya!`,
-  notifPoLevel: (nama: string, level: number) => `⬆️ ${nama} naik ke Lv ${level}`,
+  /** `baru`: kelas bus & jurusan yang terbuka di level ini (kosong = tidak ada). */
+  notifPoLevel: (nama: string, level: number, baru = '') => `⬆️ ${nama} naik ke Lv ${level}${baru ? `: ${baru}` : ''}`,
+  notifArmada: (nama: string, dari: number, ke: number, level: number) => `🚌 Armada baru ${nama}: ${dari}% → ${ke}% menuju Lv ${level}`,
+  poBaruKelas: (nama: string) => `kelas ${nama}`,
+  poBaruJurusan: (nama: string) => `jurusan ${nama}`,
   notifPoKeluar: (nama: string) => `📄 Kontrak ${nama} habis: PO keluar dan jendela loketnya kosong`,
   notifKontrakHampir: (nama: string) => `📄 Kontrak ${nama} tinggal sehari. Terima tawaran perpanjangannya di tab PO`,
   notifKelasBus: (nama: string) => `🚌 Bus ${nama} mulai beroperasi!`,
@@ -577,6 +648,12 @@ export const TEKS = {
   targetPenumpang: (n: string) => `Berangkatkan ${n} penumpang`,
   targetLaba: (rp: string) => `Raih laba bersih ${rp} hari ini`,
   targetHari: (hari: string) => `Target hari ${hari}`,
+  // Paket hadiah (documents/15 bagian 4.4): PO sasaran armada ditulis sebelum diklaim.
+  /** `level`: dari teksBagianLevel ("1", "½", "¼", "75%"). */
+  hadiahArmada: (po: string, level: string) => `🚌 ${po} +${level} level`,
+  hadiahPercepat: (menit: number) => `🏗️ −${menit} mnt`,
+  targetHadiah: (paket: string) => `Hadiah: ${paket}`,
+  tantanganHadiah: (paket: string) => `Hadiah tiap tantangan: ${paket}`,
   penghargaan: 'Penghargaan',
   notifPencapaian: (nama: string) => `🏆 Penghargaan baru: ${nama}`,
   notifTarget: '🎯 Target harian selesai! Klaim di tab Target',
@@ -651,6 +728,8 @@ export const TEKS = {
   iklanGagal: 'Iklan belum tersedia. Coba lagi nanti.',
   hadiahNanti: 'Nanti',
   klaimGanda: '2×',
+  /** Tombol 2× target bila paketnya berisi armada/percepat (labelGandaTarget): seluruh paket digandakan. */
+  klaimGandaPaket: '2× semua',
   offlineAmbilGanda: (uang: string) => `Ambil 2× · ${uang}`,
   offlineBoost: (durasi: string) => `Termasuk boost 2× selama ${durasi}`,
   boostHud: ' ⚡2×',
@@ -665,7 +744,9 @@ export const TEKS = {
   notifBoost: (durasi: string) => `⚡ Boost 2× aktif · sisa ${durasi}`,
   busEmasPenanda: 'Bus Emas!',
   busEmasJudul: 'Bus Emas tiba!',
-  busEmasTeks: (menit: number) => `Bus istimewa membawa rombongan penumpang. Tonton iklan untuk bonus sebesar ${menit} menit laba.`,
+  /** `level`: dari teksBagianLevel ("¼"). */
+  busEmasTeks: (uang: string, po: string, level: string) => `Bus istimewa membawa rombongan. Tonton iklan untuk ${uang} dan armada baru ${po} (+${level} level).`,
+  busEmasTeksUang: (uang: string) => `Bus istimewa membawa rombongan. Tonton iklan untuk ${uang}.`,
   busEmasTonton: 'Tonton iklan & ambil',
   notifBusEmas: (uang: string) => `🚌 Bus Emas: +${uang}`,
 } as const;

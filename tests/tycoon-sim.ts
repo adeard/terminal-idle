@@ -158,9 +158,9 @@ const salinSim = (s: SimTycoon): SimTycoon => ({
 export function biayaAksi(s: SimTycoon, a: AksiSim, cfg: KonfigEkonomi = EKONOMI): number | null {
   switch (a.jenis) {
     case 'jendela':
-      return biayaBangun('jendela', s.bangunan, s.perluasan, cfg);
+      return biayaBangun('jendela', s.bangunan, s.perluasan, levelTerminalSim(s, cfg), cfg);
     case 'bangun':
-      return biayaBangun(a.id, s.bangunan, s.perluasan, cfg);
+      return biayaBangun(a.id, s.bangunan, s.perluasan, levelTerminalSim(s, cfg), cfg);
     case 'rekrut':
       return bisaRekrut(a.id, s.petugas, s.bangunan) ? 0 : null;
     case 'teknologi': {
@@ -176,7 +176,7 @@ export function biayaAksi(s: SimTycoon, a: AksiSim, cfg: KonfigEkonomi = EKONOMI
       const op = hitungOperasi(keadaan(s, cfg), { ritme: 1, event: 1 }, cfg);
       if (syaratDaftarKurang(a.id, { kelasTerminal: kelasDariLevel(level, cfg), kepuasan: op.kepuasan.nilai }, cfg)) return null;
       // PO butuh jendela: dibangun PO sendiri di slot kosong. Bergabung gratis: PO yang membayar kontrak.
-      if (s.bangunan.jendela >= slotBangunan('jendela', s.perluasan, cfg)) return null;
+      if (s.bangunan.jendela >= slotBangunan('jendela', s.perluasan, level, cfg)) return null;
       return 0;
     }
     case 'perluasan': {
@@ -206,7 +206,7 @@ export function terapkanAksi(s: SimTycoon, a: AksiSim, biaya: number, cfg: Konfi
       x.teknologi[a.id] = true;
       break;
     case 'po': {
-      const bebas = slotBangunan('jendela', x.perluasan, cfg) - x.bangunan.jendela;
+      const bebas = slotBangunan('jendela', x.perluasan, levelTerminalSim(x, cfg), cfg) - x.bangunan.jendela;
       const loket = Math.max(1, Math.min(tingkatPo(a.id, cfg).loketBawaan, bebas));
       x.bangunan.jendela += loket;
       const t = tawaranKontrak(a.id, 0, 1, kelasDariLevel(levelTerminalSim(x, cfg), cfg), cfg);
@@ -376,6 +376,47 @@ export interface HasilSimulasi {
    * di game) supaya hari tanpa perpanjangan tidak tampak merugi.
    */
   readonly labaHarian: readonly { readonly hari: number; readonly laba: number; readonly pendapatan: number; readonly biaya: number }[];
+  /** Golongan tiap keputusan (sekali per jam terminal = menit main), untuk bentang buntu. */
+  readonly menit: readonly MenitSim[];
+}
+
+/**
+ * Golongan satu keputusan (documents/13 bagian 14, patokan "bentang buntu"): membeli, aksi gratis
+ * (PO baru, rekrut), menabung (ada aksi yang menambah laba atau perluasan terbuka, tapi kas belum
+ * cukup), atau buntu (tidak ada aksi yang menambah laba atau penumpang dan perluasan belum terbuka).
+ */
+export type GolonganMenit = 'beli' | 'gratis' | 'menabung' | 'buntu';
+
+export interface MenitSim {
+  readonly detik: number;
+  readonly golongan: GolonganMenit;
+  readonly level: number;
+}
+
+function golonganMenit(s: SimTycoon, baru: readonly Catatan[], cfg: KonfigEkonomi): GolonganMenit {
+  if (baru.some((c) => c.biaya > 0)) return 'beli';
+  if (baru.length > 0) return 'gratis';
+  return nilaiAksi(s, cfg).length > 0 || biayaAksi(s, { jenis: 'perluasan' }, cfg) !== null ? 'menabung' : 'buntu';
+}
+
+/** Bentang keputusan "buntu" berturut-turut sebelum detik main ini: mulai (detik), panjang (menit main), & level di awalnya. */
+export function bentangBuntu(menit: readonly MenitSim[], sampaiDetik: number): { readonly mulai: number; readonly panjang: number; readonly level: number }[] {
+  const hasil: { mulai: number; panjang: number; level: number }[] = [];
+  let awal: MenitSim | null = null;
+  let panjang = 0;
+  for (const m of menit) {
+    if (m.detik >= sampaiDetik) break;
+    if (m.golongan === 'buntu') {
+      awal ??= m;
+      panjang++;
+    } else if (awal) {
+      hasil.push({ mulai: awal.detik, panjang, level: awal.level });
+      awal = null;
+      panjang = 0;
+    }
+  }
+  if (awal) hasil.push({ mulai: awal.detik, panjang, level: awal.level });
+  return hasil;
 }
 
 /** Jalankan pemain serakah selama `detik` detik main (keputusan tiap jam terminal, langkah 10 detik). */
@@ -387,8 +428,13 @@ export function jalankanSerakah(detik: number, cfg: KonfigEkonomi = EKONOMI): Ha
   const perluasan: number[] = [];
   const labaHarian: { hari: number; laba: number; pendapatan: number; biaya: number }[] = [];
   let hariIni = { laba: 0, pendapatan: 0, biaya: 0 };
+  const menit: MenitSim[] = [];
   for (let i = 0; s.detik < detik; i++) {
-    if (i % 6 === 0) s = putuskan(s, catatan, cfg);
+    if (i % 6 === 0) {
+      const awal = catatan.length;
+      s = putuskan(s, catatan, cfg);
+      menit.push({ detik: s.detik, golongan: golonganMenit(s, catatan.slice(awal), cfg), level: levelTerminalSim(s, cfg) });
+    }
     const sebelum = s.perluasan;
     const k = keadaan(s, cfg);
     const keu = keuanganPerJam(k, hitungOperasi(k, { ritme: ritmePada(s.detik, cfg), event: 1 }, cfg), malamPada(s.detik), cfg);
@@ -405,7 +451,7 @@ export function jalankanSerakah(detik: number, cfg: KonfigEkonomi = EKONOMI): Ha
       hariIni = { laba: 0, pendapatan: 0, biaya: 0 };
     }
   }
-  return { akhir: s, catatan, level, perluasan, labaHarian };
+  return { akhir: s, catatan, level, perluasan, labaHarian, menit };
 }
 
 // ---------------------------------------------------------------------------
