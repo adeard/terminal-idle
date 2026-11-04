@@ -8,12 +8,14 @@ import { acakBerbenih } from './dunia-visual';
 import { atapLimas, bayanganKontak, bidang, kotak, persegiTegak, silinder, uvDunia, type Kumpulan } from './geometri';
 import { SKALA_UV, type PustakaMaterial } from './material3d';
 import { geometriMobil, geometriMotor, kendaraanDiwarnai, WARNA_BAJU, WARNA_MOBIL } from './mobil3d';
-import { GANG_RUKO, GERBANG_KELUAR_X, GERBANG_MASUK_X, JALAN_DALAM, LEBAR_GERBANG_PAGAR, RUANG_TUNGGU, Y_PAGAR } from './tata-letak';
+import { GANG_RUKO, GERBANG_KELUAR_X, GERBANG_MASUK_X, JALAN_DALAM, LEBAR_GERBANG_PAGAR, RUANG_TUNGGU, SAYAP_DUA, Y_PAGAR } from './tata-letak';
 
 /** Jalan lingkungan di belakang terminal (y) dan lajurnya (dipakai lalu lintas dekoratif). */
 export const JALAN_BELAKANG = { y0: 20.4, y1: 21.8, lajurTimur: 20.75, lajurBarat: 21.45, x0: -60, x1: 100 } as const;
 
 const PENUH = { u0: 0, v0: 0, u1: 1, v1: 1 } as const;
+/** Ruko & ruas pagar di rentang x ini hilang saat proyek Sayap 2 Lantai mulai (bagian 'lahan'): teras selatannya melewati pagar. */
+const LAHAN_TERAS = { x0: SAYAP_DUA.a2b.x0, x1: SAYAP_DUA.a2b.x1 } as const;
 
 /**
  * @param parkirMobil tempat mobil pengunjung baris pertama (beserta deret motor)
@@ -60,15 +62,27 @@ function pagarKompleks(k: Kumpulan, m: PustakaMaterial): void {
     mulai = b;
   }
   ruas.push([mulai, x1]);
+  const diLahan = (x: number): boolean => x >= LAHAN_TERAS.x0 && x <= LAHAN_TERAS.x1;
   for (const [a, b] of ruas) {
-    k.tambah(m.plester, uvDunia(kotak(a, y - 0.05, b, y + 0.05, 0, 0.14), SKALA_UV.plester));
-    for (let x = a; x < b; x += 0.25) k.tambah(m.besiGelap, kotak(x - 0.008, y - 0.008, x + 0.008, y + 0.008, 0.14, 0.28), { bayangan: false });
-    k.tambah(m.besiGelap, kotak(a, y - 0.01, b, y + 0.01, 0.27, 0.29));
+    // Tembok & palang dipecah di batas lahan teras; UV dunia membuat sambungannya tidak terlihat.
+    const potongan = [a, ...[LAHAN_TERAS.x0, LAHAN_TERAS.x1].filter((x) => x > a && x < b), b];
+    for (let i = 0; i + 1 < potongan.length; i++) {
+      const [pa, pb] = [potongan[i]!, potongan[i + 1]!];
+      k.bagian = diLahan((pa + pb) / 2) ? 'lahan' : 'dasar';
+      k.tambah(m.plester, uvDunia(kotak(pa, y - 0.05, pb, y + 0.05, 0, 0.14), SKALA_UV.plester));
+      k.tambah(m.besiGelap, kotak(pa, y - 0.01, pb, y + 0.01, 0.27, 0.29));
+    }
+    for (let x = a; x < b; x += 0.25) {
+      k.bagian = diLahan(x) ? 'lahan' : 'dasar';
+      k.tambah(m.besiGelap, kotak(x - 0.008, y - 0.008, x + 0.008, y + 0.008, 0.14, 0.28), { bayangan: false });
+    }
   }
   for (let x = x0; x <= x1; x += 2.05) {
     if (celah.some(([a, b]) => x > a - 0.2 && x < b + 0.2)) continue;
+    k.bagian = diLahan(x) ? 'lahan' : 'dasar';
     k.tambah(m.plesterGelap, uvDunia(kotak(x - 0.07, y - 0.07, x + 0.07, y + 0.07, 0, 0.3), SKALA_UV.plester));
   }
+  k.bagian = 'dasar';
   gerbangPagar(k, m, GERBANG_KELUAR_X, 'PINTU KELUAR', '#15803d');
   gerbangPagar(k, m, GERBANG_MASUK_X, 'PINTU MASUK', '#1d4ed8');
 }
@@ -129,6 +143,7 @@ function ruko(k: Kumpulan, m: PustakaMaterial): void {
       const x1 = x0 + lebar - 0.02;
       // Gang menuju gerbang pagar terminal dibiarkan kosong.
       if (GANG_RUKO.some(([a, b]) => x1 > a && x0 < b)) continue;
+      k.bagian = x1 > LAHAN_TERAS.x0 && x0 < LAHAN_TERAS.x1 ? 'lahan' : 'dasar';
       const [y0, y1] = [18.45, 19.95];
       const tinggi = 0.95 + (acak() < 0.3 ? 0.4 : 0);
       const dinding = m.rukoDinding[Math.floor(acak() * m.rukoDinding.length)]!;
@@ -146,6 +161,7 @@ function ruko(k: Kumpulan, m: PustakaMaterial): void {
     }
     x += jumlah * lebar + 0.9 + acak() * 1.5;
   }
+  k.bagian = 'dasar';
 }
 
 /** Rumah kampung: dinding plester berwarna, atap limas genteng, pohon di sela-sela. */

@@ -10,7 +10,7 @@
  */
 import * as THREE from 'three';
 import { acakBerbenih } from './dunia-visual';
-import { ATAP, JALAN, JALAN_DALAM, PANGKALAN, Y_PAGAR, Y_TROTOAR_BELAKANG, type AtapLengkung, type Persegi } from './tata-letak';
+import { ATAP, ATAP_SAYAP2, H_LANTAI_2, JALAN, JALAN_DALAM, PANGKALAN, SAYAP_DUA, Y_PAGAR, Y_TROTOAR_BELAKANG, type AtapLengkung, type Persegi } from './tata-letak';
 
 const MAKS_BUTIR = 7000;
 /** Kotak butiran: lebar (x & z) dan tinggi jatuh (unit dunia). */
@@ -35,14 +35,28 @@ const PERMUKAAN: readonly Persegi[] = [
   { x0: -38, y0: Y_TROTOAR_BELAKANG + 0.3, x1: 66, y1: Y_TROTOAR_BELAKANG + 1.5 },
 ];
 
-const ATAP_DAFTAR: readonly AtapLengkung[] = [ATAP.gedung, ATAP.tunggu, ATAP.datang, ATAP.sayap];
+/**
+ * Teras Sayap 2 Lantai: butiran berhenti di lantainya, jadi tidak ada hujan di lantai
+ * dasar. Satu kotak mencakup A2a & A2b; bagian yang menimpa A1 tertutup atap A1 juga.
+ */
+const TERAS_SAYAP2: AtapLengkung = { x0: SAYAP_DUA.a2b.x0, x1: SAYAP_DUA.a2b.x1, y0: SAYAP_DUA.a2a.y0, y1: SAYAP_DUA.a2b.y1, hTepi: H_LANTAI_2 - 0.01, hPuncak: H_LANTAI_2 };
 
-/** Parameter lengkung atap untuk shader: pusat, jari-jari, tinggi pusat lingkaran. */
+const ATAP_DAFTAR: readonly AtapLengkung[] = [ATAP.gedung, ATAP.tunggu, ATAP.datang, ATAP.sayap, ATAP_SAYAP2, TERAS_SAYAP2];
+/** Dua kotak terakhir milik Sayap 2 Lantai: nol sampai gedungnya berdiri. */
+const I_SAYAP2 = ATAP_DAFTAR.length - 2;
+
+/**
+ * Parameter lengkung atap untuk shader: pusat, jari-jari, tinggi pusat lingkaran.
+ * Atap melengkung sepanjang y, kecuali ATAP_SAYAP2 yang melengkung sepanjang x:
+ * ditandai jari-jari negatif, supaya tidak perlu uniform tambahan.
+ */
 function lengkung(a: AtapLengkung): THREE.Vector3 {
-  const s = (a.y1 - a.y0) / 2;
+  const sepanjangX = a === ATAP_SAYAP2;
+  const [b0, b1] = sepanjangX ? [a.x0, a.x1] : [a.y0, a.y1];
+  const s = (b1 - b0) / 2;
   const naik = a.hPuncak - a.hTepi;
   const r = (s * s + naik * naik) / (2 * naik);
-  return new THREE.Vector3((a.y0 + a.y1) / 2, r, a.hPuncak - r);
+  return new THREE.Vector3((b0 + b1) / 2, sepanjangX ? -r : r, a.hPuncak - r);
 }
 
 const SHADER_BUTIR = {
@@ -69,7 +83,7 @@ const SHADER_BUTIR = {
         vec4 k = uAtapKotak[i];
         vec3 l = uAtapLengkung[i];
         if (xz.x > k.x && xz.x < k.z && xz.y > k.y && xz.y < k.w) {
-          float d = xz.y - l.x;
+          float d = (l.y < 0.0 ? xz.x : xz.y) - l.x;
           float hAtap = l.z + sqrt(max(0.0, l.y * l.y - d * d));
           if (y < hAtap) alfa = 0.0;
         }
@@ -172,7 +186,7 @@ export class Hujan3D {
       uniforms: {
         uWaktu: { value: 0 },
         uPusat: { value: new THREE.Vector2() },
-        uAtapKotak: { value: ATAP_DAFTAR.map((a) => new THREE.Vector4(a.x0, a.y0, a.x1, a.y1)) },
+        uAtapKotak: { value: ATAP_DAFTAR.map((a, i) => (i < I_SAYAP2 ? new THREE.Vector4(a.x0, a.y0, a.x1, a.y1) : new THREE.Vector4())) },
         uAtapLengkung: { value: ATAP_DAFTAR.map(lengkung) },
         uWarna: { value: new THREE.Color(0xc8d4e2) },
         uOpasitas: { value: 0 },
@@ -248,6 +262,16 @@ export class Hujan3D {
     this.genangan.visible = false;
 
     this.objek.add(this.butir, this.cipratan, this.genangan);
+  }
+
+  /** Sayap 2 Lantai berdiri: butiran berhenti di atap & terasnya. */
+  aturSayap2(berdiri: boolean): void {
+    const kotak = this.bahanButir.uniforms['uAtapKotak']!.value as THREE.Vector4[];
+    for (let i = I_SAYAP2; i < ATAP_DAFTAR.length; i++) {
+      const a = ATAP_DAFTAR[i]!;
+      if (berdiri) kotak[i]!.set(a.x0, a.y0, a.x1, a.y1);
+      else kotak[i]!.set(0, 0, 0, 0);
+    }
   }
 
   /**

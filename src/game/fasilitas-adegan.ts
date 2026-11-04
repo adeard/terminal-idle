@@ -21,7 +21,7 @@ export const URUTAN_BLOK_KURSI: readonly number[] = BLOK_KURSI.map((b, i) => ({ 
   .sort((a, b) => a.jarak - b.jarak)
   .map((b) => b.i);
 
-/** Blok kursi yang terpasang untuk sekian unit kursi (per indeks BLOK_KURSI). Unit di atas banyaknya blok di adegan (lantai 2) tidak digambar. */
+/** Blok kursi ruang tunggu yang terpasang untuk sekian unit kursi (per indeks BLOK_KURSI). Unit selebihnya adalah BLOK_KURSI_L2 di lantai 2 (lihat isiLantai2). */
 export function blokKursiTerpasang(kursi: number): boolean[] {
   const n = Math.max(0, Math.floor(kursi));
   const hasil = BLOK_KURSI.map(() => false);

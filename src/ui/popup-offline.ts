@@ -9,7 +9,7 @@ import { izinAntara } from '../sim/bangunan';
 import type { LaporanOffline } from '../sim/state';
 import { formatDurasi, formatUang, formatUangBertanda } from './format';
 import { IKON_PUTAR } from './popup-hadiah';
-import { TEKS } from './teks';
+import { NAMA_PERLUASAN, TEKS } from './teks';
 
 /** Tombol utama (murni): "Ambil" hanya bila ada laba untuk diambil; laba ≤ 0 atau terminal tutup: "Oke". */
 export function teksTombolOffline(laporan: LaporanOffline): string {
@@ -38,6 +38,16 @@ export function teksIzinOffline(laporan: LaporanOffline, perluasan: number): str
   const iz = izinAntara(n.dari, n.ke, perluasan);
   const bagian = [iz.jendela > 0 ? TEKS.offlineIzinJendela(iz.jendela) : '', iz.jalur > 0 ? TEKS.offlineIzinJalur(iz.jalur) : '', iz.slotPo > 0 ? TEKS.izinSlotPo(iz.slotPo) : ''].filter(Boolean);
   return bagian.length > 0 ? TEKS.offlineIzin(bagian.join(', ')) : '';
+}
+
+/**
+ * Baris proyek perluasan (murni): yang selesai selama pergi menyebut gedungnya (playtest P-2), yang
+ * belum menyebut sisa waktunya; kosong bila tidak ada proyek. Tahap di luar NAMA_PERLUASAN: tanpa nama.
+ */
+export function teksProyekOffline(laporan: LaporanOffline): string {
+  const pr = laporan.proyek;
+  if (!pr) return '';
+  return pr.selesai ? TEKS.offlineProyekSelesai(pr.tahap, NAMA_PERLUASAN[pr.tahap - 1]?.nama ?? '') : TEKS.offlineProyekSisa(pr.tahap, formatDurasi(pr.sisaDetik));
 }
 
 /**
@@ -71,7 +81,7 @@ export function tampilkanPopupOffline(akar: HTMLElement, laporan: LaporanOffline
   const proyek = document.createElement('p');
   proyek.className = 'popup-catatan offline-proyek';
   const pr = laporan.proyek;
-  proyek.textContent = pr ? (pr.selesai ? TEKS.offlineProyekSelesai(pr.tahap) : TEKS.offlineProyekSisa(pr.tahap, formatDurasi(pr.sisaDetik))) : '';
+  proyek.textContent = teksProyekOffline(laporan);
 
   const jumlah = document.createElement('div');
   jumlah.className = 'popup-jumlah';

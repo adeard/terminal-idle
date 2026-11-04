@@ -1,6 +1,6 @@
 # 12 · Rancangan Ekonomi v2: Mitra PO
 
-> **Status: dirilis sebagai versi 0.2.0** (langkah 0–6 di bagian 18: simulasi, save & migrasi v1 → v2, tab PO & Terminal, adegan 3D tahap 0–2 dengan jendela loket & bus per PO dan modul proyek perluasan, tutorial baru, rilis). Belum: bangunan bertingkat (tahap 3–5). Dokumen 01–11 masih menggambarkan v1. Isinya disusun dari diskusi desain 7 Oktober 2026.
+> **Status: dirilis sebagai versi 0.2.0** (langkah 0–6 di bagian 18: simulasi, save & migrasi v1 → v2, tab PO & Terminal, adegan 3D tahap 0–2 dengan jendela loket & bus per PO dan modul proyek perluasan, tutorial baru, rilis). Belum: bangunan bertingkat tahap 4–5. Tahap 3 dibangun berbeda dari bagian 8, sebagai Sayap 2 Lantai di taman barat (dokumen 16, dibangun 4 November 2026, belum dirilis). Dokumen 01–11 masih menggambarkan v1. Isinya disusun dari diskusi desain 7 Oktober 2026.
 >
 > Angka bertanda **PLACEHOLDER** adalah titik awal hasil simulasi (bagian 15), bukan angka final. Setelah diimplementasi, angka tuning tetap tinggal di `src/config/economy.config.ts`.
 
@@ -50,7 +50,7 @@ flowchart LR
 | 4 | **Renovasi** menggantikan prestige | Kapasitas di-reset, PO & level terminal tetap. Tanpa reset, ekonomi mentok setelah ±12 jam main (bagian 9 & 15) |
 | 5 | **Perluasan terminal** lima tahap, **jalur bus permanen** | Terminal makin luas seiring level dan tidak pernah menyusut (bagian 8) |
 | 6 | **Tempo kelas terminal yang lebih lambat** | Kurva XP terminal 4.500 × (T − 1)^3,2. Pemain optimal: Tipe B ±1,4 jam, Tipe A ±5,9 jam, Terpadu ±17 jam main aktif (bagian 7 & 15) |
-| 7 | Perluasan **bertingkat**, termasuk **parkir bus bertingkat**. Denah boleh dirombak bila perlu | Lantai 2–3 gedung utama, gedung parkir bus 3–4 lantai, Gedung Antarpulau 2 lantai (bagian 8) |
+| 7 | Perluasan **bertingkat**, termasuk **parkir bus bertingkat**. Denah boleh dirombak bila perlu | Lantai 2–3 gedung utama, gedung parkir bus 3–4 lantai, Gedung Antarpulau 2 lantai (bagian 8). Letak lantai 2 dan Gedung Antarpulau diganti dokumen 16 (disetujui owner 3 November 2026) |
 | 8 | Proyek perluasan **tetap berjalan saat offline** | Proyek sehari terminal tidak perlu ditunggui; dibatasi 4 jam seperti penghasilan offline (bagian 11) |
 
 ## 3. Perubahan dibanding v1
@@ -337,6 +337,13 @@ Saat kelas naik, popup "Terminal naik ke Tipe B!" muncul dan papan gapura bergan
 
 ![Denah induk perluasan terminal: tampak atas dan potongan A–A](12-denah-perluasan.svg)
 
+> **Sebagian diganti dokumen 16** (disetujui owner 3 November 2026; tahap 3 dibangun 4 November 2026, belum dirilis):
+>
+> - **Lantai 2 tidak ditumpuk di atas sayap barat & aula barat.** Lantai 2 kini gedung baru, **Sayap 2 Lantai**, di taman barat, dan membentuk huruf L.
+> - **Gedung Antarpulau kelak berdiri di belakang ruang tunggu,** di atas parkir mobil, bukan di lahan SPBU & kampung timur. Sekarang tempatnya hanya dicadangkan.
+> - **Gambar dan uraian lama tidak disunting.** Denah SVG di atas, tabel 8.1, dan uraian 8.2–8.3 tetap rencana 0.2.0.
+> - **Angka di tabel 8.1 juga usang.** Biaya dan petak bus yang berlaku ada di `src/config/economy.config.ts`.
+
 Terminal tumbuh secara fisik seiring level: melebar ke lahan sekitar dan naik ke atas. Tiap tahap perluasan terbuka di level tertentu dan dibangun sekali dengan uang sebagai proyek. Setelah itu tahap itu **permanen**: tidak pernah di-reset, termasuk saat Renovasi.
 
 ### 8.1 Tahap perluasan
@@ -346,7 +353,7 @@ Terminal tumbuh secara fisik seiring level: melebar ke lahan sekitar dan naik ke
 | 0 · Terminal awal | 1 | – | Kompleks sekarang, satu lantai. Aktif: 4 jendela loket, pangkalan 2 kelompok (10 petak), jalur 1 | – |
 | 1 · Aula loket diperluas | 3 | Rp 2 rb | Jendela loket 5–6, labirin antrean lebih panjang | Jatah loket semua PO +2 |
 | 2 · Pangkalan diperluas | 6 | Rp 50 rb | Kelompok parkir 3–4 (20 petak), jendela 7–8, parkir mobil baris kedua | Jatah loket +2 |
-| 3 · Terminal Tipe B | 10 | Rp 1 jt | **Lantai 2 gedung utama** di atas sayap barat & bagian barat aula: food court, ruang tunggu tambahan, eskalator dari aula | Jatah loket +2 |
+| 3 · Terminal Tipe B | 10 | Rp 1 jt | **Lantai 2 gedung utama** di atas sayap barat & bagian barat aula: food court, ruang tunggu tambahan, eskalator dari aula. *Diganti dokumen 16: Sayap 2 Lantai di taman barat* | Jatah loket +2 |
 | 4 · Terminal Tipe A | 20 | Rp 500 jt | **Gedung parkir bus 2 dek** di atas pangkalan: +40 petak, ramp spiral di kedua ujung. **Gedung Antarpulau 2 lantai** di timur, di lahan SPBU & kampung timur: halte J6–J7, pangkalan bus besar, aula loket kedua (8 jendela), ruang tunggu antarpulau | Jatah loket +3. Slot PO 9–12 bisa dipakai. Jalur 6–7 bisa dibangun |
 | 5 · Terminal Terpadu | 30 | Rp 50 M | **Dek parkir bus ke-3** (+20 petak), **lantai 3** gedung utama, lounge lantai 2 di ruang tunggu dengan **jembatan penyeberangan** ke kota, **gedung parkir mobil 3 lantai** | Jatah loket +3. Jalur 8 |
 | ★ | Tiap 10 level | – | Atap panel surya di gedung parkir bus, taman atap, menara jam, lampu hias | Kosmetik |
@@ -373,7 +380,7 @@ Terminal tumbuh secara fisik seiring level: melebar ke lahan sekitar dan naik ke
 
 **Gedung utama** (tahap 3 & 5):
 
-- Lantai 2 dibangun di atas sayap barat & bagian barat aula. Jendela loket & labirin antrean tetap di lantai dasar dan tetap terlihat.
+- Lantai 2 dibangun di atas sayap barat & bagian barat aula. Jendela loket & labirin antrean tetap di lantai dasar dan tetap terlihat. *Diganti dokumen 16: lantai 2 ada di Sayap 2 Lantai, gedung baru di taman barat. Pengunjung naik lewat tangga dari plaza, dan gedung lama tidak ditumpuk.*
 - Tahap 5 menambah lantai 3 dan taman atap.
 - Orang naik-turun lewat eskalator.
 
@@ -392,7 +399,7 @@ Rombak hanya di tempat yang perlu:
 |---|---|---|
 | Peron kedatangan, aula loket, sayap barat, ruang tunggu | Satu lantai | Tetap di tempatnya. Lantai baru ditumpuk di atasnya |
 | Pangkalan | 20 petak satu lantai | Gedung parkir bus 3–4 lantai dengan ramp spiral (tahap 4–5) |
-| Sisi timur (SPBU, kampung timur) | Lingkungan kota | Gedung Antarpulau. Jalan dalam & bukaan keluar median digeser ke timur (tahap 4) |
+| Sisi timur (SPBU, kampung timur) | Lingkungan kota | Gedung Antarpulau. Jalan dalam & bukaan keluar median digeser ke timur (tahap 4). *Diganti dokumen 16: Antarpulau di belakang ruang tunggu, jalan dalam & bukaan median tidak digeser* |
 | Parkir mobil | Lapangan | Gedung parkir mobil 3 lantai (tahap 5) |
 | Atas jalan raya | Kosong | Jembatan penyeberangan ke kota (tahap 5) |
 
@@ -508,7 +515,7 @@ Simpanan naik ke `schemaVersion` 2 dengan satu fungsi di `MIGRASI` (`src/sim/sav
 | Tab Armada | Digabung ke Tab PO. Koleksi livery tetap |
 | Lembar harga | Per PO: baris per jurusan (Rupiah per kelas), tombol Saran |
 | Perluasan | Kartu tahap berikutnya (syarat level, biaya, isi) di tab Terminal/Fasilitas. Kamera menyorot area proyek saat dibangun dan diresmikan |
-| Tombol **Lantai** | Di samping tombol kamera, muncul sejak tahap 3: Semua / Dasar / 2 / 3. Lantai di atas pilihan disembunyikan |
+| Tombol **Lantai** | Di samping tombol kamera, muncul sejak tahap 3: Semua / Dasar / 2 / 3. Lantai di atas pilihan disembunyikan. *Tidak dibuat di tahap 3 (dokumen 16): Sayap 2 Lantai tidak ditumpuk di atas inti permainan, dan isi lantai 2 terlihat lewat atap kaca* |
 | HUD | Bilah level terminal, kelas, slot terpakai |
 | Popup baru | Level PO naik, kelas terminal naik, kontrak hampir habis, PO ingin bergabung, perluasan diresmikan, Renovasi |
 | Aula loket | Jendela dibagi ke PO menurut jumlah loketnya, dengan papan nama & warna livery PO |
@@ -609,7 +616,7 @@ Simpanan naik ke `schemaVersion` 2 dengan satu fungsi di `MIGRASI` (`src/sim/sav
    - tes greedy & tes tempo seperti `tests/greedy.test.ts`.
 2. ✓ **Migrasi save** v1 → v2, dengan tes dari save v1 (`tests/save.test.ts`).
 3. ✓ **UI**: tab PO (kartu PO dengan harga per jurusan & kontrak), tab Terminal (level, perluasan, Renovasi, kelas bus), tujuan loket di panel Loket, HUD level, popup Renovasi, notifikasi.
-4. ✓ **Adegan 3D tahap 0–2**: jendela loket per PO, bus per PO, kelompok parkir & jendela dibuka per tahap perluasan, modul proyek (pagar seng, crane, material, pekerja, kembang api peresmian). Kelompok parkir yang sudah dibangun tapi jurusannya belum dilayani PO menjadi parkir tambahan (papan putih, tanpa barikade) bagi bus yang kelompok jurusannya penuh. Lokasi proyek tahap 3–5 sudah terlihat, bentuk akhirnya menyusul di langkah 7–9.
+4. ✓ **Adegan 3D tahap 0–2**: jendela loket per PO, bus per PO, kelompok parkir & jendela dibuka per tahap perluasan, modul proyek (pagar seng, crane, material, pekerja, kembang api peresmian). Kelompok parkir yang sudah dibangun tapi jurusannya belum dilayani PO menjadi parkir tambahan (papan putih, tanpa barikade) bagi bus yang kelompok jurusannya penuh. Lokasi proyek tahap 3–5 sudah terlihat, bentuk akhirnya menyusul di langkah 7–9. *Tahap 3 kemudian pindah ke taman barat dan bentuk akhirnya dibangun lewat dokumen 16.*
 5. ✓ **Tutorial** baru. Urutannya mengikuti biaya di awal permainan (bangun loket Rp 22 langsung terjangkau, PO kedua Rp 50):
    - bangun loket (upgrade tahap paling lambat, di awal Loket);
    - daftarkan PO kedua;
@@ -621,6 +628,8 @@ Simpanan naik ke `schemaVersion` 2 dengan satu fungsi di `MIGRASI` (`src/sim/sav
    - rute orang antarlantai (eskalator);
    - tombol Lantai;
    - lantai 2 gedung utama.
+
+   *Tahap 3 dibangun tanpa langkah ini, lewat dokumen 16 (4 November 2026): gedung baru, tanpa bus bertingkat, tanpa tombol Lantai. Pengunjung lantai 2 berjalan di rute sendiri, di luar `DuniaVisual`.*
 8. **Tahap 4**: gedung parkir bus 2 dek dengan ramp spiral, Gedung Antarpulau, jalan dalam diperpanjang.
 9. **Tahap 5**: dek 3, lantai 3, jembatan penyeberangan, gedung parkir mobil.
 

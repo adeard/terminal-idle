@@ -1,6 +1,6 @@
 # 13 · Rancangan Tycoon: dari idle ke tycoon
 
-> **Status: dirilis sebagai 0.3.0 (9 Oktober 2026)** di `main` & bustation.games. Langkah 1–6 selesai (bagian 15): modul murni & kalibrasi, `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik memakai ekonomi tycoon, dan adegan 3D mengikuti bangunan & petugas (bagian 12). Belum: bentuk adegan bangunan bertingkat tahap 3–5, judul game (masih "Idle Bus"), dan keputusan terbuka bagian 16. Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
+> **Status: dirilis sebagai 0.3.0 (9 Oktober 2026)** di `main` & bustation.games. Langkah 1–6 selesai (bagian 15): modul murni & kalibrasi, `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik memakai ekonomi tycoon, dan adegan 3D mengikuti bangunan & petugas (bagian 12). Belum: bentuk adegan bangunan bertingkat tahap 4–5 (tahap 3 dibangun 4 November 2026 sebagai Sayap 2 Lantai, dokumen 16, belum dirilis), judul game (masih "Idle Bus"), dan keputusan terbuka bagian 16. Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
 >
 > **Pembaruan 0.3.1 (dirilis 9 Oktober 2026):** penumpang tidak lagi membayar terminal (biaya layanan & tarif toilet dihapus), pendapatan utama terminal kini **kontrak PO** yang dibayar di muka (bagian 6.5), dan tempo dikalibrasi ulang (bagian 14). Keputusan 9–16 di bagian 2.
 >
@@ -120,7 +120,7 @@ Bila arus jam sibuk melebihi peron, keberangkatan, atau pangkalan, arus semua PO
 | Slot jalur +1 | Lv 16 dan Lv 26. Slot tahap jalur menjadi `[5, 5, 5, 5, 6, 7]`, jadi totalnya tetap 7 di Perluasan 4 dan 9 di Perluasan 5 |
 
 - Izin yang levelnya sudah lewat sebelum Perluasan 3 selesai aktif sekaligus saat Perluasan 3 diresmikan.
-- Adegan tidak berubah. Sejak tahap 2 adegan memang hanya menggambar 8 jendela, 5 halte/gerbang, dan 4 kelompok parkir; slot di atasnya sudah tak terlihat sejak 0.3.0.
+- Izin level sendiri tidak mengubah adegan. Sampai tahap 2 adegan menggambar 8 jendela, 5 halte/gerbang, dan 4 kelompok parkir. Sejak Perluasan 3, Sayap 2 Lantai juga menggambar jendela ke-9 sampai ke-24, blok kursi ke-5 sampai ke-8, serta toko ke-3 dan ke-4 sebagai kios teras food court (dokumen 16 bagian 5). Jendela di atas 24, jalur 6–9, petak 21–60, dan toilet ke-2 tetap tak terlihat.
 - Save lama tidak kehilangan unit: slot baru ≥ slot lama di tiap level dan tahap. Perapian bangunan saat memuat memakai level dari XP.
 
 Di terminal awal (1 jalur, 1 jendela, 2 kelompok petak, satu PO berjurusan Jakarta), arusnya min(permintaan ±135, peron 100, loket 50, keberangkatan 150, pangkalan 333) = 50 pnp/jam. Loket menjadi yang paling lambat, sama seperti sekarang, jadi langkah pertama tutorial tetap "bangun loket". Setelah dua jendela, peron (100) yang paling lambat, sehingga petugas peron dan Jalur 2 langsung berguna. Pangkalan baru membatasi sekitar 300 pnp/jam (perluasan 2).
@@ -381,7 +381,7 @@ Yang sudah ikut langkah 2: lencana "K" dihapus dari label area, sorotan area yan
 
 Langkah 4 (9 Oktober 2026; logika murni di `src/game/fasilitas-adegan.ts`, posisi di `tata-letak.ts`):
 
-- **Blok kursi** terpasang sebanyak unit kursi (paling banyak empat di adegan; unit lantai 2 belum digambar), mulai dari blok terdekat gerbang Jalur 1. Penumpang memilih kursi di blok terpasang dulu; bila penuh, ia **berdiri** menunggu di lantai blok yang belum dipasang, jadi kursi yang kurang terlihat (dan loket tidak tertahan).
+- **Blok kursi** terpasang sebanyak unit kursi, mulai dari blok terdekat gerbang Jalur 1. Blok 1–4 ada di ruang tunggu. Sejak Perluasan 3, blok ke-5 sampai ke-8 ada di lantai 2 Sayap 2 Lantai (dokumen 16) dan diisi orang statis, bukan penumpang yang memilih kursi. Penumpang memilih kursi di blok terpasang dulu; bila penuh, ia **berdiri** menunggu di lantai blok yang belum dipasang, jadi kursi yang kurang terlihat (dan loket tidak tertahan).
 - **Petugas** sebanyak yang direkrut: petugas peron di tepi peron tiap halte, petugas gerbang di tiap gerbang (urut jalur), satpam di empat pos (luar yang berpatroli malam, aula, peron keberangkatan, peron kedatangan), dan petugas kebersihan siang & malam di empat rute sapu (aula, ruang tunggu, peron, plaza). Sisanya bertugas di luar pandangan.
 - **Parkir**: baris mobil pertama (beserta deret motor) terisi setelah lahan parkir pertama, baris kedua setelah lahan parkir kedua; tanpa lahan parkir tidak ada calon penumpang dari parkir. **Pos retribusi** muncul setelah dibangun.
 - **Kios & toko per unit**: kios ruang tunggu urut KOPI, ROTI & KUE, OLEH-OLEH; toko aula urut minimarket lalu apotek. Yang belum dibangun tertutup rolling door dan tidak didatangi. Toilet & musholla baru didatangi setelah toilet dibangun.

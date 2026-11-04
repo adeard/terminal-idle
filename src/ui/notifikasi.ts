@@ -153,7 +153,7 @@ export function teksKepuasanTurun(t: KepuasanTurun): string {
 /** Satu pesan di antrean notifikasi overlay. */
 export interface PesanNotif {
   readonly teks: string;
-  /** Kas menipis & petugas berhenti: melompati antrean. */
+  /** Kas menipis, petugas berhenti, peresmian susulan (lihat notifBahaya): melompati antrean. */
   readonly bahaya?: boolean;
   /** Toast kepuasan turun (angkanya): satu-satunya yang bisa diketuk (membuka popup kepuasan). */
   readonly kepuasan?: KepuasanTurun;
@@ -162,9 +162,12 @@ export interface PesanNotif {
 /** Pesan yang tertunda paling banyak sekian (yang sedang tampil tidak dihitung). */
 export const MAKS_ANTREAN_NOTIF = 3;
 
-/** Pesan tingkat bahaya (melompati antrean). */
+/**
+ * Pesan yang melompati antrean: tingkat bahaya, dan peresmian susulan. Peresmian hanya sekali per
+ * perangkat dan harus tampil bersama kembang apinya, jadi tidak boleh terbuang saat antrean penuh.
+ */
 export function notifBahaya(teks: string): boolean {
-  return teks === TEKS.notifKasMenipis || teks === TEKS.notifPetugasBerhenti;
+  return teks === TEKS.notifKasMenipis || teks === TEKS.notifPetugasBerhenti || teks === TEKS.notifPeresmianBentuk;
 }
 
 /**

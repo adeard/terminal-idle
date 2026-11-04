@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { LaporanOffline } from '../src/sim/state';
-import { teksCatatanOffline, teksIzinOffline, teksTombolOffline } from '../src/ui/popup-offline';
-import { TEKS } from '../src/ui/teks';
+import { formatDurasi } from '../src/ui/format';
+import { teksCatatanOffline, teksIzinOffline, teksProyekOffline, teksTombolOffline } from '../src/ui/popup-offline';
+import { NAMA_PERLUASAN, TEKS } from '../src/ui/teks';
 
 const laporan = (o: Partial<LaporanOffline>): LaporanOffline => ({
   detik: 600,
@@ -39,5 +40,15 @@ describe('popup offline: tombol & catatan', () => {
     expect(teksIzinOffline(laporan({ naikLevel: { dari: 2, ke: 3 } }), 0)).toBe('🎫 Izin baru: slot PO ke-3');
     // Naik level tanpa izin (Lv 4 → 5 sebelum Perluasan 3).
     expect(teksIzinOffline(laporan({ naikLevel: { dari: 4, ke: 5 } }), 1)).toBe('');
+  });
+
+  it('proyek selesai menyebut gedungnya; tahap di luar daftar tanpa nama (playtest P-2)', () => {
+    const proyek = (tahap: number, selesai: boolean, sisaDetik = 0) => laporan({ proyek: { tahap, selesai, sisaDetik } });
+    expect(teksProyekOffline(laporan({}))).toBe('');
+    expect(teksProyekOffline(proyek(3, true))).toBe('🏗️ Perluasan 3 selesai selama kamu pergi: Sayap\u00a02\u00a0lantai!');
+    for (const tahap of [1, 2, 3, 4, 5]) expect(teksProyekOffline(proyek(tahap, true))).toBe(TEKS.offlineProyekSelesai(tahap, NAMA_PERLUASAN[tahap - 1]!.nama));
+    expect(teksProyekOffline(proyek(0, true))).toBe('🏗️ Perluasan 0 selesai selama kamu pergi!');
+    expect(teksProyekOffline(proyek(6, true))).toBe('🏗️ Perluasan 6 selesai selama kamu pergi!');
+    expect(teksProyekOffline(proyek(3, false, 600))).toBe(TEKS.offlineProyekSisa(3, formatDurasi(600)));
   });
 });

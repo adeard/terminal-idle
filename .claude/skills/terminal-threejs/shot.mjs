@@ -25,7 +25,7 @@
 //   {"kamera":[tx,tz,px,py,pz,fov]}  arahkan kamera langsung (butuh window.__terminalDebug, lihat SKILL.md)
 //   {"tunggu":ms}  {"throttle":4}  {"eval":"js"}  {"shot":"nama.png"} (nama.jpg = JPEG kualitas 86)
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -37,8 +37,8 @@ const url = process.env.URL ?? 'http://localhost:5199/?tingkat=1';
 const W = Number(process.env.W ?? 540);
 const H = Number(process.env.H ?? 960);
 const port = 9333 + Math.floor(Math.random() * 500);
-const profil = join(tmpdir(), `terminal-shot-${port}`);
-mkdirSync(profil, { recursive: true });
+// Profil unik per jalan: port acak bisa berulang, dan profil lama membawa localStorage lama ke jalan berikutnya.
+const profil = mkdtempSync(join(tmpdir(), 'terminal-shot-'));
 mkdirSync(folder, { recursive: true });
 
 const chrome = spawn(
@@ -170,4 +170,9 @@ console.log(log.filter((l) => !l.includes('[vite]')).join('\n'));
 console.log('tersimpan', out);
 ws.close();
 chrome.kill();
+try {
+  rmSync(profil, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+} catch {
+  // Chrome belum melepas berkasnya: biarkan, jalan berikutnya tetap memakai profil baru.
+}
 process.exit(0);

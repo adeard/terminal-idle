@@ -87,9 +87,10 @@ export interface DataOrang {
   /** Ketinggian pijakan (lantai/peron). */
   readonly h: number;
   readonly penampilan: Penampilan;
-  readonly pose?: Pose;
+  /** Kosong/undefined = berdiri (objek yang dipakai ulang mengosongkannya tanpa `delete`). */
+  readonly pose?: Pose | undefined;
   /** Arah hadap tetap (radian dunia) untuk orang yang diam, mis. satpam. */
-  readonly hadap?: number;
+  readonly hadap?: number | undefined;
   /** Warna payung yang sedang dipakai (saat hujan di luar atap), null/kosong = tanpa payung. */
   readonly payung?: THREE.Color | null;
   /** Melambaikan tangan kanan; nilai = ayunan sekarang (−1…1). */

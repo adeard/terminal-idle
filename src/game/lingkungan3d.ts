@@ -34,6 +34,7 @@ import {
   POS_CUCI,
   POS_RETRIBUSI,
   RUANG_TUNGGU,
+  TIANG_BENDERA,
   TINGGI_PERON,
   X_JALUR_KAKI,
   Y_LUAPAN,
@@ -219,6 +220,8 @@ function peron(k: Kumpulan, m: PustakaMaterial): void {
   datar(k, m.taktil, p.x0, p.y0 + 0.03, p.x1, p.y0 + 0.16, TINGGI_PERON + 0.003, 1);
 }
 
+/** Batas barat lahan Sayap 2 Lantai di taman barat (dokumen 16 bagian 3.1). */
+const X_LAHAN_SAYAP = -2.5;
 /** Taman kota: di belakang peron kedatangan dan di barat gedung utama (utara pangkalan). */
 export const TAMAN: readonly { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number }[] = [
   { x0: JALAN_DALAM.x0 + 0.4, y0: PERON.y1 + 0.9, x1: X_JALUR_KAKI - 0.5, y1: 17.2 },
@@ -427,10 +430,13 @@ function pepohonan(k: Kumpulan, m: PustakaMaterial): void {
         // Tidak di atas/menempel sayap barat gedung utama (toilet & musholla).
         const S = SAYAP_BARAT;
         if (px > S.x0 - 0.7 && py > S.y0 - 0.7 && py < S.y1 + 0.5) continue;
+        // Pohon di lahan Sayap 2 Lantai hilang saat proyeknya mulai; urutan acak() tetap, jadi pohon lain tidak berubah.
+        k.bagian = i === 1 && px >= X_LAHAN_SAYAP ? 'lahan' : 'dasar';
         pohon(k, m, px, py, 0.85 + acak() * 0.35, acak);
       }
     }
   });
+  k.bagian = 'dasar';
   const tunggal: readonly Titik2[] = [
     [RUANG_TUNGGU.x1 + 1.6, 8.2],
     [RUANG_TUNGGU.x1 + 1.5, 11.0],
@@ -711,7 +717,7 @@ function airMancur(k: Kumpulan, m: PustakaMaterial, x: number, y: number): void 
 
 /** Tiang bendera merah putih; kain dikembalikan supaya bisa dikibarkan tiap frame. */
 function bendera(k: Kumpulan, m: PustakaMaterial): THREE.Mesh {
-  const [fx, fy] = [12.2, 16.8];
+  const [fx, fy] = TIANG_BENDERA;
   k.tambah(m.batu, uvDunia(kotak(fx - 0.2, fy - 0.2, fx + 0.2, fy + 0.2, 0, 0.1), SKALA_UV.beton));
   k.tambah(m.besi, silinder(fx, fy, 0.1, 2.5, 0.02, 0.014, 8));
   const kain = new THREE.PlaneGeometry(0.6, 0.4, 10, 1);

@@ -4,11 +4,12 @@
  * parkir yang sudah dibangun tiap tahap perluasan, keadaan tiap kelompok
  * parkir (belum dibangun, berjurusan, atau parkir tambahan), pembagian jendela
  * loket ke mitra PO, dan lokasi proyek pembangunan (pagar seng, crane,
- * material, pekerja, tempat peresmian). Tahap 3–5 (bangunan bertingkat) belum
- * punya bentuk akhir di adegan, tapi proyeknya sudah terlihat.
+ * material, pekerja, tempat peresmian). Tahap 3 membangun Sayap 2 Lantai
+ * (bentuk-adegan.ts); tahap 4–5 belum punya bentuk akhir di adegan, tapi
+ * proyeknya sudah terlihat.
  */
 import type { PoId } from '../sim/fitur';
-import { jurusanDiMask, KELOMPOK_PARKIR, LOKET, PARKIR_SERONG, SAYAP_BARAT, URUTAN_LOKET, X_LOKET, type Persegi, type Titik } from './tata-letak';
+import { jurusanDiMask, KELOMPOK_PARKIR, LOKET, PARKIR_SERONG, URUTAN_LOKET, X_LOKET, type Persegi, type Titik } from './tata-letak';
 
 /** Jendela loket yang sudah dibangun setelah tahap perluasan ke-i selesai (tahap 0 = terminal awal). */
 const JENDELA_PER_TAHAP: readonly number[] = [4, 6, 8];
@@ -113,8 +114,6 @@ export interface RutePekerja {
 export interface LokasiProyek {
   /** Pagar seng keliling (persegi; boleh kosong). */
   readonly pagar: readonly Persegi[];
-  /** Perancah (scaffolding) keliling bangunan yang ditinggikan: persegi denah & tinggi puncaknya. */
-  readonly perancah: { readonly area: Persegi; readonly tinggi: number } | null;
   readonly crane: CraneProyek | null;
   /** Jendela loket (indeks X_LOKET) yang ditutup papan proyek. */
   readonly jendela: readonly number[];
@@ -141,7 +140,6 @@ export const LOKASI_PROYEK: readonly LokasiProyek[] = [
   // 1 · Aula loket diperluas: jendela loket di kedua ujung deretan.
   {
     pagar: [],
-    perancah: null,
     crane: null,
     jendela: jendelaTahap(1),
     material: [],
@@ -152,7 +150,6 @@ export const LOKASI_PROYEK: readonly LokasiProyek[] = [
   // 2 · Pangkalan diperluas: kelompok parkir 3–4 dan jendela loket paling ujung.
   {
     pagar: [PETAK_TIMUR],
-    perancah: null,
     crane: { x: PARKIR_SERONG.pusatX[13]!, y: PARKIR_SERONG.pusatY, tinggi: 4.4, lengan: 4.6, arah: 0.6 },
     jendela: jendelaTahap(2),
     material: [
@@ -167,21 +164,29 @@ export const LOKASI_PROYEK: readonly LokasiProyek[] = [
     pusat: [(PETAK_TIMUR.x0 + PETAK_TIMUR.x1) / 2, PARKIR_SERONG.pusatY],
     tinggiKembangApi: 6.5,
   },
-  // 3 · Lantai 2 gedung utama: perancah keliling sayap barat, crane di sela taman & dinding sayap.
+  // 3 · Sayap 2 Lantai di taman barat: pagar blok & teras, crane di tengah blok.
   {
-    pagar: [],
-    perancah: { area: SAYAP_BARAT, tinggi: 2.0 },
-    crane: { x: SAYAP_BARAT.x0 - 0.45, y: 12.4, tinggi: 4.2, lengan: 4.0, arah: 0 },
+    pagar: [
+      { x0: -2.2, y0: 11.0, x1: 6.6, y1: 17.4 },
+      { x0: 2.0, y0: 15.4, x1: 10.6, y1: 20.0 },
+    ],
+    crane: { x: 2.2, y: 14.2, tinggi: 5.4, lengan: 4.4, arah: 0.6 },
     jendela: [],
-    material: [[SAYAP_BARAT.x0 - 0.42, 14.7]],
-    pekerja: [{ dari: [SAYAP_BARAT.x0 - 0.38, 13.3], ke: [SAYAP_BARAT.x0 - 0.38, 14.3] }],
-    pusat: [(SAYAP_BARAT.x0 + SAYAP_BARAT.x1) / 2, (SAYAP_BARAT.y0 + SAYAP_BARAT.y1) / 2],
+    material: [
+      [-1.0, 16.4],
+      [4.6, 18.8],
+      [8.6, 18.6],
+    ],
+    pekerja: [
+      { dari: [-1.0, 12.4], ke: [5.0, 12.4] },
+      { dari: [3.0, 18.2], ke: [9.6, 18.6] },
+    ],
+    pusat: [4.2, 15.6],
     tinggiKembangApi: 6.5,
   },
   // 4 · Gedung parkir bus & Gedung Antarpulau: lapangan timur (calon Gedung Antarpulau).
   {
     pagar: [LAPANGAN_TIMUR],
-    perancah: null,
     crane: { x: 55.6, y: 10.4, tinggi: 5.2, lengan: 5.0, arah: 2.4 },
     jendela: [],
     material: [
@@ -198,7 +203,6 @@ export const LOKASI_PROYEK: readonly LokasiProyek[] = [
   // 5 · Terminal Terpadu: lapangan timur lagi (gedung parkir mobil & jembatan menyusul).
   {
     pagar: [LAPANGAN_TIMUR],
-    perancah: null,
     crane: { x: 55.4, y: 8.4, tinggi: 6.0, lengan: 5.4, arah: 3.6 },
     jendela: [],
     material: [

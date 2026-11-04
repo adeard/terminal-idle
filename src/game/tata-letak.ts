@@ -859,6 +859,127 @@ export const TITIK_INTI_POTRET: readonly (readonly [number, number, number])[] =
 
 const di = (x: number, y: number, a: Persegi): boolean => x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1;
 
+// ---------------------------------------------------------------------------
+// Sayap 2 Lantai di taman barat (Perluasan 3; documents/16 bagian 3.1 & 4.2)
+
+/** Tinggi lantai 2, tepi dinding, dan puncak atap blok dua lantai. */
+export const H_LANTAI_2 = 1.35;
+export const H_DINDING_L2 = 2.55;
+export const H_PUNCAK_L2 = 3.55;
+
+/** A1 blok dua lantai, A2a teras timur & A2b teras selatan (satu lantai, melewati pagar kompleks), A3 tangga & eskalator. */
+export const SAYAP_DUA: { readonly a1: Persegi; readonly a2a: Persegi; readonly a2b: Persegi; readonly a3: Persegi } = {
+  a1: { x0: -2.0, y0: 11.2, x1: 6.4, y1: 17.2 },
+  a2a: { x0: 6.4, y0: 15.6, x1: 10.4, y1: 17.2 },
+  a2b: { x0: 2.0, y0: 17.2, x1: 10.4, y1: 19.9 },
+  a3: { x0: 10.45, y0: 15.7, x1: 11.55, y1: 17.46 },
+};
+
+/**
+ * Atap lengkung A1: bentang x0–x1 dengan tritisan; melengkung sepanjang x, kebalikan
+ * ATAP lain, supaya dari kamera terlihat melintang dan memecah garis atap aula.
+ * Sengaja di luar ATAP: sebelum tahap 3 sayapnya belum ada (lihat hujan3d.ts).
+ */
+export const ATAP_SAYAP2: AtapLengkung = { x0: -2.35, x1: 6.75, y0: 10.85, y1: 17.55, hTepi: H_DINDING_L2, hPuncak: H_PUNCAK_L2 };
+
+/** Tangga & eskalator dari plaza: lajur naik & turun (rentang x), naik ke utara. Bordes setinggi lantai 2 di y0…yBordes. */
+export const TANGGA_L2 = { naik: [10.45, 10.97], turun: [11.03, 11.55], y0: 15.7, yBordes: 15.86, y1: 17.46, hBawah: 0.02 } as const;
+
+/** Tinggi pijakan tangga di y: landai dari kaki (selatan) ke lantai 2 (utara). */
+export function tinggiTanggaL2(y: number): number {
+  const { yBordes, y1, hBawah } = TANGGA_L2;
+  const u = Math.max(0, Math.min(1, (y1 - y) / (y1 - yBordes)));
+  return hBawah + (H_LANTAI_2 - hBawah) * u;
+}
+
+/** Titik ini di dalam blok A1 (beratap). Teras terbuka: pengunjungnya kehujanan. */
+export function diSayapDua(x: number, y: number): boolean {
+  return di(x, y, SAYAP_DUA.a1);
+}
+
+/** Jendela loket lantai 2. `y` / `x` = muka meja di sisi pembeli, `menghadap` = sisi pembeli. */
+export interface JendelaL2 {
+  readonly x: number;
+  readonly y: number;
+  readonly menghadap: 'selatan' | 'timur';
+  readonly petugas: Titik;
+  readonly pembeli: Titik;
+}
+
+/**
+ * Jendela ke-9…24, urut dipasang: sepuluh di dinding utara lalu enam di dinding
+ * barat. Sengaja bukan perpanjangan X_LOKET: laju keramaian & jam buka membaca
+ * panjangnya, dan arus keramaian tetap dari jendela 1–8 di aula.
+ */
+export const LOKET_L2: readonly JendelaL2[] = [
+  ...Array.from({ length: 10 }, (_, k): JendelaL2 => {
+    const x = 5.6 - 0.8 * k;
+    return { x, y: LOKET.yMeja, menghadap: 'selatan', petugas: [x, LOKET.yPetugas], pembeli: [x, LOKET.yPembeli] };
+  }),
+  ...Array.from({ length: 6 }, (_, k): JendelaL2 => {
+    const y = 12.8 + 0.8 * k;
+    return { x: -1.4, y, menghadap: 'timur', petugas: [-1.7, y], pembeli: [-1.23, y] };
+  }),
+];
+
+export interface BlokKursiL2 extends BlokKursi {
+  /** y baris terdepan (menghadap utara, jarak antarkursi & antarbaris seperti KURSI). */
+  readonly yBaris0: number;
+}
+
+/** Blok kursi ke-5…8 (B5, B6, B7, B8): penumpang DuniaVisual tetap memakai empat blok ruang tunggu. */
+export const BLOK_KURSI_L2: readonly BlokKursiL2[] = [
+  { x0: -0.4, x1: 1.3, yBaris0: 12.7 },
+  { x0: 1.6, x1: 3.3, yBaris0: 12.7 },
+  { x0: -0.4, x1: 1.3, yBaris0: 15.05 },
+  { x0: 1.6, x1: 3.3, yBaris0: 15.05 },
+];
+
+/** Meja food court: lantai 2, teras (berpayung), dan lantai dasar (terlihat lewat kaca muka timur & selatan). */
+export const MEJA_L2: readonly Titik[] = [
+  [4.2, 12.9],
+  [5.5, 13.7],
+  [4.2, 14.5],
+  [5.5, 15.3],
+  [4.2, 16.1],
+  [5.5, 16.8],
+];
+export const MEJA_TERAS: readonly Titik[] = [
+  [3.4, 18.0],
+  [5.4, 18.0],
+  [7.4, 18.0],
+  [9.2, 18.0],
+  [4.4, 19.2],
+  [6.4, 19.2],
+  [8.4, 19.2],
+];
+export const MEJA_DASAR: readonly Titik[] = [
+  [3.6, 19.1],
+  [5.6, 19.1],
+  [7.6, 19.1],
+  [9.5, 19.1],
+  [9.5, 17.2],
+  [5.4, 12.6],
+  [5.4, 14.2],
+];
+
+export interface KiosTeras extends Persegi {
+  readonly hAtap: number;
+  readonly nama: string;
+}
+
+/** Kios toko ke-3 & ke-4 di teras timur, muka selatan: tertutup pintu gulung sampai unit tokonya dibangun. */
+export const KIOS_TERAS: readonly KiosTeras[] = [
+  { x0: 6.7, y0: 15.7, x1: 8.1, y1: 16.4, hAtap: 1.95, nama: 'NASI & SOTO' },
+  { x0: 8.3, y0: 15.7, x1: 9.7, y1: 16.4, hAtap: 1.95, nama: 'KOPI & ES' },
+];
+
+/** Papan LANTAI 2 berdiri di atas talang timur A1, menghadap timur: terbaca di kamera portrait & landscape. */
+export const PAPAN_L2 = { x0: 6.75, x1: 6.8, y0: 13.1, y1: 17.1, h0: 2.62, h1: 3.72, kakiY: [13.6, 15.1, 16.6], hKaki: H_DINDING_L2 } as const;
+
+/** Tiang bendera di plaza (lihat bendera() di lingkungan3d.ts). */
+export const TIANG_BENDERA: Titik = [12.2, 16.8];
+
 /** Orang di titik ini berdiri di lantai setinggi peron (peron kedatangan, peron keberangkatan, ruang tunggu). */
 export function diPeron(x: number, y: number): boolean {
   return di(x, y, PERON) || di(x, y, PERON_BERANGKAT) || di(x, y, RUANG_TUNGGU);

@@ -107,11 +107,14 @@ export const NAMA_TINGKAT_PO: Readonly<Record<TingkatPo, string>> = {
   premium: 'Premium',
 };
 
-/** Tahap perluasan terminal, urut EKONOMI.mitra.perluasan (slot barunya di EKONOMI.tycoon.bangunan). */
+/**
+ * Tahap perluasan terminal, urut EKONOMI.mitra.perluasan (slot barunya di EKONOMI.tycoon.bangunan).
+ * "Sayap 2 lantai" memakai spasi tak terputus supaya namanya tidak terpotong di toast & popup 360 px (playtest P-1).
+ */
 export const NAMA_PERLUASAN: readonly { readonly nama: string; readonly deskripsi: string }[] = [
   { nama: 'Aula loket diperluas', deskripsi: 'Slot jendela loket +2' },
   { nama: 'Pangkalan diperluas', deskripsi: 'Petak bus +10, jendela loket +2, lahan parkir kedua' },
-  { nama: 'Lantai 2 gedung utama', deskripsi: 'Food court & ruang tunggu: jendela +4, petak bus +10, kursi, toko, toilet; sesudahnya naik level menambah slot jendela & jalur' },
+  { nama: 'Sayap\u00a02\u00a0lantai', deskripsi: 'Loket, ruang tunggu & food court: jendela +4, petak bus +10, kursi, toko, toilet; sesudahnya naik level menambah slot jendela & jalur' },
   { nama: 'Gedung parkir bus', deskripsi: 'Gedung Antarpulau: jalur +1, petak bus +10, aula loket kedua' },
   { nama: 'Terminal Terpadu', deskripsi: 'Dek parkir ketiga & lantai 3: jalur +1, petak bus +20, jendela +4' },
 ];
@@ -596,6 +599,8 @@ export const TEKS = {
   notifKontrakHampir: (nama: string) => `📄 Kontrak ${nama} tinggal sehari. Terima tawaran perpanjangannya di tab PO`,
   notifKelasBus: (nama: string) => `🚌 Bus ${nama} mulai beroperasi!`,
   notifPerluasan: (tahap: number, nama: string) => `🏗️ Perluasan ${tahap} selesai: ${nama}!`,
+  /** Peresmian susulan untuk pemain lama (documents/16 bagian 7, playtest P-1); nama gedung = NAMA_PERLUASAN[2]. */
+  notifPeresmianBentuk: '🎉 Perluasan 3 kini punya gedung: Sayap\u00a02\u00a0lantai!',
   notifPerluasanTerbuka: (tahap: number, efek: string) => `🏗️ Perluasan ${tahap} terbuka: ${efek}. Bangun di tab Terminal`,
   notifPerluasanMulai: (tahap: number) => `🏗️ Perluasan ${tahap} dimulai! Selesai dalam sehari terminal, juga saat game ditutup`,
   notifJalur: (n: number) => `🚧 Jalur ${n} dibuka! Lebih banyak bus bisa singgah sekaligus`,
@@ -622,7 +627,8 @@ export const TEKS = {
   offlineDurasi: (durasi: string, dibatasi: boolean) => (dibatasi ? `Terminal beroperasi ${durasi} (batas maksimal)` : `Terminal beroperasi ${durasi}`),
   /** Tanpa Manajer Operasional terminal tutup, jadi yang dilaporkan lamanya pemain pergi. */
   offlinePergi: (durasi: string, dibatasi: boolean) => (dibatasi ? `Kamu pergi ${durasi} (batas maksimal)` : `Kamu pergi ${durasi}`),
-  offlineProyekSelesai: (tahap: number) => `🏗️ Perluasan ${tahap} selesai selama kamu pergi!`,
+  /** Menyebut gedungnya (NAMA_PERLUASAN, playtest P-2); `nama` kosong = tanpa nama. */
+  offlineProyekSelesai: (tahap: number, nama: string) => `🏗️ Perluasan ${tahap} selesai selama kamu pergi${nama ? `: ${nama}` : ''}!`,
   offlineProyekSisa: (tahap: number, durasi: string) => `🏗️ Perluasan ${tahap} tetap dibangun · selesai dalam ${durasi}`,
   offlineRincian: (pendapatan: string, biaya: string) => `Pendapatan ${pendapatan} · biaya ${biaya}`,
   offlineCatatan: (persen: number, batas: string) => `Manajer Operasional menjalankan terminal: pendapatan ${persen}%, biaya penuh · maksimal ${batas}`,

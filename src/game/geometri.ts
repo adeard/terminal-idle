@@ -461,37 +461,146 @@ export interface OpsiMesh {
   readonly materialKedalaman?: THREE.Material;
 }
 
+/** Gabungkan daftar geometri non-indexed (atribut yang tidak dimiliki semua anggota dibuang), lalu buang anggotanya. */
+function gabungkan(daftar: readonly THREE.BufferGeometry[]): THREE.BufferGeometry {
+  // mergeGeometries butuh atribut yang sama: pakai irisan atribut semua anggota.
+  const atribut = Object.keys(daftar[0]!.attributes).filter((n) => daftar.every((g) => n in g.attributes));
+  for (const g of daftar) for (const nama of Object.keys(g.attributes)) if (!atribut.includes(nama)) g.deleteAttribute(nama);
+  const gabung = mergeGeometries([...daftar], false);
+  for (const g of daftar) g.dispose();
+  if (!gabung) throw new Error('gagal menggabungkan geometri');
+  return gabung;
+}
+
+function meshDari(g: THREE.BufferGeometry, material: THREE.Material, opsi: OpsiMesh, induk: THREE.Object3D): THREE.Mesh {
+  const mesh = new THREE.Mesh(g, material);
+  mesh.castShadow = opsi.bayangan ?? true;
+  mesh.receiveShadow = opsi.terimaBayangan ?? true;
+  if (opsi.urutan !== undefined) mesh.renderOrder = opsi.urutan;
+  if (opsi.materialKedalaman) mesh.customDepthMaterial = opsi.materialKedalaman;
+  mesh.matrixAutoUpdate = false;
+  mesh.updateMatrix();
+  induk.add(mesh);
+  return mesh;
+}
+
+const jumlahVerteks = (daftar: readonly THREE.BufferGeometry[]): number => daftar.reduce((n, g) => n + g.getAttribute('position').count, 0);
+
+/**
+ * Bagian denah sebuah mesh gabungan, berurutan [lahan][dasar][sayap]: lahan hanya
+ * ada sebelum bangunan baru, sayap hanya sesudahnya, dasar selalu. Keadaan mana pun
+ * adalah satu rentang bersambung, jadi tidak menambah draw call (lihat tampilkanBagian).
+ */
+export type BagianDenah = 'lahan' | 'dasar' | 'sayap';
+
+/** Mesh gabungan yang isinya bergantung bagian denah, dengan jumlah verteks tiap bagian. */
+export interface PotonganBagian {
+  readonly mesh: THREE.Mesh;
+  readonly lahan: number;
+  readonly dasar: number;
+  readonly sayap: number;
+}
+
+/** Potong mesh gabungan menurut keadaan bangunan; dipanggil hanya saat keadaannya berganti. */
+export function tampilkanBagian(potongan: readonly PotonganBagian[], keadaan: 'lahan' | 'proyek' | 'berdiri'): void {
+  for (const { mesh, lahan, dasar, sayap } of potongan) {
+    const [mulai, jumlah] = keadaan === 'lahan' ? [0, lahan + dasar] : keadaan === 'proyek' ? [lahan, dasar] : [lahan, dasar + sayap];
+    mesh.geometry.setDrawRange(mulai, jumlah);
+    // three.js tetap memanggil gambar untuk rentang kosong: bahan yang hanya dipakai satu bagian disembunyikan.
+    mesh.visible = jumlah > 0;
+  }
+}
+
 /** Mengumpulkan geometri per material lalu menggabungkannya menjadi satu Mesh per material. */
 export class Kumpulan {
-  private readonly isi = new Map<THREE.Material, { daftar: THREE.BufferGeometry[]; opsi: OpsiMesh }>();
+  /** Bagian denah untuk tambah() berikutnya. Selain dasar hanya dipakai mesh gabungan utama. */
+  bagian: BagianDenah = 'dasar';
+  private readonly isi = new Map<THREE.Material, { daftar: Record<BagianDenah, THREE.BufferGeometry[]>; opsi: OpsiMesh }>();
 
   tambah(material: THREE.Material, g: THREE.BufferGeometry, opsi: OpsiMesh = {}): void {
     let e = this.isi.get(material);
     if (!e) {
-      e = { daftar: [], opsi };
+      e = { daftar: { lahan: [], dasar: [], sayap: [] }, opsi };
       this.isi.set(material, e);
     }
-    e.daftar.push(g.index ? g.toNonIndexed() : g);
+    e.daftar[this.bagian].push(g.index ? g.toNonIndexed() : g);
     if (g.index) g.dispose();
   }
 
-  bangun(induk: THREE.Object3D): void {
+  /** @returns mesh yang isinya bergantung bagian denah (kosong bila semuanya bagian dasar). */
+  bangun(induk: THREE.Object3D): PotonganBagian[] {
+    const potongan: PotonganBagian[] = [];
     for (const [material, { daftar, opsi }] of this.isi) {
-      // mergeGeometries butuh atribut yang sama: pakai irisan atribut semua anggota.
-      const atribut = Object.keys(daftar[0]!.attributes).filter((n) => daftar.every((g) => n in g.attributes));
-      for (const g of daftar) for (const nama of Object.keys(g.attributes)) if (!atribut.includes(nama)) g.deleteAttribute(nama);
-      const gabung = mergeGeometries(daftar, false);
-      for (const g of daftar) g.dispose();
-      if (!gabung) throw new Error('gagal menggabungkan geometri');
-      const mesh = new THREE.Mesh(gabung, material);
-      mesh.castShadow = opsi.bayangan ?? true;
-      mesh.receiveShadow = opsi.terimaBayangan ?? true;
-      if (opsi.urutan !== undefined) mesh.renderOrder = opsi.urutan;
-      if (opsi.materialKedalaman) mesh.customDepthMaterial = opsi.materialKedalaman;
-      mesh.matrixAutoUpdate = false;
-      mesh.updateMatrix();
-      induk.add(mesh);
+      const [lahan, dasar, sayap] = [jumlahVerteks(daftar.lahan), jumlahVerteks(daftar.dasar), jumlahVerteks(daftar.sayap)];
+      const mesh = meshDari(gabungkan([...daftar.lahan, ...daftar.dasar, ...daftar.sayap]), material, opsi, induk);
+      if (lahan > 0 || sayap > 0) potongan.push({ mesh, lahan, dasar, sayap });
     }
     this.isi.clear();
+    return potongan;
+  }
+}
+
+/**
+ * Seperti Kumpulan, untuk benda yang muncul per unit (jendela, blok kursi, pintu
+ * gulung). Tetap satu mesh per material berapa pun unit yang terlihat: unit yang
+ * tampil dipilih lewat index buffer, yang ditulis ulang hanya saat pilihannya
+ * berganti. Satu grup per unit akan berarti satu draw call per unit per material.
+ */
+export class KumpulanUnit {
+  private readonly isi = new Map<THREE.Material, { unit: Map<number, THREE.BufferGeometry[]>; opsi: OpsiMesh }>();
+  private readonly mesh: { readonly mesh: THREE.Mesh; readonly rentang: readonly { readonly unit: number; readonly mulai: number; readonly jumlah: number }[]; readonly indeks: THREE.BufferAttribute }[] = [];
+
+  tambah(unit: number, material: THREE.Material, g: THREE.BufferGeometry, opsi: OpsiMesh = {}): void {
+    let e = this.isi.get(material);
+    if (!e) {
+      e = { unit: new Map(), opsi };
+      this.isi.set(material, e);
+    }
+    let daftar = e.unit.get(unit);
+    if (!daftar) {
+      daftar = [];
+      e.unit.set(unit, daftar);
+    }
+    daftar.push(g.index ? g.toNonIndexed() : g);
+    if (g.index) g.dispose();
+  }
+
+  /** Bangun mesh-nya; awalnya tidak ada unit yang terlihat. */
+  bangun(induk: THREE.Object3D): void {
+    for (const [material, { unit, opsi }] of this.isi) {
+      const rentang: { unit: number; mulai: number; jumlah: number }[] = [];
+      const semua: THREE.BufferGeometry[] = [];
+      let mulai = 0;
+      for (const [u, daftar] of unit) {
+        const jumlah = jumlahVerteks(daftar);
+        rentang.push({ unit: u, mulai, jumlah });
+        semua.push(...daftar);
+        mulai += jumlah;
+      }
+      const g = gabungkan(semua);
+      const indeks = new THREE.BufferAttribute(mulai > 65535 ? new Uint32Array(mulai) : new Uint16Array(mulai), 1);
+      indeks.setUsage(THREE.DynamicDrawUsage);
+      g.setIndex(indeks);
+      g.setDrawRange(0, 0);
+      const mesh = meshDari(g, material, opsi, induk);
+      mesh.visible = false;
+      this.mesh.push({ mesh, rentang, indeks });
+    }
+    this.isi.clear();
+  }
+
+  /** Tampilkan unit yang lolos `terlihat`. Tidak untuk dipanggil tiap frame: menulis ulang index buffer. */
+  tampilkan(terlihat: (unit: number) => boolean): void {
+    for (const { mesh, rentang, indeks } of this.mesh) {
+      const larik = indeks.array;
+      let n = 0;
+      for (const r of rentang) {
+        if (!terlihat(r.unit)) continue;
+        for (let v = r.mulai; v < r.mulai + r.jumlah; v++) larik[n++] = v;
+      }
+      indeks.needsUpdate = true;
+      mesh.geometry.setDrawRange(0, n);
+      mesh.visible = n > 0;
+    }
   }
 }

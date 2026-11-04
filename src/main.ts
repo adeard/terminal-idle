@@ -3,6 +3,7 @@ import { bacaAkunAktif, hapusDataAkun, keluarAkun, masukAkun, SlotAkun } from '.
 import { PencatatAnalitik, pesanGalat } from './app/analitik';
 import { hadiahSetelahIklan, tontonBerhadiah, type TempatIklan } from './app/iklan';
 import { LayananPeringkat } from './app/layanan-peringkat';
+import { AntreanPerayaan, perluPeresmianSusulan } from './app/peresmian-bentuk';
 import { SesiGame, slotLokal, type Logger } from './app/sesi';
 import { manajerUntung } from './app/tujuan';
 import { STATUS_TUTORIAL } from './app/tutorial';
@@ -114,6 +115,14 @@ async function mulai(): Promise<void> {
     kecepatan = k;
     void penyimpanan.tulis(KUNCI_KECEPATAN, String(k)).catch(() => undefined);
   };
+  // Peresmian susulan Sayap 2 Lantai, sekali per perangkat (documents/16 bagian 7). Tahap < 3 ditandai
+  // sekarang: nanti pemain ini mendapat peresmian biasa, jadi jangan dua kali. Tahap ≥ 3 ditandai saat tayang.
+  const KUNCI_PERESMIAN = 'terminal-bus-tycoon/peresmian-bentuk';
+  const tulisTandaPeresmian = (): void => void penyimpanan.tulis(KUNCI_PERESMIAN, '1').catch(() => undefined);
+  const tandaPeresmian = (await penyimpanan.baca(KUNCI_PERESMIAN).catch(() => null)) !== null;
+  const perluSusulan = perluPeresmianSusulan(sesi.pengendali.state.perkembangan.perluasan, tandaPeresmian);
+  if (!tandaPeresmian && !perluSusulan) tulisTandaPeresmian();
+  const perayaan = new AntreanPerayaan(!perluSusulan);
   // Iklan berhadiah (platform/iklan.ts): suara game dibisukan selama iklan diputar.
   const bisuSelamaIklan = { sebelum: (): void => {}, sesudah: (): void => {} };
   const iklan = buatPenyediaIklan({ akar: ui, sebelum: () => bisuSelamaIklan.sebelum(), sesudah: () => bisuSelamaIklan.sesudah() });
@@ -346,6 +355,7 @@ async function mulai(): Promise<void> {
 
   const tampilkanLaporan = (l: LaporanOffline | null): void => {
     if (!sesi.perluPopup(l)) return;
+    if (l.proyek?.selesai) perayaan.catatProyekOffline(l.proyek.tahap, terminal !== null);
     const s = sesi.pengendali.state;
     // Bonus 2× lewat iklan: hanya kalau ada penghasilan offline yang belum digandakan.
     const ganda =
@@ -390,6 +400,19 @@ async function mulai(): Promise<void> {
     console.warn('[pembaruan] gagal dipasang', e),
   );
 
+  // Perayaan tayang saat adegan siap & terlihat: tanpa popup di depannya, dan untuk susulan juga tanpa tutorial.
+  // Bila adegan gagal dimuat, tanda tidak ditulis dan peresmian dicoba lagi saat game dibuka berikutnya.
+  const perayaanTerhalang = (susulan: boolean): boolean => ui.querySelector(susulan ? '.popup-latar, .tutorial' : '.popup-latar') !== null;
+  const tayangkanPerayaan = (t: Terminal3D, dt: number): void => {
+    const p = perayaan.ambil(dt, sesi.pengendali.state.perkembangan.perluasan, perayaanTerhalang);
+    if (!p) return;
+    if (p.kembangApi !== null) t.rayakanPerluasan(p.kembangApi);
+    if (p.susulan) {
+      tulisTandaPeresmian();
+      overlay.notif(TEKS.notifPeresmianBentuk);
+    }
+  };
+
   // Satu loop untuk simulasi (fixed timestep + autosave di detak()) dan render.
   // Berhenti total saat pause supaya waktu background hanya dihitung lewat
   // logika offline dan baterai tidak terkuras.
@@ -402,8 +425,9 @@ async function mulai(): Promise<void> {
     sesi.detak(dt, kecepatan);
     // Panel layar penuh menutupi adegan: tidak perlu digambar (hemat baterai); ekonomi tetap berjalan.
     if (terminal && !overlay.panelPenuh()) {
-      terminal.perbarui(dt, kecepatan);
+      terminal.perbarui(perayaan.tahanAdegan ? 0 : dt, kecepatan);
       tombolKamera?.perbarui(terminal.arahUtara);
+      tayangkanPerayaan(terminal, dt);
     }
     requestAnimationFrame(langkah);
   };

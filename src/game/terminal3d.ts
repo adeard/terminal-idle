@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three';
 import type { PembacaState } from '../app/pengendali';
+import { EKONOMI } from '../config/economy.config';
 import { cuacaTerminal, cuacaTerminalState, kilatPada, type Cuaca } from '../sim/cuaca';
 import type { BangunanId, PetugasId, PoId, TeknologiId } from '../sim/fitur';
 import type { AreaId } from '../sim/operasi';
@@ -14,12 +15,13 @@ import { busEmasAktif, kelasBusBeroperasi, kelasTerminal, loketTerisi, type Game
 import { keramaianTerminal, waktuTerminal, waktuTerminalState } from '../sim/waktu';
 import { URL_ATLAS } from './aset';
 import { Adegan } from './adegan';
+import { faseProyekSayap, isiLantai2, jumlahPengunjung, keadaanSayap, MAKS_PENGUNJUNG, pengunjungDiTeras, posisiPengunjung, type IsiLantai2, type KeadaanSayap, type PosisiPengunjung } from './bentuk-adegan';
 import { CahayaMalam } from './cahaya3d';
 import { PencucianBus } from './cuci3d';
 import { DuniaVisual, posisiKenekBagasi, posisiPetugasCuci, type PeristiwaBus, type TransaksiVisual } from './dunia-visual';
 import { blokKursiDi, FASILITAS_LENGKAP, stafAdegan, type FasilitasAdegan, type StafAdegan } from './fasilitas-adegan';
 import { bangunGedung, bangunKursiTunggu, DERET_KURSI_AULA, MEJA_INFO, MEJA_TUNGGU, posisiKursiAula, Y_MEJA_TUNGGU } from './gedung3d';
-import { Kumpulan } from './geometri';
+import { Kumpulan, tampilkanBagian, type PotonganBagian } from './geometri';
 import { KasVisual, lajuUangState, type LajuUang } from './kas-visual';
 import { HiasanKelas } from './kelas3d';
 import { HiasanEvent, RAMAI_EVENT } from './event3d';
@@ -54,14 +56,17 @@ import { buatMaterial, type PustakaMaterial } from './material3d';
 import { LaluLintas3D } from './mobil3d';
 import { buatPenampilan, buatPenampilanAnak, Kerumunan3D, WARNA_PAYUNG, type DataOrang, type Penampilan } from './orang3d';
 import { Rombongan } from './rombongan';
+import { bangunSayap2, IsiSayap2 } from './sayap2-3d';
 import { bangunSekitar, JALAN_BELAKANG } from './sekitar3d';
 import { PopUang3D } from './pop-uang3d';
 import { ProyekPerluasan } from './proyek3d';
 import { bunyiTelolet, PengamatSuara, type PenerimaSuara, type Pendengar } from './suara';
 import {
   diBawahAtap,
+  diSayapDua,
   GEDUNG,
   GERBANG_X,
+  H_LANTAI_2,
   KIOS_TUNGGU,
   KURSI_TUNGGU,
   LORONG_PARKIR,
@@ -338,6 +343,9 @@ const DAGANGAN_ASONGAN = [0xef4444, 0x3b82f6].map((c) => new THREE.Color(c));
 /** Pekerja proyek perluasan: rompi oranye bertopi. */
 const SERAGAM_PEKERJA = seragamPolos(0xf97316, 0x1f2937, true);
 
+/** Pengunjung Sayap 2 Lantai yang naik-turun tangga: id dipisah dari orang lain, dan tidak terhitung di DuniaVisual. */
+const ID_SAYAP2 = 6_000_000;
+
 /**
  * Mode sinema (video promosi): hanya tampilan yang berubah, ekonomi di state
  * tetap berjalan normal.
@@ -376,6 +384,15 @@ export class Terminal3D {
   /** Anak & pendamping yang ikut sebagian penumpang (tidak memakai slot antrean). */
   private readonly rombongan = new Rombongan();
   private readonly statis = orangStatis();
+  /** Pengunjung lantai 2 yang bergerak: objek dipakai ulang tiap frame, semua properti sudah ada sejak awal supaya bentuk objeknya tetap. */
+  private readonly pengunjungL2: readonly { id: number; x: number; y: number; h: number; penampilan: Penampilan; pose: 'duduk' | undefined; hadap: number | undefined; payung: THREE.Color | null }[] = Array.from({ length: MAKS_PENGUNJUNG }, (_, i) => ({ id: ID_SAYAP2 + i, x: 0, y: 0, h: 0, penampilan: buatPenampilan(1, 1340 + i)[0]!, pose: undefined, hadap: undefined, payung: null }));
+  /** Keadaan Sayap 2 Lantai yang sedang tergambar (null = belum pernah diterapkan). */
+  private keadaanSayap: KeadaanSayap | null = null;
+  /** Isi lantai 2: dibangun saat sayap pertama kali berdiri, lalu hanya ditukar unitnya. */
+  private isiSayap: IsiSayap2 | null = null;
+  /** Unit lantai 2 frame ini; null selama sayap belum berdiri. */
+  private isiL2: IsiLantai2 | null = null;
+  private readonly posPengunjung: PosisiPengunjung = { x: 0, y: 0, h: 0, duduk: false, hadap: 0 };
   private waktu = 0;
   /** Keramaian terminal (0–1) menurut jam & hari, diperbarui tiap frame. */
   private keramaian: number;
@@ -448,6 +465,8 @@ export class Terminal3D {
     /** Blok kursi ruang tunggu (urut BLOK_KURSI): terpasang sesuai kursi yang dibangun. */
     private readonly blokKursi: readonly THREE.Group[],
     private readonly posRetribusi: THREE.Group,
+    /** Mesh gabungan utama yang isinya mengikuti keadaan Sayap 2 Lantai (lahan / cangkang). */
+    private readonly potonganSayap: readonly PotonganBagian[],
   ) {
     this.pasangKetuk(adegan.renderer.domElement);
     // 40 = kelipatan jumlah bus terminal (8) & kendaraan lewat (5), jadi keduanya merata.
@@ -479,7 +498,11 @@ export class Terminal3D {
     const kabel = new THREE.Group();
     const parkir = [new Kumpulan(), new Kumpulan()] as const;
     bangunSekitar(k, m, kabel, parkir);
-    k.bangun(adegan.scene);
+    bangunSayap2(k, m);
+    const potonganSayap = k.bangun(adegan.scene);
+    const { perluasan, proyekDetik } = pembaca.state.perkembangan;
+    // Sebelum kompilasi shader: bahan yang hanya dipakai sayap tidak perlu dikompilasi di sesi pertama.
+    tampilkanBagian(potonganSayap, keadaanSayap(perluasan, proyekDetik));
     const parkirMobil = parkir.map((kp) => {
       const g = new THREE.Group();
       kp.bangun(g);
@@ -513,7 +536,7 @@ export class Terminal3D {
     const pembangunan = new PembangunanTerminal();
     pembangunan.perbarui({ jalur: pembaca.state.terminal.bangunan.jalur, kelompok: bangunan.kelompok });
     const proyek = new ProyekPerluasan(m);
-    proyek.perbarui(tahapProyek(pembaca.state), 0, 0);
+    proyek.perbarui(tahapProyek(pembaca.state), faseProyekSayap(proyekDetik, EKONOMI.mitra.detikProyek), 0, 0);
     adegan.scene.add(pembangunan.objek, proyek.objek);
     adegan.scene.add(spanduk.objek, hiasanKelas.objek, hiasanEvent.objek);
     // Papan jurusan (ikut jurusan yang dilayani mitra PO) & perlengkapan modernisasi (tampil setelah dibeli).
@@ -530,7 +553,7 @@ export class Terminal3D {
     adegan.bingkai(adegan.lebarCss > adegan.tinggiCss ? TITIK_INTI : TITIK_INTI_POTRET);
     // Kompilasi shader sebelum frame pertama supaya tidak tersendat saat mulai.
     await adegan.renderer.compileAsync(adegan.scene, adegan.kamera);
-    return new Terminal3D(adegan, pembaca, armada, kerumunan, zona, labelBus, papanJurusan, modernisasi, rollingDoor, luar, papanJadwal, bendera, laluLintas, laluLintas3D, trotoar, m, cahaya, cuci, popUang, spanduk, hiasanKelas, hiasanEvent, pembangunan, proyek, parkirMobil, blokKursi, posRetribusi);
+    return new Terminal3D(adegan, pembaca, armada, kerumunan, zona, labelBus, papanJurusan, modernisasi, rollingDoor, luar, papanJadwal, bendera, laluLintas, laluLintas3D, trotoar, m, cahaya, cuci, popUang, spanduk, hiasanKelas, hiasanEvent, pembangunan, proyek, parkirMobil, blokKursi, posRetribusi, potonganSayap);
   }
 
   /** Sambungkan mesin suara; tiap frame adegan mengirim lapisan suara & bunyi sesaat. */
@@ -567,6 +590,11 @@ export class Terminal3D {
   /** Kembalikan kamera ke arah & kemiringan awal. */
   kembalikanKamera(): void {
     this.adegan.kembalikanArah();
+  }
+
+  /** Kembang api peresmian proyek tahap ini (1-based), tanpa efek lain: untuk peresmian yang tidak terjadi di sesi aktif. */
+  rayakanPerluasan(tahap: number): void {
+    this.proyek.rayakan(tahap);
   }
 
   /** Arah utara di layar (radian searah jarum jam dari atas), untuk kompas. */
@@ -624,6 +652,7 @@ export class Terminal3D {
     this.hiasanKelas.perbarui(kelasTerminal(state), state.profil.namaTerminal);
     this.hiasanEvent.perbarui(state.event.aktif?.id ?? null);
     this.jam = w.jamDesimal;
+    this.perbaruiSayap(state);
     this.detikPatroli += dt;
     this.luar.perbarui(this.jam, this.keramaian);
     this.material.aturBasah(this.basah);
@@ -752,7 +781,29 @@ export class Terminal3D {
     const perluasan = state.perkembangan.perluasan;
     if (perluasan > this.perluasanLalu) this.proyek.rayakan(perluasan);
     this.perluasanLalu = perluasan;
-    this.proyek.perbarui(tahapProyek(state), dt, dtNyata);
+    this.proyek.perbarui(tahapProyek(state), faseProyekSayap(state.perkembangan.proyekDetik, EKONOMI.mitra.detikProyek), dt, dtNyata);
+  }
+
+  /** Sayap 2 Lantai mengikuti state: lahan & cangkang di mesh utama ditukar hanya saat keadaannya berganti. */
+  private perbaruiSayap(state: GameState): void {
+    const keadaan = keadaanSayap(state.perkembangan.perluasan, state.perkembangan.proyekDetik);
+    if (keadaan !== this.keadaanSayap) {
+      this.keadaanSayap = keadaan;
+      tampilkanBagian(this.potonganSayap, keadaan);
+      this.hujan3d.aturSayap2(keadaan === 'berdiri');
+    }
+    if (keadaan !== 'berdiri') {
+      this.isiL2 = null;
+      if (this.isiSayap) this.isiSayap.objek.visible = false;
+      return;
+    }
+    if (!this.isiSayap) {
+      this.isiSayap = new IsiSayap2(this.material);
+      this.adegan.scene.add(this.isiSayap.objek);
+    }
+    this.isiSayap.objek.visible = true;
+    this.isiL2 = isiLantai2(state.terminal.bangunan, loketTerisi(state), this.jam);
+    this.isiSayap.perbarui(this.isiL2, this.keramaian, this.hujan > HUJAN_PAYUNG);
   }
 
   /** Pendapatan per detik tiap sumber, dihitung ulang hanya saat state berganti. */
@@ -851,6 +902,7 @@ export class Terminal3D {
       }
     }
     this.pekerjaProyek(k, dt);
+    if (this.isiL2) this.pengunjungDiSayap(k, dt, this.isiL2, berteduh);
     this.orangBergilir(k, dt, petugas.staf, berteduh);
     if (anakTeloletHadir(this.jam, this.hujan)) this.anakPinggirJalan(k, dt);
     k.selesai();
@@ -860,10 +912,41 @@ export class Terminal3D {
   private pekerjaProyek(k: Kerumunan3D, dt: number): void {
     const lokasi = this.proyek.lokasi;
     if (!lokasi) return;
+    // Sejak pelat Sayap 2 Lantai dicor, pekerjanya di atas pelat: di bawahnya tertutup dari kamera.
+    const diPelat = this.keadaanSayap === 'proyek' && faseProyekSayap(this.pembaca.state.perkembangan.proyekDetik, EKONOMI.mitra.detikProyek) >= 1;
     lokasi.pekerja.forEach((rute, i) => {
       const [x, y] = posisiPekerja(rute, i, this.detikPatroli);
-      k.tambah({ id: ID_PEKERJA_PROYEK + i, x, y, h: tinggiLantai(x, y) ?? H_LANTAI, penampilan: SERAGAM_PEKERJA }, dt);
+      k.tambah({ id: ID_PEKERJA_PROYEK + i, x, y, h: diPelat ? H_LANTAI_2 : (tinggiLantai(x, y) ?? H_LANTAI), penampilan: SERAGAM_PEKERJA }, dt);
     });
+  }
+
+  /**
+   * Pengunjung Sayap 2 Lantai yang naik-turun tangga. Orang yang diam di lantai 2 sudah
+   * dibakar di IsiSayap2. Hanya tampilan: tidak ada yang terhitung di DuniaVisual.
+   */
+  private pengunjungDiSayap(k: Kerumunan3D, dt: number, isi: IsiLantai2, berteduh: boolean): void {
+    const n = jumlahPengunjung(isi, this.keramaian);
+    for (let i = 0; i < n; i++) {
+      // Teras terbuka: saat hujan pengunjungnya pergi, seperti pengunjung luar.
+      if (berteduh && pengunjungDiTeras(i)) continue;
+      const p = posisiPengunjung(i, this.detikPatroli, this.posPengunjung);
+      const d = this.pengunjungL2[i]!;
+      d.x = p.x;
+      d.y = p.y;
+      if (p.duduk) {
+        d.h = p.h + 0.005;
+        d.pose = 'duduk';
+        d.hadap = p.hadap;
+        d.payung = null;
+      } else {
+        d.h = p.h;
+        d.pose = undefined;
+        d.hadap = undefined;
+        // Blok A1 beratap, tapi diBawahAtap tidak mengenalnya (sayap baru ada sejak tahap 3).
+        d.payung = diSayapDua(p.x, p.y) ? null : this.payung(d.id, p.x, p.y);
+      }
+      k.tambah(d, dt);
+    }
   }
 
   private satpamBerpatroli(pos: DataOrang): DataOrang {
