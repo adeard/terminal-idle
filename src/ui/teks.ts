@@ -1,15 +1,17 @@
 /** Semua teks yang tampil ke pemain. */
 import type { KodeGalatPeringkat } from '../app/peringkat';
 import type { TingkatPo } from '../config/economy.config';
+import { BINGKAI_EMAS, type SlotHiasan, type TemaMusimId } from '../config/musim.config';
 import type { Izin } from '../sim/bangunan';
+import { slotHiasan, temaHiasan, type HadiahMusim, type JenisLencana, type NilaiRapor } from '../sim/musim';
 import type { BangunanId, EventId, KelasBusId, PencapaianId, PetugasId, PoId, TarifId, TeknologiId } from '../sim/fitur';
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import type { AreaId } from '../sim/operasi';
 import type { TahapId } from '../sim/tahap';
 import type { PaketHadiah } from '../sim/state';
 import type { TingkatKeramaian } from '../sim/waktu';
-import { formatUang } from './format';
-import type { ModelBangunan } from './model';
+import { formatAngka, formatUang } from './format';
+import type { ModelBangunan, ModelTugas } from './model';
 
 export const NAMA_TAHAP: Readonly<Record<TahapId, string>> = {
   peron: 'Peron',
@@ -755,4 +757,222 @@ export const TEKS = {
   busEmasTeksUang: (uang: string) => `Bus istimewa membawa rombongan. Tonton iklan untuk ${uang}.`,
   busEmasTonton: 'Tonton iklan & ambil',
   notifBusEmas: (uang: string) => `🚌 Bus Emas: +${uang}`,
+  // Musim Terminal (documents/17 bagian 8): ≤ 40 karakter per baris di kartu, ≤ 60 di baris tujuan.
+  musimKepala: (ikon: string, nama: string, tingkat: number, sisa: number) => `${ikon} ${nama} · tingkat ${tingkat} · sisa ${sisa} hari`,
+  musimBilah: (poin: string, batas: string) => `${poin}/${batas} poin`,
+  musimPoin: (poin: string) => `${poin} poin`,
+  musimBerikut: (tingkat: number, hadiah: string) => `Berikutnya: tingkat ${tingkat} · ${hadiah}`,
+  musimIstimewa: (nama: string) => `Rapor ${nama}: Istimewa! Tugas tetap menambah nilai rapor.`,
+  musimTugasHariIni: (selesai: number, jumlah: number) => `Tugas hari ini ${selesai}/${jumlah}`,
+  musimTugasKemarin: 'Tugas kemarin · berakhir 24.00',
+  musimSemuaSelesai: 'Tugas baru besok 00.00 WIB',
+  musimGanti: 'Ganti',
+  musimGantiTiket: 'Ganti · 1 tiket',
+  musimGantiJudul: (cara: string) => `Ganti tugas ini (${cara})`,
+  musimGantiGratis: 'gratis hari ini',
+  musimGantiPakaiTiket: (n: number) => `pakai 1 dari ${n} tiket`,
+  musimTuas: 'Buka tempat mengerjakannya',
+  musimTiket: (n: number) => `Tiket ganti tugas: ${n}`,
+  musimCatatan: 'Tugas berlaku 2 hari. Tugas +10 poin, tantangan mingguan +40. Tugas hanya maju saat kamu bermain.',
+  musimHiasanJudul: 'Hiasan terminal',
+  musimHiasanBaris: (slot: string, varian: string) => `${slot}: ${varian}`,
+  musimPakai: 'Pakai',
+  musimLepas: 'Lepas',
+  musimSurat: (n: number) => `Surat Armada (${n})`,
+  musimSuratKet: 'PO pilihanmu mendapat armada baru (+½ level)',
+  musimSuratPakai: 'Pakai',
+  musimSuratJudul: 'Surat Armada',
+  musimSuratPilih: 'Pilih PO yang mendapat armada baru (+½ level)',
+  // Satu baris di popup untuk level dua digit (GP-1): nama PO tanpa awalan "PO".
+  musimSuratBaris: (po: string, level: number, sesudah: string) => `${po} · Lv ${level} → ${sesudah}`,
+  musimSuratMenuju: (persen: number, level: number) => `${persen}% ke Lv ${level}`,
+  musimSuratLevel: (level: number) => `Lv ${level}`,
+  musimSuratBatal: 'Nanti',
+  notifSurat: (po: string) => `✉️ Surat Armada dipakai: armada baru untuk ${po}`,
+  notifTugasSelesai: '📋 Tugas selesai · +10 poin Rapor',
+  notifRaporNaik: (tingkat: number, hadiah: string) => `🎓 Rapor naik ke tingkat ${tingkat}: ${hadiah}`,
+  notifRaporNaikPolos: (tingkat: number) => `🎓 Rapor naik ke tingkat ${tingkat}`,
+  hiasanTerpasang: (nama: string) => `${nama} terpasang`,
+  notifMusimSelesai: (ikon: string, nama: string) => `${ikon} ${nama} selesai`,
+  tujuanTugas: (tugas: string, angka: string) => `📋 Tugas: ${tugas} · ${angka}`,
+  sambutanMusimJudul: (ikon: string) => `${ikon} Musim Terminal dimulai!`,
+  sambutanMusimIsi: (nama: string) => `Tiap hari ada 3 tugas singkat. Selesaikan untuk menaikkan Rapor ${nama} dan membuka hiasan terminal. Gratis, tanpa iklan. Tugas berlaku 2 hari.`,
+  sambutanMusimLihat: 'Lihat tugas',
+  sambutanMusimNanti: 'Nanti',
+  raporJudul: (nama: string) => `🎓 Rapor ${nama}`,
+  // Nilai (besar) dan tingkat (kecil) dua baris; terminal dan penumpang main aktif dua baris (P-12).
+  raporTingkat: (tingkat: number, maks: number) => `tingkat ${tingkat} dari ${maks}`,
+  raporTugas: (tugas: number, tantangan: number) => `Tugas selesai ${tugas} · tantangan ${tantangan}`,
+  raporTerminal: (lvAwal: number, lvAkhir: number) => `Terminal: Lv ${lvAwal} → Lv ${lvAkhir}`,
+  raporPenumpang: (penumpang: string) => `Penumpang saat kamu bermain: ${penumpang}`,
+  raporHiasan: (daftar: string) => `Hiasan baru: ${daftar}`,
+  raporMusimBaru: (ikon: string, nama: string) => `${ikon} ${nama} dimulai hari ini.`,
+  raporOke: 'Oke',
+  fotoMusim: (musim: string, lencana: string) => `${musim} · ${lencana}`,
 } as const;
+
+// ---------------------------------------------------------------------------
+// Musim Terminal (documents/17)
+
+/** Tema musim: nama (tanpa tahun) & ikon (bagian 3.1). */
+export const NAMA_TEMA_MUSIM: Readonly<Record<TemaMusimId, { readonly nama: string; readonly ikon: string }>> = {
+  hujan: { nama: 'Musim Hujan', ikon: '🌧️' },
+  imlek: { nama: 'Musim Imlek', ikon: '🧧' },
+  mudik: { nama: 'Musim Mudik', ikon: '🕌' },
+};
+
+/** Nama musim dengan tahun awalnya: rapor, lencana, foto ("Musim Hujan 2026"). */
+export function namaMusimTahun(tema: TemaMusimId, tahun: number): string {
+  return `${NAMA_TEMA_MUSIM[tema].nama} ${tahun}`;
+}
+
+export const NAMA_SLOT_HIASAN: Readonly<Record<SlotHiasan, string>> = {
+  spanduk: 'Spanduk gapura',
+  seragam: 'Seragam petugas',
+  papan: 'Papan gapura',
+  bingkai: 'Bingkai foto',
+};
+
+/** Nama pendek slot untuk daftar "Hiasan baru: spanduk, seragam, papan gapura". */
+const NAMA_PENDEK_SLOT: Readonly<Record<SlotHiasan, string>> = { spanduk: 'spanduk', seragam: 'seragam', papan: 'papan gapura', bingkai: 'bingkai foto' };
+
+/** Nama hiasan dari tabel bagian 4.1; tema lain memakai nama slot + tema. */
+const NAMA_HIASAN_KHUSUS: Readonly<Record<string, string>> = {
+  'spanduk-hujan': 'Spanduk gapura Musim Hujan',
+  'seragam-hujan': 'Seragam jas hujan',
+  'papan-hujan': 'Papan gapura biru hujan',
+  'bingkai-hujan': 'Bingkai foto Musim Hujan',
+  [BINGKAI_EMAS]: 'Bingkai foto emas',
+};
+
+export function namaHiasan(item: string): string {
+  const khusus = NAMA_HIASAN_KHUSUS[item];
+  if (khusus) return khusus;
+  const slot = slotHiasan(item);
+  const tema = temaHiasan(item);
+  return slot && tema ? `${NAMA_SLOT_HIASAN[slot]} ${NAMA_TEMA_MUSIM[tema].nama}` : item;
+}
+
+/** Varian hiasan di baris "Spanduk gapura: Musim Hujan" (tema, atau "Emas"). */
+export function varianHiasan(item: string): string {
+  const tema = temaHiasan(item);
+  return tema ? NAMA_TEMA_MUSIM[tema].nama : item === BINGKAI_EMAS ? 'Emas' : item;
+}
+
+/** "spanduk, seragam, papan gapura" (rapor). */
+export function daftarHiasanPendek(items: readonly string[]): string {
+  return items.map((i) => (i === BINGKAI_EMAS ? 'bingkai foto emas' : NAMA_PENDEK_SLOT[slotHiasan(i) ?? 'bingkai'])).join(', ');
+}
+
+export const NAMA_LENCANA: Readonly<Record<JenisLencana, string>> = { peserta: 'Peserta', lulus: 'Lulus', istimewa: 'Istimewa' };
+export const NAMA_NILAI_RAPOR: Readonly<Record<NilaiRapor, string>> = { cukup: 'Cukup', baik: 'Baik', sangatBaik: 'Sangat Baik', istimewa: 'Istimewa' };
+
+/** "Lencana Lulus Musim Hujan 2026". */
+export function namaLencana(jenis: JenisLencana, tema: TemaMusimId, tahun: number): string {
+  return `Lencana ${NAMA_LENCANA[jenis]} ${namaMusimTahun(tema, tahun)}`;
+}
+
+/** Isi satu hadiah tingkat: "2 tiket ganti tugas", "Seragam jas hujan", "Surat Armada: PO pilihanmu +½ level". */
+export function teksHadiahMusim(h: HadiahMusim, tema: TemaMusimId, tahun: number): string {
+  switch (h.jenis) {
+    case 'lencana':
+      return namaLencana(h.lencana, tema, tahun);
+    case 'hiasan':
+      return namaHiasan(h.item);
+    case 'tiket':
+      return `${h.jumlah} tiket ganti tugas`;
+    case 'surat':
+      return 'Surat Armada: PO pilihanmu +½ level';
+  }
+}
+
+/** Isi toast naik tingkat: hiasan "… terpasang", lainnya namanya saja; beberapa hadiah digabung " + ". */
+export function teksHadiahNaik(hadiah: readonly HadiahMusim[], tema: TemaMusimId, tahun: number): string {
+  return hadiah.map((h) => (h.jenis === 'hiasan' ? TEKS.hiasanTerpasang(namaHiasan(h.item)) : teksHadiahMusim(h, tema, tahun))).join(' + ');
+}
+
+const NAMA_KOMPONEN: Readonly<Record<string, string>> = { kebersihan: 'kebersihan', keamanan: 'keamanan', kenyamanan: 'kenyamanan', fasilitas: 'fasilitas' };
+const persenBulat = (x: number): number => Math.round(x * 100);
+
+/** Teks kartu satu tugas (bagian 3.2): "Antar 1.200 penumpang ke Semarang". */
+export function teksTugas(t: ModelTugas): string {
+  const n = formatAngka(t.target);
+  switch (t.templat) {
+    case 'penumpang':
+      return `Berangkatkan ${n} penumpang`;
+    case 'laba':
+      return `Kumpulkan laba ${formatUang(t.target)}`;
+    case 'kota':
+      return `Antar ${n} penumpang ke ${t.kota ?? ''}`;
+    case 'antarpulau':
+      return `Antar ${n} penumpang antarpulau`;
+    case 'kelasTinggi':
+      return `Antar ${n} penumpang Eksekutif ke atas`;
+    case 'poTerendah':
+      return `${t.po ? NAMA_PO[t.po].nama : 'PO'}: antar ${n} penumpang`;
+    case 'kios':
+      return `Kumpulkan sewa kios ${formatUang(t.target)}`;
+    case 'parkir':
+      return `Kumpulkan uang parkir ${formatUang(t.target)}`;
+    case 'kepuasan':
+      return `Jaga kepuasan ≥ ${persenBulat(Number(t.param))}% selama ${Math.round(t.target / 60)} menit main`;
+    case 'perbaikan':
+      return `Naikkan ${NAMA_KOMPONEN[String(t.param)] ?? ''} ke ${persenBulat(t.target)}% (kini ${persenBulat(t.progres)}%)`;
+    case 'bangun':
+      return 'Bangun 1 unit atau modernisasi';
+    case 'daftarPo':
+      return 'Daftarkan 1 PO baru';
+  }
+}
+
+/** Teks pendek untuk baris tujuan (tanpa angka target). */
+export function teksTugasPendek(t: ModelTugas): string {
+  switch (t.templat) {
+    case 'penumpang':
+      return 'Berangkatkan penumpang';
+    case 'laba':
+      return 'Kumpulkan laba';
+    case 'kota':
+      return `Antar penumpang ke ${t.kota ?? ''}`;
+    case 'antarpulau':
+      return 'Antar penumpang antarpulau';
+    case 'kelasTinggi':
+      return 'Antar penumpang Eksekutif+';
+    case 'poTerendah':
+      return `Penumpang ${t.po ? NAMA_PO[t.po].nama : 'PO'}`;
+    case 'kios':
+      return 'Kumpulkan sewa kios';
+    case 'parkir':
+      return 'Kumpulkan uang parkir';
+    case 'kepuasan':
+      return `Jaga kepuasan ≥ ${persenBulat(Number(t.param))}%`;
+    case 'perbaikan':
+      return `Naikkan ${NAMA_KOMPONEN[String(t.param)] ?? ''} ke ${persenBulat(t.target)}%`;
+    case 'bangun':
+      return 'Bangun 1 unit atau modernisasi';
+    case 'daftarPo':
+      return 'Daftarkan 1 PO baru';
+  }
+}
+
+/** Kemajuan "210/400" dalam satuan tugasnya. */
+export function angkaTugas(t: ModelTugas): string {
+  const ada = Math.min(t.progres, t.target);
+  switch (t.templat) {
+    case 'laba':
+    case 'kios':
+    case 'parkir':
+      return `${formatUang(Math.floor(ada))}/${formatUang(t.target)}`;
+    case 'kepuasan':
+      return `${Math.floor(ada / 60)}/${Math.round(t.target / 60)} mnt`;
+    case 'perbaikan':
+      return `${persenBulat(t.progres)}%/${persenBulat(t.target)}%`;
+    default:
+      return `${formatAngka(Math.floor(ada))}/${formatAngka(t.target)}`;
+  }
+}
+
+/** Nama kota dari papan bus ("BANDA ACEH") dalam huruf judul ("Banda Aceh") untuk teks tugas. */
+export function hurufJudul(teks: string): string {
+  return teks.toLowerCase().replace(/(^|[\s-])(\S)/g, (_, a: string, b: string) => a + b.toUpperCase());
+}

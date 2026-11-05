@@ -980,6 +980,32 @@ export const PAPAN_L2 = { x0: 6.75, x1: 6.8, y0: 13.1, y1: 17.1, h0: 2.62, h1: 3
 /** Tiang bendera di plaza (lihat bendera() di lingkungan3d.ts). */
 export const TIANG_BENDERA: Titik = [12.2, 16.8];
 
+// ---------------------------------------------------------------------------
+// Kota di seberang jalan yang ikut tumbuh (rancangan bentuk terminal ronde 2, ADR 008)
+
+/** Gedung kota deret depan yang meninggi saat terminal naik level. Lot K01–K22 urut barat → timur (KOTA & masjid di lingkungan3d.ts). */
+export interface GedungKotaNaik extends Persegi {
+  readonly lot: string;
+  readonly tinggiLama: number;
+  readonly tinggiBaru: number;
+  readonly level: number;
+}
+
+/** Urut level. Jejak & tinggi lamanya sama persis dengan gedungnya di KOTA; lot cadangan seberang tidak pernah ada di sini. */
+export const GEDUNG_KOTA_NAIK: readonly GedungKotaNaik[] = [
+  { lot: 'K13', x0: 21.4, y0: -3.8, x1: 24.0, y1: -1.5, tinggiLama: 2.5, tinggiBaru: 6.0, level: 16 },
+  { lot: 'K12', x0: 17.0, y0: -5.4, x1: 20.6, y1: -1.6, tinggiLama: 5.9, tinggiBaru: 9.0, level: 21 },
+  { lot: 'K07', x0: -5.0, y0: -5.0, x1: -1.6, y1: -1.6, tinggiLama: 5.0, tinggiBaru: 8.5, level: 23 },
+  { lot: 'K09', x0: 2.8, y0: -4.4, x1: 5.8, y1: -1.5, tinggiLama: 3.7, tinggiBaru: 7.2, level: 26 },
+  { lot: 'K11', x0: 13.4, y0: -3.6, x1: 16.2, y1: -1.5, tinggiLama: 2.8, tinggiBaru: 6.5, level: 35 },
+];
+
+/**
+ * Lahan seberang jalan (lot K14–K17) yang dicadangkan untuk pertumbuhan terminal ke kota:
+ * tanpa hiasan level dan tanpa gedung yang dinaikkan sampai bentuk penyeberangannya diputuskan (ADR 008).
+ */
+export const CADANGAN_SEBERANG: Persegi = { x0: 24.8, y0: -5.0, x1: 39.0, y1: -1.2 };
+
 /** Orang di titik ini berdiri di lantai setinggi peron (peron kedatangan, peron keberangkatan, ruang tunggu). */
 export function diPeron(x: number, y: number): boolean {
   return di(x, y, PERON) || di(x, y, PERON_BERANGKAT) || di(x, y, RUANG_TUNGGU);

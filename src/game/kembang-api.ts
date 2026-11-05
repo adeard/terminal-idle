@@ -2,7 +2,8 @@
  * Kembang api peresmian perluasan terminal (murni, tanpa three.js): rangkaian
  * ledakan di atas area proyek yang baru selesai. Tiap ledakan menyebarkan
  * partikel ke segala arah dari satu titik, lalu partikel melambat, jatuh pelan,
- * dan memudar. proyek3d.ts hanya menggambar partikel yang hidup. Berjalan
+ * dan memudar. Rangkaian kecil menandai hiasan level yang baru muncul (hiasan-level.ts).
+ * proyek3d.ts hanya menggambar partikel yang hidup. Berjalan
  * dengan waktu nyata (tidak ikut dipercepat 2×/3×).
  */
 import { acakBerbenih } from './dunia-visual';
@@ -21,14 +22,20 @@ export interface PartikelKembangApi {
   readonly warna: number;
 }
 
-/** Warna ledakan (hex); adegan menggambarnya lebih terang dari 1 supaya berpendar (bloom). */
-export const WARNA_KEMBANG_API: readonly number[] = [0xffd447, 0xff4d4d, 0x4ade80, 0x38bdf8, 0xf472b6, 0xffffff];
+/**
+ * Warna ledakan (hex). Malam hari adegan menggambarnya lebih terang dari 1 supaya
+ * berpendar (bloom); siang hari apa adanya, jadi tanpa putih: di langit terang
+ * putih dan biru muda hilang (rancangan ronde 2 bagian 3.1).
+ */
+export const WARNA_KEMBANG_API: readonly number[] = [0xffd447, 0xff4d4d, 0x4ade80, 0x2563eb, 0xf472b6, 0xf97316];
 
 const PARTIKEL_PER_LEDAKAN = 56;
 /** Paling banyak partikel hidup bersamaan (ukuran InstancedMesh). */
 export const MAKS_PARTIKEL = 320;
 const GRAVITASI = 1.8;
 const HAMBATAN = 1.4;
+/** Kembang api kecil di titik hiasan level: letupan, sebaran pusat letupan, dan pengali laju (bunga lebih kecil). */
+const KECIL = { letupan: 3, sebaran: 1.0, laju: 0.6 } as const;
 
 interface Ledakan {
   readonly t: number;
@@ -36,6 +43,7 @@ interface Ledakan {
   readonly y: number;
   readonly h: number;
   readonly warna: number;
+  readonly laju: number;
 }
 
 export class KembangApi {
@@ -59,6 +67,24 @@ export class KembangApi {
         y: y + (this.acak() - 0.5) * 6,
         h: h + (this.acak() - 0.5) * 1.2,
         warna: Math.floor(this.acak() * WARNA_KEMBANG_API.length),
+        laju: 1,
+      });
+    }
+  }
+
+  /** Tiga letupan kecil rapat di sekitar (x, y, h): penanda hiasan level yang baru muncul. */
+  rayakanKecil(x: number, y: number, h: number, benih = 5): void {
+    const acak = acakBerbenih(benih);
+    // Warna berurutan dari titik acak: tiga letupan selalu berbeda warna.
+    const warna = Math.floor(acak() * WARNA_KEMBANG_API.length);
+    for (let i = 0; i < KECIL.letupan; i++) {
+      this.jadwal.push({
+        t: this.waktu + 0.1 + i * 0.45,
+        x: x + (acak() * 2 - 1) * KECIL.sebaran,
+        y: y + (acak() * 2 - 1) * KECIL.sebaran,
+        h: h + (acak() - 0.5) * 0.6,
+        warna: (warna + i * 2) % WARNA_KEMBANG_API.length,
+        laju: KECIL.laju,
       });
     }
   }
@@ -95,7 +121,7 @@ export class KembangApi {
       const z = 2 * this.acak() - 1;
       const sudut = this.acak() * Math.PI * 2;
       const r = Math.sqrt(1 - z * z);
-      const laju = 4.0 + this.acak() * 1.2;
+      const laju = (4.0 + this.acak() * 1.2) * l.laju;
       this.partikel.push({
         x: l.x,
         y: l.y,

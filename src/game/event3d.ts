@@ -5,8 +5,11 @@
  *   - HUT RI: bendera merah-putih kecil di sepanjang median jalan raya;
  *   - Nataru: lampu warna-warni di sepanjang tepi bawah balok gapura.
  * Tiap event satu grup mesh yang dibangun sekali; hanya visibilitasnya ditukar.
+ * Spanduk Musim Terminal (config/hiasan-musim.ts) memakai tempat & geometri spanduk event; grupnya dibangun
+ * saat pertama dipakai. Event menang (lihat spandukMusim di musim-adegan.ts), jadi keduanya tidak tampil bersamaan.
  */
 import * as THREE from 'three';
+import { SPANDUK_MUSIM, type SpandukMusim } from '../config/hiasan-musim';
 import type { EventId } from '../sim/fitur';
 import { GAPURA } from './gedung3d';
 import { kotak, Kumpulan, persegiTegak, silinder } from './geometri';
@@ -32,26 +35,16 @@ const bahan = (warna: number, opsi: THREE.MeshStandardMaterialParameters = {}): 
 export class HiasanEvent {
   readonly objek = new THREE.Group();
   private readonly grup = new Map<EventId, THREE.Group>();
+  /** Spanduk musim per id hiasan, dibangun saat pertama dipakai. */
+  private readonly grupMusim = new Map<string, THREE.Group>();
   private aktif: EventId | null | undefined = undefined;
+  private musimAktif: string | null | undefined = undefined;
 
-  constructor(m: PustakaMaterial) {
-    const P = GAPURA;
-    const xa = P.x0 + P.pilar + 0.36;
-    const xb = P.x1 - P.pilar - 0.36;
-    const yDepan = P.y1 + 0.03;
+  constructor(private readonly m: PustakaMaterial) {
     for (const id of Object.keys(SPANDUK) as EventId[]) {
       const g = new THREE.Group();
       const k = new Kumpulan();
-      const sp = SPANDUK[id];
-      const tulisan = m.teks(sp.teks, { lebar: 1024, tinggi: 96, latar: sp.latar, warna: sp.warna, ukuranHuruf: 52 });
-      k.tambah(tulisan.material, persegiTegak([xa, yDepan], [xb, yDepan], H_SPANDUK.bawah, H_SPANDUK.atas, tulisan.uv, 0), { bayangan: false });
-      // Tali pengikat spanduk ke pilar.
-      for (const [x0, x1] of [
-        [P.x0 + P.pilar, xa],
-        [xb, P.x1 - P.pilar],
-      ] as const) {
-        for (const h of [H_SPANDUK.bawah + 0.02, H_SPANDUK.atas - 0.02]) k.tambah(m.besiGelap, kotak(x0, yDepan - 0.005, x1, yDepan + 0.005, h - 0.006, h + 0.006), { bayangan: false });
-      }
+      this.spanduk(k, SPANDUK[id]);
       if (id === 'mudikLebaran') this.ketupat(k, m);
       if (id === 'hutRi') this.bendera(k, m);
       if (id === 'nataru') this.lampu(k);
@@ -59,6 +52,22 @@ export class HiasanEvent {
       g.visible = false;
       this.grup.set(id, g);
       this.objek.add(g);
+    }
+  }
+
+  /** Spanduk bertulisan di antara pilar gapura dengan tali pengikat ke pilar (event & musim memakai yang sama). */
+  private spanduk(k: Kumpulan, sp: SpandukMusim): void {
+    const P = GAPURA;
+    const xa = P.x0 + P.pilar + 0.36;
+    const xb = P.x1 - P.pilar - 0.36;
+    const yDepan = P.y1 + 0.03;
+    const tulisan = this.m.teks(sp.teks, { lebar: 1024, tinggi: 96, latar: sp.latar, warna: sp.warna, ukuranHuruf: 52 });
+    k.tambah(tulisan.material, persegiTegak([xa, yDepan], [xb, yDepan], H_SPANDUK.bawah, H_SPANDUK.atas, tulisan.uv, 0), { bayangan: false });
+    for (const [x0, x1] of [
+      [P.x0 + P.pilar, xa],
+      [xb, P.x1 - P.pilar],
+    ] as const) {
+      for (const h of [H_SPANDUK.bawah + 0.02, H_SPANDUK.atas - 0.02]) k.tambah(this.m.besiGelap, kotak(x0, yDepan - 0.005, x1, yDepan + 0.005, h - 0.006, h + 0.006), { bayangan: false });
     }
   }
 
@@ -115,10 +124,24 @@ export class HiasanEvent {
     bola.dispose();
   }
 
-  /** @param id event yang sedang berlangsung, null = tidak ada. */
-  perbarui(id: EventId | null): void {
-    if (id === this.aktif) return;
+  /**
+   * @param id event yang sedang berlangsung, null = tidak ada.
+   * @param spandukMusim id spanduk musim yang tampil (lihat spandukMusim, sudah null selama event), null = tidak ada.
+   */
+  perbarui(id: EventId | null, spandukMusim: string | null = null): void {
+    if (id === this.aktif && spandukMusim === this.musimAktif) return;
     this.aktif = id;
+    this.musimAktif = spandukMusim;
     for (const [e, g] of this.grup) g.visible = e === id;
+    const sp = spandukMusim === null ? undefined : SPANDUK_MUSIM[spandukMusim];
+    if (spandukMusim !== null && sp && !this.grupMusim.has(spandukMusim)) {
+      const g = new THREE.Group();
+      const k = new Kumpulan();
+      this.spanduk(k, sp);
+      k.bangun(g);
+      this.grupMusim.set(spandukMusim, g);
+      this.objek.add(g);
+    }
+    for (const [s, g] of this.grupMusim) g.visible = s === spandukMusim;
   }
 }

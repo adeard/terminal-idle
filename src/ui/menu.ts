@@ -13,10 +13,18 @@ import { KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, TARIF_IDS, TEKNOLOGI_IDS, t
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import type { AreaId } from '../sim/operasi';
 import { keHexCss, WARNA_AREA as WARNA_AREA_ANGKA, WARNA_TAHAP } from '../config/tema';
+import { sasaranTugas, type SasaranTujuan } from './baris-tujuan';
 import { formatAngka, formatDurasi, formatUang, formatUangBertanda } from './format';
-import type { ModelBangunan, ModelBuku, ModelMingguan, ModelMitra, ModelPoTerdaftar, ModelPoTersedia, ModelTampilan, ModelTantangan, ModelTarif } from './model';
+import { urutanKartuTarget, type KartuTarget, type ModelBangunan, type ModelBuku, type ModelMingguan, type ModelMitra, type ModelMusim, type ModelPoTerdaftar, type ModelPoTersedia, type ModelTampilan, type ModelTantangan, type ModelTarif, type ModelTugas } from './model';
+import { tampilkanPopupSuratArmada } from './popup-musim';
 import {
+  angkaTugas,
   labelGandaTarget,
+  NAMA_SLOT_HIASAN,
+  NAMA_TEMA_MUSIM,
+  teksHadiahMusim,
+  teksTugas,
+  varianHiasan,
   namaKelas,
   NAMA_AREA,
   NAMA_BANGUNAN,
@@ -1053,6 +1061,186 @@ function buatKartuRekor(): { readonly elemen: HTMLElement; perbarui(m: ModelTamp
 }
 
 // ---------------------------------------------------------------------------
+// Musim Terminal (documents/17 bagian 7.1 & 8): kartu teratas tab Target
+
+const HARI_MS = 86_400_000;
+const MS_SOROT_TUAS = 3000;
+
+/**
+ * Tuas "›" dari kartu musim: buka tab tujuannya lewat tombol tab di panel yang sama, lalu sorot & gulir ke
+ * sasarannya sebentar (sama dengan ketukan baris tujuan, ui/overlay.ts). Tidak pernah menjalankan aksi.
+ */
+function bukaSasaranPanel(asal: HTMLElement, s: SasaranTujuan): void {
+  const panel = asal.closest<HTMLElement>('.panel-daftar');
+  if (!panel) return;
+  panel.querySelector<HTMLElement>(`.tab[data-tab="${s.tab}"]`)?.click();
+  const cari = (sel: string): HTMLElement | undefined => [...panel.querySelectorAll<HTMLElement>(sel)].find((e) => e.getClientRects().length > 0);
+  const e = cari(s.selektor) ?? (s.cadangan ? cari(s.cadangan) : undefined);
+  if (!e) return;
+  e.classList.add('sorot-tutorial');
+  const halus = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  e.scrollIntoView({ block: 'nearest', behavior: halus ? 'smooth' : 'auto' });
+  const lepas = (): void => {
+    window.clearTimeout(timer);
+    e.classList.remove('sorot-tutorial');
+    e.removeEventListener('click', lepas);
+  };
+  const timer = window.setTimeout(lepas, MS_SOROT_TUAS);
+  e.addEventListener('click', lepas);
+}
+
+interface BarisTugas {
+  readonly elemen: HTMLElement;
+  perbarui(t: ModelTugas, tiket: number): void;
+}
+
+function buatBarisTugas(kirim: Kirim, bukaKepuasan?: () => void): BarisTugas {
+  const elemen = el('div', 'musim-tugas');
+  const label = el('div', 'musim-label');
+  const bilah = el('div', 'tantangan-bilah musim-bilah-tugas');
+  const bar = el('div', 'bar');
+  const isi = el('div', 'bar-isi');
+  bar.append(isi);
+  const angka = el('span', 'musim-angka');
+  bilah.append(bar, angka);
+  const tuas = el('button', 'musim-tuas', '›');
+  tuas.type = 'button';
+  tuas.setAttribute('aria-label', TEKS.musimTuas);
+  tuas.title = TEKS.musimTuas;
+  const ganti = el('button', 'tombol musim-ganti');
+  ganti.type = 'button';
+  elemen.append(label, tuas, ganti, bilah);
+  let kini: ModelTugas | null = null;
+  tuas.addEventListener('click', () => {
+    if (!kini) return;
+    const s = sasaranTugas(kini);
+    if (s && 'popup' in s) bukaKepuasan?.();
+    else if (s) bukaSasaranPanel(elemen, s);
+  });
+  ganti.addEventListener('click', () => {
+    if (kini?.ganti) kirim({ jenis: 'gantiTugas', indeks: kini.indeks, cara: kini.ganti });
+  });
+  return {
+    elemen,
+    perbarui(t, tiket) {
+      kini = t;
+      elemen.dataset['indeks'] = String(t.indeks);
+      elemen.dataset['templat'] = t.templat;
+      elemen.classList.toggle('selesai', t.selesai);
+      const teks = teksTugas(t);
+      setTeks(label, teks);
+      if (label.title !== teks) label.title = teks;
+      setStyle(isi, 'width', `${((t.selesai ? 1 : t.rasio) * 100).toFixed(1)}%`);
+      setTeks(angka, angkaTugas(t));
+      const s = sasaranTugas(t);
+      const adaTuas = !t.selesai && s !== null && (!('popup' in s) || bukaKepuasan !== undefined);
+      tuas.classList.toggle('kosong', !adaTuas);
+      setDisabled(tuas, !adaTuas);
+      setHidden(ganti, t.selesai || t.ganti === null);
+      setTeks(ganti, t.ganti === 'tiket' ? TEKS.musimGantiTiket : TEKS.musimGanti);
+      const judulGanti = TEKS.musimGantiJudul(t.ganti === 'tiket' ? TEKS.musimGantiPakaiTiket(tiket) : TEKS.musimGantiGratis);
+      if (ganti.title !== judulGanti) ganti.title = judulGanti;
+    },
+  };
+}
+
+/** Kartu Musim Terminal: kepala, bilah poin, hadiah berikutnya, tugas hari ini & kemarin, hiasan, Surat Armada. */
+function buatKartuMusim(kirim: Kirim, bukaKepuasan?: () => void): { readonly elemen: HTMLElement; perbarui(m: ModelMusim | null): void } {
+  const elemen = el('div', 'target-kartu kartu-kolom musim-kartu');
+  elemen.dataset['kartu'] = 'musim';
+  const kepala = el('div', 'target-judul musim-kepala');
+  const bilah = el('div', 'tantangan-bilah');
+  const bar = el('div', 'bar');
+  const isi = el('div', 'bar-isi');
+  bar.append(isi);
+  const poin = el('span', 'musim-angka musim-poin');
+  bilah.append(bar, poin);
+  const berikut = el('div', 'target-hadiah musim-berikut');
+  const judulHariIni = el('div', 'musim-subjudul');
+  const daftarHariIni = el('div', 'musim-daftar');
+  const semuaSelesai = el('div', 'kelas-berikut musim-semua', TEKS.musimSemuaSelesai);
+  const judulKemarin = el('div', 'musim-subjudul', TEKS.musimTugasKemarin);
+  const daftarKemarin = el('div', 'musim-daftar');
+  const catatan = el('div', 'kelas-berikut', TEKS.musimCatatan);
+  const judulHiasan = el('div', 'musim-subjudul', TEKS.musimHiasanJudul);
+  const daftarHiasan = el('div', 'musim-hiasan');
+  const surat = el('div', 'musim-surat');
+  const suratTeks = el('div', 'musim-surat-teks');
+  const suratJudul = el('div', 'musim-surat-judul');
+  suratTeks.append(suratJudul, el('div', 'kelas-berikut', TEKS.musimSuratKet));
+  const suratTombol = el('button', 'tombol tombol-hijau musim-pakai', TEKS.musimSuratPakai);
+  suratTombol.type = 'button';
+  surat.append(suratTeks, suratTombol);
+  // Surat Armada (satu-satunya alasan titik tab Target dari Musim) tepat di bawah hadiah berikutnya, terlihat tanpa menggulir (P-8).
+  elemen.append(kepala, bilah, berikut, surat, judulHariIni, daftarHariIni, semuaSelesai, judulKemarin, daftarKemarin, catatan, judulHiasan, daftarHiasan);
+  const barisHariIni: BarisTugas[] = [];
+  const barisKemarin: BarisTugas[] = [];
+  let kini: ModelMusim | null = null;
+  let kunciHiasan = '';
+  suratTombol.addEventListener('click', () => {
+    if (!kini || kini.suratArmada < 1) return;
+    const akar = elemen.closest<HTMLElement>('#ui') ?? document.body;
+    void tampilkanPopupSuratArmada(akar, kini.suratPo).then((po) => {
+      if (po) kirim({ jenis: 'pakaiSuratArmada', po });
+    });
+  });
+  const isiDaftar = (wadah: HTMLElement, baris: BarisTugas[], tugas: readonly ModelTugas[], tiket: number): void => {
+    tugas.forEach((t, i) => {
+      let b = baris[i];
+      if (!b) {
+        b = buatBarisTugas(kirim, bukaKepuasan);
+        baris[i] = b;
+        wadah.append(b.elemen);
+      }
+      setHidden(b.elemen, false);
+      b.perbarui(t, tiket);
+    });
+    for (let i = tugas.length; i < baris.length; i++) setHidden(baris[i]!.elemen, true);
+  };
+  return {
+    elemen,
+    perbarui(m) {
+      kini = m;
+      setHidden(elemen, m === null);
+      if (!m) return;
+      const tema = NAMA_TEMA_MUSIM[m.tema];
+      elemen.dataset['tema'] = m.tema;
+      const sisa = Math.max(1, Math.ceil((m.selesaiMs - Date.now()) / HARI_MS));
+      setTeks(kepala, TEKS.musimKepala(tema.ikon, tema.nama, m.tingkat, sisa));
+      setStyle(isi, 'width', `${(m.rasio * 100).toFixed(1)}%`);
+      setTeks(poin, m.batasBerikut !== null ? TEKS.musimBilah(formatAngka(m.poin), formatAngka(m.batasBerikut)) : TEKS.musimPoin(formatAngka(m.poin)));
+      const b = m.berikut;
+      setTeks(berikut, b ? TEKS.musimBerikut(b.tingkat, b.hadiah.map((h) => teksHadiahMusim(h, m.tema, m.tahun)).join(' + ')) : TEKS.musimIstimewa(tema.nama));
+      setTeks(judulHariIni, TEKS.musimTugasHariIni(m.selesaiHariIni, m.hariIni.length));
+      isiDaftar(daftarHariIni, barisHariIni, m.hariIni, m.tiketGanti);
+      setHidden(semuaSelesai, m.hariIni.length === 0 || m.selesaiHariIni < m.hariIni.length);
+      setHidden(judulKemarin, m.kemarin.length === 0);
+      isiDaftar(daftarKemarin, barisKemarin, m.kemarin, m.tiketGanti);
+      // Hiasan: baris dibuat ulang hanya saat koleksi atau yang dipakai berubah.
+      const kunci = m.hiasan.map((h) => `${h.item}:${h.dipakai}`).join(',');
+      if (kunci !== kunciHiasan) {
+        kunciHiasan = kunci;
+        daftarHiasan.replaceChildren(
+          ...m.hiasan.map((h) => {
+            const baris = el('div', 'musim-hiasan-baris');
+            baris.classList.toggle('dipakai', h.dipakai);
+            const tombol = el('button', `tombol ${h.dipakai ? 'tombol-kedua' : 'tombol-hijau'} musim-pakai`, h.dipakai ? TEKS.musimLepas : TEKS.musimPakai);
+            tombol.type = 'button';
+            tombol.addEventListener('click', () => kirim({ jenis: 'pakaiHiasan', slot: h.slot, item: h.dipakai ? null : h.item }));
+            baris.append(el('span', 'musim-hiasan-nama', TEKS.musimHiasanBaris(NAMA_SLOT_HIASAN[h.slot], varianHiasan(h.item))), tombol);
+            return baris;
+          }),
+        );
+      }
+      setHidden(judulHiasan, m.hiasan.length === 0);
+      setHidden(daftarHiasan, m.hiasan.length === 0);
+      setHidden(surat, m.suratArmada < 1);
+      setTeks(suratJudul, TEKS.musimSurat(m.suratArmada));
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Target harian & penghargaan
 
 export interface OpsiTabTarget {
@@ -1118,9 +1306,17 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
   tombolKanan.append(gandaTarget.tombol, tombolTarget);
   kartu.append(kiri, tombolKanan);
   const judulPenghargaan = el('div', 'judul-bagian', TEKS.penghargaan);
+  const kartuMusim = buatKartuMusim(kirim, bukaKepuasan);
   const kartuTantangan = buatKartuTantangan(kirim, bukaKepuasan);
   const kartuRekor = buatKartuRekor();
-  elemen.append(kartuEvent, kartu, kartuTantangan.elemen, ...(kartuPeringkat ? [kartuPeringkat.elemen] : []), kartuRekor.elemen, judulPenghargaan);
+  elemen.append(kartuMusim.elemen, kartuEvent, kartu, kartuTantangan.elemen, ...(kartuPeringkat ? [kartuPeringkat.elemen] : []), kartuRekor.elemen, judulPenghargaan);
+  // Kartu yang bisa diklaim naik di atas kartu Musim (P-4); tanpa klaim, kartu Musim teratas.
+  const kartuAtas: Readonly<Record<KartuTarget, HTMLElement>> = { musim: kartuMusim.elemen, event: kartuEvent, target: kartu, tantangan: kartuTantangan.elemen };
+  const susunKartuAtas = (urut: readonly KartuTarget[]): void => {
+    if (urut.every((k, i) => elemen.children[i] === kartuAtas[k])) return;
+    const sesudah = elemen.children[urut.length] ?? null;
+    for (const k of urut) elemen.insertBefore(kartuAtas[k], sesudah);
+  };
   const baris = PENCAPAIAN_IDS.map((id: PencapaianId) => {
     const r = baris3(IKON_PIALA, NAMA_PENCAPAIAN[id].nama, 'penghargaan');
     setTeks(r.keterangan, NAMA_PENCAPAIAN[id].deskripsi);
@@ -1134,6 +1330,8 @@ export function buatTabTarget(kirim: Kirim, o: OpsiTabTarget = {}): IsiTab {
   return {
     elemen,
     perbarui(m) {
+      susunKartuAtas(urutanKartuTarget(m));
+      kartuMusim.perbarui(m.musim);
       kartuTantangan.perbarui(m.mingguan);
       kartuPeringkat?.perbarui(m);
       kartuRekor.perbarui(m);

@@ -7,7 +7,9 @@ import { EKONOMI, type KonfigEkonomi, type TingkatPo } from '../config/economy.c
 import { WAKTU } from '../config/waktu.config';
 import { izinBerikut, levelIzinBerikut, menurutTahap, petakBus, pengaliBiayaKelas, perawatanHarian, type Izin } from '../sim/bangunan';
 import { cuacaTerminalState } from '../sim/cuaca';
-import { BANGUNAN_IDS, EVENT_IDS, KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, PO_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type EventId, type JenisTarget, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
+import { MUSIM, SLOT_HIASAN, type KonfigMusim, type SlotHiasan, type TemaMusimId, type TemplatTugas } from '../config/musim.config';
+import { BANGUNAN_IDS, EVENT_IDS, isPoId, KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, PO_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type EventId, type JenisTarget, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
+import { caraGanti, hadiahBerikut, musimDariId, peringkatTuas, slotHiasan, tingkatRapor, tuasTugas, xpSuratArmada, type AksiTuas, type HadiahMusim, type TugasAktif, type TuasTugas } from '../sim/musim';
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import { kelasDariLevel, levelMinimalKelas, xpKumulatifTerminal } from '../sim/level-terminal';
 import { jurusanAktif, kelasAktif, levelPoDariXp, nilaiJurusan, nilaiTiketPo, urutanPo, xpKumulatifPo, xpLevelPo, type TawaranKontrak } from '../sim/mitra';
@@ -67,7 +69,7 @@ import {
 import type { TahapId } from '../sim/tahap';
 import type { JenisTantangan } from '../sim/tantangan';
 import { keramaianTerminal, tingkatKeramaian, waktuTerminalState, type TingkatKeramaian } from '../sim/waktu';
-import { NAMA_HARI } from './teks';
+import { hurufJudul, NAMA_HARI } from './teks';
 
 /** Urutan area di ringkasan kapasitas (alur penumpang & bus). */
 export { AREA_IDS };
@@ -487,10 +489,68 @@ export interface ModelTampilan {
   readonly pencapaian: readonly ModelPencapaian[];
   /** Hadiah pencapaian (sama untuk semua, sebanding laba sekarang). */
   readonly hadiahPencapaian: number;
-  /** Banyaknya hadiah yang siap diklaim (target + pencapaian + tantangan + event), untuk lencana tab. */
+  /** Banyaknya hadiah yang siap diklaim (target + pencapaian + tantangan + event, + Surat Armada yang belum dipakai), untuk lencana tab. */
   readonly jumlahKlaim: number;
   /** Petugas yang pernah berhenti karena kas habis (notifikasi saat bertambah). */
   readonly petugasBerhenti: number;
+  /** Musim Terminal (kartu teratas tab Target); null = belum terbuka. */
+  readonly musim: ModelMusim | null;
+}
+
+/** Satu tugas musim (kartu musim & baris tujuan). */
+export interface ModelTugas {
+  /** Indeks di state.musim.tugas (aksi gantiTugas). */
+  readonly indeks: number;
+  readonly hari: string;
+  readonly templat: TemplatTugas;
+  readonly target: number;
+  readonly progres: number;
+  readonly rasio: number;
+  readonly selesai: boolean;
+  /** Lihat TugasAktif.param. */
+  readonly param: number | string | null;
+  /** Tugas kota: nama kotanya (huruf judul). */
+  readonly kota: string | null;
+  /** Tugas poTerendah: PO itu. */
+  readonly po: PoId | null;
+  /** Cara ganti yang bisa dipakai sekarang (null = tidak bisa). */
+  readonly ganti: 'gratis' | 'tiket' | null;
+  /** Tuas "›": aksi yang memajukan tugas ini, laporan keuangan, atau popup kepuasan (null = tanpa tuas). */
+  readonly tuas: TuasTugas | null;
+}
+
+/** PO pilihan Surat Armada: level sekarang & sesudah armada +½ level. */
+export interface ModelSuratPo {
+  readonly po: PoId;
+  readonly level: number;
+  readonly levelSesudah: number;
+  /** Kemajuan menuju level berikutnya sesudahnya (0–1). */
+  readonly rasioSesudah: number;
+}
+
+export interface ModelMusim {
+  readonly id: string;
+  readonly tema: TemaMusimId;
+  readonly tahun: number;
+  /** Akhir musim (ms epoch), untuk "sisa N hari". */
+  readonly selesaiMs: number;
+  readonly poin: number;
+  readonly tingkat: number;
+  readonly tingkatMaks: number;
+  /** Poin tingkat berikutnya (bilah "315/360 poin"); null di tingkat terakhir. */
+  readonly batasBerikut: number | null;
+  /** Kemajuan di dalam tingkat ini (0–1; 1 di tingkat terakhir). */
+  readonly rasio: number;
+  readonly berikut: { readonly tingkat: number; readonly hadiah: readonly HadiahMusim[] } | null;
+  readonly hariIni: readonly ModelTugas[];
+  readonly kemarin: readonly ModelTugas[];
+  readonly selesaiHariIni: number;
+  readonly tiketGanti: number;
+  readonly suratArmada: number;
+  /** Hiasan yang dimiliki, urut slot. */
+  readonly hiasan: readonly { readonly slot: SlotHiasan; readonly item: string; readonly dipakai: boolean }[];
+  /** PO terdaftar untuk popup Surat Armada (kosong bila tidak ada surat). */
+  readonly suratPo: readonly ModelSuratPo[];
 }
 
 export function buatModel(state: GameState, cfg: KonfigEkonomi = EKONOMI): ModelTampilan {
@@ -553,6 +613,118 @@ export function buatModel(state: GameState, cfg: KonfigEkonomi = EKONOMI): Model
     terminal: modelTerminal(state, rata, cfg),
     ...modelTarget(state, hari, cfg),
     petugasBerhenti: state.keuangan.petugasBerhenti,
+    musim: modelMusim(state, cfg),
+  };
+}
+
+/** Kartu teratas tab Target yang urutannya berubah. */
+export type KartuTarget = 'musim' | 'event' | 'target' | 'tantangan';
+
+/**
+ * Urutan kartu teratas tab Target (playtest Citra P-4): event, target harian, dan tantangan yang sedang bisa
+ * diklaim tampil di atas kartu Musim, supaya tombol Klaim terlihat saat tab dibuka; sisanya di bawahnya, urut biasa.
+ */
+export function urutanKartuTarget(m: ModelTampilan): KartuTarget[] {
+  const klaim: Readonly<Record<Exclude<KartuTarget, 'musim'>, boolean>> = {
+    event: m.event?.bisaKlaim === true,
+    target: m.target.selesai && !m.target.diklaim,
+    tantangan: m.mingguan?.daftar.some((t) => t.selesai && !t.diklaim) === true,
+  };
+  const lain = ['event', 'target', 'tantangan'] as const;
+  return [...lain.filter((k) => klaim[k]), 'musim', ...lain.filter((k) => !klaim[k])];
+}
+
+/**
+ * Tuas tugas mahal dihitung (mencoba aksi), sedangkan model dibuat tiap pembaruan state. Dua simpanan per susunan
+ * terminal (objek `terminal` berganti saat membangun, merekrut, atau mengubah tarif): peringkat aksi (mahal, tidak
+ * bergantung pada kas) per susunan PO, level, perluasan, dan tugas; tuasnya (aksi pertama yang aman menurut kas
+ * sekarang, murah) dinilai ulang paling cepat tiap DETIK_TUAS detik main. `ModelTugas.tuas` dihitung saat dibaca,
+ * jadi hanya kartu Musim yang tampil yang membayarnya.
+ */
+const DETIK_TUAS = 5;
+const MAKS_SIMPANAN_TUAS = 32;
+const simpananPeringkat = new WeakMap<object, Map<string, readonly AksiTuas[]>>();
+const simpananTuas = new WeakMap<object, Map<string, TuasTugas | null>>();
+
+function ambilSimpanan<T>(simpanan: WeakMap<object, Map<string, T>>, kunciObjek: object, kunci: string, hitung: () => T): T {
+  let peta = simpanan.get(kunciObjek);
+  if (!peta) {
+    peta = new Map();
+    simpanan.set(kunciObjek, peta);
+  }
+  if (peta.has(kunci)) return peta.get(kunci)!;
+  if (peta.size >= MAKS_SIMPANAN_TUAS) peta.clear();
+  const nilai = hitung();
+  peta.set(kunci, nilai);
+  return nilai;
+}
+
+function tuasTersimpan(state: GameState, t: TugasAktif, cfg: KonfigEkonomi, cm: KonfigMusim): TuasTugas | null {
+  if (t.selesai) return null;
+  if (cfg !== EKONOMI || cm !== MUSIM) return tuasTugas(state, t, cfg, cm);
+  const po = state.mitra.terdaftar.map((p) => `${p.id}:${levelPo(p, cfg)}:${p.loket}`).join(',');
+  const tugas = `${t.hari}|${t.templat}|${String(t.param)}|${t.templat === 'perbaikan' ? t.progres : ''}`;
+  const kunciPeringkat = `${levelTerminal(state, cfg)}|${state.perkembangan.perluasan}|${po}|${tugas}`;
+  const peringkat = ambilSimpanan(simpananPeringkat, state.terminal, kunciPeringkat, () => peringkatTuas(state, t, cfg, cm));
+  const kunciTuas = `${Math.floor(state.statistik.waktuMainDetik / DETIK_TUAS)}|${kunciPeringkat}`;
+  return ambilSimpanan(simpananTuas, state.terminal, kunciTuas, () => tuasTugas(state, t, cfg, cm, peringkat));
+}
+
+/** Musim Terminal (documents/17 bagian 7.1, 8): null bila belum terbuka. */
+export function modelMusim(state: GameState, cfg: KonfigEkonomi = EKONOMI, cm: KonfigMusim = MUSIM): ModelMusim | null {
+  const m = state.musim;
+  const mu = m.id !== null ? musimDariId(m.id, cm) : null;
+  if (!mu) return null;
+  const tingkat = tingkatRapor(m.poin, cm);
+  const maks = cm.poin.tingkat;
+  const per = cm.poin.perTingkat;
+  const tugas = m.tugas.map((t, i): ModelTugas => {
+    const kota = t.templat === 'kota' && typeof t.param === 'number' ? t.param : null;
+    return {
+      indeks: i,
+      hari: t.hari,
+      templat: t.templat,
+      target: t.target,
+      progres: t.progres,
+      rasio: t.target > 0 ? Math.min(1, t.progres / t.target) : 1,
+      selesai: t.selesai,
+      param: t.param,
+      kota: kota !== null ? hurufJudul(cfg.jurusan[kota]?.nama ?? '') : null,
+      po: t.templat === 'poTerendah' && isPoId(t.param) ? t.param : null,
+      ganti: caraGanti(m, i, cm),
+      // Dihitung saat dibaca (kartu Musim yang tampil), lihat tuasTersimpan.
+      get tuas() {
+        return tuasTersimpan(state, t, cfg, cm);
+      },
+    };
+  });
+  const hariIni = tugas.filter((t) => t.hari === m.hariTugas);
+  const suratPo =
+    m.suratArmada > 0
+      ? state.mitra.terdaftar.map((p): ModelSuratPo => {
+          const xp = p.xp + xpSuratArmada(p.xp, cfg, cm);
+          const lv = levelPoDariXp(xp, cfg);
+          return { po: p.id, level: levelPo(p, cfg), levelSesudah: lv, rasioSesudah: Math.min(1, Math.max(0, (xp - xpKumulatifPo(lv, cfg)) / xpLevelPo(lv, cfg))) };
+        })
+      : [];
+  return {
+    id: mu.id,
+    tema: mu.tema,
+    tahun: mu.tahun,
+    selesaiMs: mu.selesaiMs,
+    poin: m.poin,
+    tingkat,
+    tingkatMaks: maks,
+    batasBerikut: tingkat < maks ? (tingkat + 1) * per : null,
+    rasio: tingkat < maks ? Math.min(1, (m.poin - tingkat * per) / per) : 1,
+    berikut: hadiahBerikut(tingkat, mu.tema, cm),
+    hariIni,
+    kemarin: tugas.filter((t) => t.hari !== m.hariTugas),
+    selesaiHariIni: hariIni.filter((t) => t.selesai).length,
+    tiketGanti: m.tiketGanti,
+    suratArmada: m.suratArmada,
+    hiasan: SLOT_HIASAN.flatMap((slot) => m.koleksi.filter((item) => slotHiasan(item, cm) === slot).map((item) => ({ slot, item, dipakai: m.pakai[slot] === item }))),
+    suratPo,
   };
 }
 
@@ -921,10 +1093,12 @@ function modelTarget(
     nama: state.profil.namaTerminal,
     kelas: kelasTerminal(state, cfg),
   };
+  // Titik tab Target untuk hadiah rapor yang masih menunggu pemain: Surat Armada yang belum dipakai (hiasan & tiket langsung diberikan).
   const jumlahKlaim =
     (bisaKlaimTarget(state) ? 1 : 0) +
     (bisaKlaimEv ? 1 : 0) +
     pencapaian.filter((p) => p.tercapai && !p.diklaim).length +
-    tg.daftar.filter((_, i) => bisaKlaimTantangan(state, i)).length;
+    tg.daftar.filter((_, i) => bisaKlaimTantangan(state, i)).length +
+    (state.musim.id !== null && state.musim.suratArmada > 0 ? 1 : 0);
   return { event, mingguan, rekor, peringkat, target, pencapaian, hadiahPencapaian: hadiahMenit(state, cfg.hadiahMenitPencapaian, cfg), jumlahKlaim };
 }

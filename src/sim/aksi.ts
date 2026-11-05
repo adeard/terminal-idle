@@ -4,6 +4,7 @@
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import type { BangunanId, PencapaianId, PetugasId, PoId, TarifId, TeknologiId } from './fitur';
+import { gantiTugas, nilaiTugasKelola, pakaiHiasan, pakaiSuratArmada, tutupRapor, tutupSambutanMusim, type SlotHiasan } from './musim';
 import {
   aktifkanBoost,
   aturIkutPeringkat,
@@ -74,10 +75,27 @@ export type Aksi =
   /** Ganti nama terminal (profil pemain). */
   | { readonly jenis: 'aturNamaTerminal'; readonly nama: string }
   /** Ikut/keluar papan peringkat (lihat app/peringkat.ts; keluar dikirim setelah server menghapus skornya). */
-  | { readonly jenis: 'aturIkutPeringkat'; readonly ikut: boolean };
+  | { readonly jenis: 'aturIkutPeringkat'; readonly ikut: boolean }
+  // Musim Terminal (sim/musim.ts, documents/17). Tidak ada yang mengubah kas.
+  /** Ganti tugas harian ke-`indeks` (musim.tugas): gratis sekali sehari, lalu dengan tiket. */
+  | { readonly jenis: 'gantiTugas'; readonly indeks: number; readonly cara: 'gratis' | 'tiket' }
+  /** Pakai hiasan yang dimiliki di slotnya, atau lepas (null). */
+  | { readonly jenis: 'pakaiHiasan'; readonly slot: SlotHiasan; readonly item: string | null }
+  /** Surat Armada untuk PO terdaftar pilihan pemain (+½ level). */
+  | { readonly jenis: 'pakaiSuratArmada'; readonly po: PoId }
+  | { readonly jenis: 'tutupRapor' }
+  | { readonly jenis: 'tutupSambutanMusim' };
 
-/** Mengembalikan state yang sama persis kalau aksi tidak berlaku (mis. kas kurang). */
+/**
+ * Mengembalikan state yang sama persis kalau aksi tidak berlaku (mis. kas kurang). Aksi yang berlaku
+ * juga menilai tugas kelola musim (bangun, daftar PO, perbaikan kepuasan; lihat nilaiTugasKelola).
+ */
 export function terapkanAksi(state: GameState, aksi: Aksi, cfg: KonfigEkonomi = EKONOMI): GameState {
+  const baru = terapkan(state, aksi, cfg);
+  return baru === state ? baru : nilaiTugasKelola(baru, aksi.jenis, cfg);
+}
+
+function terapkan(state: GameState, aksi: Aksi, cfg: KonfigEkonomi): GameState {
   switch (aksi.jenis) {
     case 'bangun':
       return bangun(state, aksi.bangunan, aksi.po ?? null, cfg);
@@ -127,5 +145,15 @@ export function terapkanAksi(state: GameState, aksi: Aksi, cfg: KonfigEkonomi = 
       return aturNamaTerminal(state, aksi.nama);
     case 'aturIkutPeringkat':
       return aturIkutPeringkat(state, aksi.ikut);
+    case 'gantiTugas':
+      return gantiTugas(state, aksi.indeks, aksi.cara, cfg);
+    case 'pakaiHiasan':
+      return pakaiHiasan(state, aksi.slot, aksi.item);
+    case 'pakaiSuratArmada':
+      return pakaiSuratArmada(state, aksi.po, cfg);
+    case 'tutupRapor':
+      return tutupRapor(state);
+    case 'tutupSambutanMusim':
+      return tutupSambutanMusim(state);
   }
 }

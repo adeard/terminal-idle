@@ -35,6 +35,7 @@ import {
   tinggiTanggaL2,
   type BlokKursiL2,
   type JendelaL2,
+  type KiosTeras,
 } from './tata-letak';
 
 const PENUH = { u0: 0, v0: 0, u1: 1, v1: 1 } as const;
@@ -233,7 +234,7 @@ function papanLantai2(k: Kumpulan, m: PustakaMaterial): void {
 // Isi per unit
 
 /** Warna vertex satu warna; uv dibuang kecuali diminta (bahan vertex color tidak memakainya). */
-function warnai(g: THREE.BufferGeometry, hex: number, simpanUv = false): THREE.BufferGeometry {
+export function warnai(g: THREE.BufferGeometry, hex: number, simpanUv = false): THREE.BufferGeometry {
   const c = new THREE.Color(hex);
   const n = g.getAttribute('position').count;
   const warna = new Float32Array(n * 3);
@@ -244,7 +245,7 @@ function warnai(g: THREE.BufferGeometry, hex: number, simpanUv = false): THREE.B
 }
 
 /** Balok tanpa sisi bawah (tidak pernah terlihat): 10 segitiga, bukan 12. */
-function balok(x0: number, y0: number, x1: number, y1: number, h0: number, h1: number, hex: number): THREE.BufferGeometry {
+export function balok(x0: number, y0: number, x1: number, y1: number, h0: number, h1: number, hex: number): THREE.BufferGeometry {
   const g = kotak(x0, y0, x1, y1, h0, h1);
   const indeks = Array.from(g.index!.array);
   // Urutan sisi BoxGeometry: +x, −x, +y, −y, +z, −z (6 indeks per sisi).
@@ -256,7 +257,15 @@ function balok(x0: number, y0: number, x1: number, y1: number, h0: number, h1: n
 const HEX = { panel: 0xeef1f4, besiGelap: 0x3b4149, besi: 0x9aa3ad, granit: 0x3c424b, kursi: [0x1f5fd0, 0x0e8f8a], layar: 0x1a2027 } as const;
 
 /** Blok unit: nomor unit tiap benda yang muncul per unit (lihat KumpulanUnit). */
-const UNIT = { tetap: 0, jendela: 100, pintu: 200, papanSewa: 300, papanKosong: 400, tutup: 500, kursi: 600, pintuKios: 700, petugas: 800, pembeli: 900, duduk: 1000, makan: 1100, penjagaKios: 1200 } as const;
+const UNIT = { tetap: 0, jendela: 100, pintu: 200, papanSewa: 300, papanKosong: 400, tutup: 500, kursi: 600, pintuKios: 700, petugas: 800, pembeli: 900, duduk: 1000, makan: 1100, penjagaKios: 1200, tenda: 1300 } as const;
+
+/**
+ * Tenda bergaris di atas kios teras yang sudah dibangun (urut KIOS_TERAS), kontras dengan badan
+ * kiosnya: merah-putih di kios biru muda, hijau-putih di kios merah muda. Petunjuk "kios ini bisa
+ * dibuka" yang terlihat di HP; pintu gulung tetap menandai tutup.
+ */
+const WARNA_TENDA: readonly number[] = [0xdc2626, 0x15803d];
+const TENDA = { lajur: 6, tepi: 0.05, hDepan: 0.04, naik: 0.32, lis: 0.06 } as const;
 
 /** Baris & kolom kursi yang diduduki tiap blok lantai 2. */
 const DUDUK_BLOK: readonly (readonly [number, number])[] = [
@@ -307,6 +316,29 @@ function mejaBundar(k: KumpulanUnit, bahan: THREE.Material, x: number, y: number
   for (const [dx, dy] of bangku) k.tambah(UNIT.tetap, bahan, warnai(silinder(x + dx, y + dy, h0, h0 + 0.095, 0.05, 0.05, 6), HEX.kursi[1]), POLOS);
 }
 
+/** Bidang miring menghadap atas & selatan: dari tepi depan (yDepan, hDepan) naik ke tepi belakang (yBelakang < yDepan). */
+function bidangMiring(x0: number, x1: number, yDepan: number, hDepan: number, yBelakang: number, hBelakang: number, hex: number): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([x0, hDepan, yDepan, x1, hDepan, yDepan, x1, hBelakang, yBelakang, x0, hDepan, yDepan, x1, hBelakang, yBelakang, x0, hBelakang, yBelakang], 3));
+  g.computeVertexNormals();
+  return warnai(g, hex);
+}
+
+/**
+ * Tenda kios teras: atap miring bergaris di atas atap kios, naik ke belakang, dengan lis depan.
+ * Sengaja di atas atap, bukan menjorok di muka kios: dari kamera normal tenda yang menjorok
+ * menutup papan nama dan pintu gulung (penanda tutup) di bawahnya.
+ */
+function tenda(k: KumpulanUnit, unit: number, bahan: THREE.Material, f: KiosTeras, hex: number): void {
+  const { lajur, tepi, hDepan, naik, lis } = TENDA;
+  const [x0, x1] = [f.x0 - tepi, f.x1 + tepi];
+  const [yDepan, yBelakang] = [f.y1 + 0.08, f.y0 - 0.04];
+  const h = f.hAtap + hDepan;
+  const w = (x1 - x0) / lajur;
+  for (let i = 0; i < lajur; i++) k.tambah(unit, bahan, bidangMiring(x0 + i * w, x0 + (i + 1) * w, yDepan, h, yBelakang, h + naik, i % 2 === 0 ? hex : HEX.panel), POLOS);
+  k.tambah(unit, bahan, balok(x0, yDepan - 0.02, x1, yDepan + 0.01, h - lis, h + 0.01, hex), POLOS);
+}
+
 const BANGKU_MEJA: readonly (readonly [number, number])[] = [
   [-0.2, 0],
   [0.2, 0],
@@ -346,6 +378,7 @@ export class IsiSayap2 {
       k.tambah(UNIT.tetap, warna, warnai(silinder(x, y, H_LANTAI_2 + 0.175, 1.92, 0.012, 0.012, 4), HEX.besiGelap), POLOS);
     }
     for (const [x, y] of MEJA_DASAR) mejaBundar(k, warna, x, y, ALAS, BANGKU_MEJA);
+    KIOS_TERAS.forEach((f, i) => tenda(k, UNIT.tenda + i, warna, f, WARNA_TENDA[i % WARNA_TENDA.length]!));
     LOKET_L2.forEach((j, i) => this.jendela(j, i, m));
     BLOK_KURSI_L2.forEach((b, i) => this.blokKursi(b, i, warna));
     this.orangDiam(warna);
@@ -507,6 +540,7 @@ export class IsiSayap2 {
     });
     KIOS_TERAS.forEach((_, i) => {
       if (i >= isi.kiosBuka) terlihat.add(UNIT.pintuKios + i);
+      if (i < isi.kios) terlihat.add(UNIT.tenda + i);
     });
     this.unit.tampilkan((u) => terlihat.has(u));
   }

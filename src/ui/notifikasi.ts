@@ -6,10 +6,11 @@
 import { kepuasanTurunBerlaku, type KepuasanTurun } from '../app/kepuasan-turun';
 import { izinAntara } from '../sim/bangunan';
 import type { PoId } from '../sim/fitur';
+import { hadiahTingkat, musimDariId, tingkatRapor, type MusimState } from '../sim/musim';
 import { formatAngka } from './format';
 import type { ModelPoTerdaftar, ModelTampilan } from './model';
 import { wajahKepuasan } from './popup-kepuasan';
-import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_EVENT, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, TEKS, teksIzin, teksSlotTanpaJendela } from './teks';
+import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_EVENT, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, NAMA_TEMA_MUSIM, TEKS, teksHadiahNaik, teksIzin, teksSlotTanpaJendela } from './teks';
 
 /**
  * @param diputus PO yang diputus pemain sendiri: keluarnya bukan karena kontrak habis.
@@ -128,6 +129,28 @@ export function urutanPesan(lalu: ModelTampilan | null, m: ModelTampilan, pesan:
   const p = pesan === null ? [] : [pesan];
   const diresmikan = lalu !== null && m.terminal.perluasan.selesai > lalu.terminal.perluasan.selesai;
   return diresmikan ? [...p, ...t] : [...t, ...p];
+}
+
+/**
+ * Toast Musim Terminal di antara dua state (documents/17 bagian 8): musim lama selesai (musim berganti),
+ * tugas selesai (+10 poin), dan Rapor naik tingkat beserta hadiahnya. Bisa lebih dari satu sekaligus
+ * (tugas selesai yang menaikkan tingkat), urut. Musim yang baru terbuka disambut popup, bukan toast.
+ */
+export function notifikasiMusim(lalu: MusimState, m: MusimState): string[] {
+  if (lalu === m || m.id === null || lalu.id === null) return [];
+  if (lalu.id !== m.id) {
+    const lama = musimDariId(lalu.id);
+    return lama ? [TEKS.notifMusimSelesai(NAMA_TEMA_MUSIM[lama.tema].ikon, NAMA_TEMA_MUSIM[lama.tema].nama)] : [];
+  }
+  const hasil: string[] = [];
+  if (m.statistik.tugas > lalu.statistik.tugas) hasil.push(TEKS.notifTugasSelesai);
+  const tingkat = tingkatRapor(m.poin);
+  const mu = musimDariId(m.id);
+  if (tingkat > tingkatRapor(lalu.poin) && mu) {
+    const hadiah = hadiahTingkat(tingkat, mu.tema);
+    hasil.push(hadiah.length > 0 ? TEKS.notifRaporNaik(tingkat, teksHadiahNaik(hadiah, mu.tema, mu.tahun)) : TEKS.notifRaporNaikPolos(tingkat));
+  }
+  return hasil;
 }
 
 /** Teks toast kepuasan turun: wajah & persen sekarang, dan sebabnya (documents/14 bagian 4.2). */

@@ -1,6 +1,6 @@
 # 12 · Rancangan Ekonomi v2: Mitra PO
 
-> **Status: dirilis sebagai versi 0.2.0** (langkah 0–6 di bagian 18: simulasi, save & migrasi v1 → v2, tab PO & Terminal, adegan 3D tahap 0–2 dengan jendela loket & bus per PO dan modul proyek perluasan, tutorial baru, rilis). Belum: bangunan bertingkat tahap 4–5. Tahap 3 dibangun berbeda dari bagian 8, sebagai Sayap 2 Lantai di taman barat (dokumen 16, dibangun 4 November 2026, belum dirilis). Dokumen 01–11 masih menggambarkan v1. Isinya disusun dari diskusi desain 7 Oktober 2026.
+> **Status: dirilis sebagai versi 0.2.0** (langkah 0–6 di bagian 18: simulasi, save & migrasi v1 → v2, tab PO & Terminal, adegan 3D tahap 0–2 dengan jendela loket & bus per PO dan modul proyek perluasan, tutorial baru, rilis). Belum: bangunan bertingkat tahap 4–5. Tahap 3 dibangun berbeda dari bagian 8, sebagai Sayap 2 Lantai di taman barat (dokumen 16, dirilis di 0.4.1, 5 November 2026). Dokumen 01–11 masih menggambarkan v1. Isinya disusun dari diskusi desain 7 Oktober 2026.
 >
 > Angka bertanda **PLACEHOLDER** adalah titik awal hasil simulasi (bagian 15), bukan angka final. Setelah diimplementasi, angka tuning tetap tinggal di `src/config/economy.config.ts`.
 
@@ -337,7 +337,7 @@ Saat kelas naik, popup "Terminal naik ke Tipe B!" muncul dan papan gapura bergan
 
 ![Denah induk perluasan terminal: tampak atas dan potongan A–A](12-denah-perluasan.svg)
 
-> **Sebagian diganti dokumen 16** (disetujui owner 3 November 2026; tahap 3 dibangun 4 November 2026, belum dirilis):
+> **Sebagian diganti dokumen 16** (disetujui owner 3 November 2026; tahap 3 dibangun 4 November 2026 dan dirilis di 0.4.1, 5 November 2026):
 >
 > - **Lantai 2 tidak ditumpuk di atas sayap barat & aula barat.** Lantai 2 kini gedung baru, **Sayap 2 Lantai**, di taman barat, dan membentuk huruf L.
 > - **Gedung Antarpulau kelak berdiri di belakang ruang tunggu,** di atas parkir mobil, bukan di lahan SPBU & kampung timur. Sekarang tempatnya hanya dicadangkan.

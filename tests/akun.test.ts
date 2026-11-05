@@ -18,7 +18,7 @@ import {
   type SaveAwan,
 } from '../src/app/akun';
 import { KUNCI_SAVE, SesiGame, type Penyimpanan } from '../src/app/sesi';
-import { serialisasi } from '../src/sim/save';
+import { deserialisasi, serialisasi } from '../src/sim/save';
 import { buatStateBaru } from '../src/sim/state';
 import { T0 } from './helpers';
 
@@ -463,5 +463,85 @@ describe('login, logout, hapus akun', () => {
     await hapusDataAkun({ ...opsi, hapusPeringkat: async () => void urutan.push('peringkat') });
     expect(urutan).toEqual(['peringkat']);
     expect(awan.dok).toBeNull();
+  });
+});
+
+describe('cloud save membawa blok musim utuh (AC-PLT-04, jalur transport)', () => {
+  // Blok MusimState yang sah menurut bacaMusim (src/sim/save.ts): musim pertama, hiasan dipakai harus
+  // dimiliki dan sesuai slotnya, lencana tidak disimpan (diturunkan), param tugas sesuai templatnya.
+  const MUSIM = {
+    id: '2026-11-30',
+    poin: 137,
+    tugas: [
+      { hari: '2026-12-01', templat: 'penumpang', target: 120, progres: 40, param: null, selesai: false },
+      { hari: '2026-12-01', templat: 'poTerendah', target: 1, progres: 1, param: 'lumpiaKilat', selesai: true },
+      { hari: '2026-12-01', templat: 'kepuasan', target: 8, progres: 3, param: 0.6, selesai: false },
+    ],
+    hariTugas: '2026-12-01',
+    gantiHari: '2026-12-01',
+    tiketGanti: 2,
+    suratArmada: 1,
+    koleksi: ['spanduk-hujan', 'seragam-hujan', 'bingkai-hujan'],
+    pakai: { spanduk: 'spanduk-hujan', seragam: null, papan: null, bingkai: 'bingkai-hujan' },
+    statistik: { tugas: 7, tantangan: 1, lvAwal: 6, penumpangAwal: 1200 },
+    riwayat: [{ id: '2026-11-30', tingkat: 3 }],
+    rapor: null,
+    sambutan: true,
+  };
+
+  /** 2 Des 2026, hari ke-3 Musim 1: poin 137 di bawah batas jepit bacaMusim. */
+  const SEKARANG_MUSIM = Date.parse('2026-12-02T05:00:00Z');
+
+  /** Save 0.5.0 dibentuk dari save skema 3 yang ada plus blok `musim` (tanpa bergantung pada save.ts). */
+  function saveDenganMusim(): string {
+    const dasar = JSON.parse(buatSave(1000, 5000)) as Record<string, unknown>;
+    return JSON.stringify({ ...dasar, musim: MUSIM });
+  }
+
+  it('diunggah dan diunduh perangkat lain apa adanya, termasuk blok musim', async () => {
+    const isi = saveDenganMusim();
+    const a = siapkan();
+    const slotA = new SlotAkun(a.opsi);
+    await slotA.baca();
+    expect(await slotA.tulis(isi, 'penting')).toBeNull();
+    expect(a.awan.dok?.isi).toBe(isi);
+    expect(JSON.parse(a.awan.dok!.isi).musim).toEqual(MUSIM);
+
+    // Perangkat kedua: penyimpanan kosong, cloud yang sama.
+    const b = siapkan();
+    const slotB = new SlotAkun({ ...b.opsi, awan: a.awan });
+    const diterima = await slotB.baca();
+    expect(diterima).toBe(isi);
+    expect(JSON.parse(diterima!).musim).toEqual(MUSIM);
+  });
+
+  it('salinan lokal akun menyimpan isi utuh dan klien tetap bisa meringkasnya', async () => {
+    const isi = saveDenganMusim();
+    const { opsi, bacaCatatan } = siapkan();
+    const slot = new SlotAkun(opsi);
+    await slot.baca();
+    await slot.tulis(isi, 'penting');
+    expect(JSON.parse(bacaCatatan().isi).musim).toEqual(MUSIM);
+    expect(ringkasSave(isi)?.kas).toBe(1000);
+  });
+
+  it('save yang diunduh perangkat kedua, setelah deserialisasi, masih memuat blok musim yang sama', async () => {
+    const a = siapkan();
+    await new SlotAkun(a.opsi).baca();
+    await new SlotAkun(a.opsi).tulis(saveDenganMusim(), 'penting');
+    const b = siapkan();
+    const diterima = await new SlotAkun({ ...b.opsi, awan: a.awan }).baca();
+    const state = deserialisasi(diterima!, SEKARANG_MUSIM);
+    expect(state.musim).toEqual(MUSIM);
+    expect(state.musim.poin).toBe(137);
+    expect(state.musim.tugas).toHaveLength(3);
+    expect(state.musim.pakai.spanduk).toBe('spanduk-hujan');
+    // Disimpan ulang lalu dimuat lagi: tetap sama.
+    expect(deserialisasi(serialisasi(state), SEKARANG_MUSIM).musim).toEqual(MUSIM);
+  });
+
+  it('ukuran: save dengan blok musim jauh di bawah batas dokumen cloud 100.000 karakter', () => {
+    expect(JSON.stringify(MUSIM).length).toBeLessThan(2500);
+    expect(saveDenganMusim().length).toBeLessThan(100000);
   });
 });

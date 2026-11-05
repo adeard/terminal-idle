@@ -10,8 +10,9 @@ import { EKONOMI } from '../config/economy.config';
 import { cuacaTerminal, cuacaTerminalState, kilatPada, type Cuaca } from '../sim/cuaca';
 import type { BangunanId, PetugasId, PoId, TeknologiId } from '../sim/fitur';
 import type { AreaId } from '../sim/operasi';
+import { hiasanAktif } from '../sim/musim';
 import { hitungPetugas, type JumlahPetugas } from '../sim/petugas';
-import { busEmasAktif, kelasBusBeroperasi, kelasTerminal, loketTerisi, type GameState, type PoTerdaftar } from '../sim/state';
+import { busEmasAktif, kelasBusBeroperasi, kelasTerminal, levelTerminal, loketTerisi, type GameState, type PoTerdaftar } from '../sim/state';
 import { keramaianTerminal, waktuTerminal, waktuTerminalState } from '../sim/waktu';
 import { URL_ATLAS } from './aset';
 import { Adegan } from './adegan';
@@ -22,6 +23,8 @@ import { DuniaVisual, posisiKenekBagasi, posisiPetugasCuci, type PeristiwaBus, t
 import { blokKursiDi, FASILITAS_LENGKAP, stafAdegan, type FasilitasAdegan, type StafAdegan } from './fasilitas-adegan';
 import { bangunGedung, bangunKursiTunggu, DERET_KURSI_AULA, MEJA_INFO, MEJA_TUNGGU, posisiKursiAula, Y_MEJA_TUNGGU } from './gedung3d';
 import { Kumpulan, tampilkanBagian, type PotonganBagian } from './geometri';
+import { hiasanBaru, hiasanLevel, jamBersambung, kotaNaik, poBaliho, type IdHiasan } from './hiasan-level';
+import { HiasanLevel3D } from './hiasan-level3d';
 import { KasVisual, lajuUangState, type LajuUang } from './kas-visual';
 import { HiasanKelas } from './kelas3d';
 import { HiasanEvent, RAMAI_EVENT } from './event3d';
@@ -54,6 +57,7 @@ import { suasanaLangit, terapkanCuaca } from './langit';
 import { bangunLingkungan, kibarkan, TITIK_LAMPU } from './lingkungan3d';
 import { buatMaterial, type PustakaMaterial } from './material3d';
 import { LaluLintas3D } from './mobil3d';
+import { bajuMusim, papanMusim, seragamMusim, spandukMusim } from './musim-adegan';
 import { buatPenampilan, buatPenampilanAnak, Kerumunan3D, WARNA_PAYUNG, type DataOrang, type Penampilan } from './orang3d';
 import { Rombongan } from './rombongan';
 import { bangunSayap2, IsiSayap2 } from './sayap2-3d';
@@ -384,10 +388,29 @@ export class Terminal3D {
   /** Anak & pendamping yang ikut sebagian penumpang (tidak memakai slot antrean). */
   private readonly rombongan = new Rombongan();
   private readonly statis = orangStatis();
+  /** Baju petugas berperan (dengan warna aslinya) untuk seragam Musim Terminal; warnanya ditulis ulang di tempat. */
+  private readonly bajuPetugas = this.statis.flatMap((s) => (s.staf ? [{ peran: s.staf.peran, warna: s.orang.penampilan.baju, bawaan: s.orang.penampilan.baju.clone() }] : []));
+  /** Seragam musim yang sedang tergambar (null = bawaan). */
+  private seragamLalu: string | null = null;
   /** Pengunjung lantai 2 yang bergerak: objek dipakai ulang tiap frame, semua properti sudah ada sejak awal supaya bentuk objeknya tetap. */
   private readonly pengunjungL2: readonly { id: number; x: number; y: number; h: number; penampilan: Penampilan; pose: 'duduk' | undefined; hadap: number | undefined; payung: THREE.Color | null }[] = Array.from({ length: MAKS_PENGUNJUNG }, (_, i) => ({ id: ID_SAYAP2 + i, x: 0, y: 0, h: 0, penampilan: buatPenampilan(1, 1340 + i)[0]!, pose: undefined, hadap: undefined, payung: null }));
   /** Keadaan Sayap 2 Lantai yang sedang tergambar (null = belum pernah diterapkan). */
   private keadaanSayap: KeadaanSayap | null = null;
+  /** Gedung kota yang sedang tergambar meninggi (lihat kotaNaik); -1 = belum pernah diterapkan. */
+  private kotaNaikLalu = -1;
+  /** Hiasan per level: dibangun saat hiasan pertama tampil (Lv 5). */
+  private hiasan: HiasanLevel3D | null = null;
+  /** Hiasan yang tampil untuk level & tahap terakhir: objek tetap selama keduanya tetap. */
+  private hiasanTampil: { readonly level: number; readonly perluasan: number; readonly id: ReadonlySet<IdHiasan> } | null = null;
+  /**
+   * PO di baliho (lihat poBaliho). Daftar PO adalah larik baru tiap tick (XP PO bertambah),
+   * jadi yang dibandingkan PO ke-1 & ke-2-nya, supaya tidak ada alokasi tiap frame.
+   */
+  private baliho: readonly [PoId | null, PoId | null] = [null, null];
+  /** Level terminal, jam main, dan jam nyata (detik) frame lalu: kembang api hiasan hanya untuk naik level di sesi aktif. */
+  private levelLalu: number;
+  private detikMainLalu: number;
+  private detikNyataLalu = performance.now() / 1000;
   /** Isi lantai 2: dibangun saat sayap pertama kali berdiri, lalu hanya ditukar unitnya. */
   private isiSayap: IsiSayap2 | null = null;
   /** Unit lantai 2 frame ini; null selama sayap belum berdiri. */
@@ -476,6 +499,8 @@ export class Terminal3D {
     this.keramaian = keramaianTerminal(w);
     this.basah = Math.min(1, cuacaTerminalState(pembaca.state).hujan * 1.5);
     this.perluasanLalu = pembaca.state.perkembangan.perluasan;
+    this.levelLalu = levelTerminal(pembaca.state);
+    this.detikMainLalu = pembaca.state.statistik.waktuMainDetik;
     adegan.scene.add(this.hujan3d.objek);
     // Pemanasan dengan jendela loket yang buka di frame pertama, supaya antrean tidak langsung pindah jendela.
     const awal = lajuBerirama(pembaca.state, this.keramaian);
@@ -502,7 +527,7 @@ export class Terminal3D {
     const potonganSayap = k.bangun(adegan.scene);
     const { perluasan, proyekDetik } = pembaca.state.perkembangan;
     // Sebelum kompilasi shader: bahan yang hanya dipakai sayap tidak perlu dikompilasi di sesi pertama.
-    tampilkanBagian(potonganSayap, keadaanSayap(perluasan, proyekDetik));
+    tampilkanBagian(potonganSayap, keadaanSayap(perluasan, proyekDetik), levelTerminal(pembaca.state));
     const parkirMobil = parkir.map((kp) => {
       const g = new THREE.Group();
       kp.bangun(g);
@@ -529,7 +554,7 @@ export class Terminal3D {
     const popUang = new PopUang3D(wadahLabel);
     const spanduk = new SpandukTelolet(m);
     const hiasanKelas = new HiasanKelas(m);
-    hiasanKelas.perbarui(kelasTerminal(pembaca.state), pembaca.state.profil.namaTerminal);
+    hiasanKelas.perbarui(kelasTerminal(pembaca.state), pembaca.state.profil.namaTerminal, papanMusim(hiasanAktif(pembaca.state)));
     const hiasanEvent = new HiasanEvent(m);
     // Bagian terminal yang belum dibangun (jalur & kelompok parkir), dan proyek perluasan yang sedang berjalan.
     const bangunan = bangunanTerminal(pembaca.state);
@@ -647,12 +672,18 @@ export class Terminal3D {
     this.jendela = bangunan.jendela;
     this.papanJurusan.perbarui({ mask: bangunan.mask, jendela: this.pemilikJendela(state), kelompok: bangunan.kelompok });
     this.pembangunan.perbarui({ jalur: state.terminal.bangunan.jalur, kelompok: bangunan.kelompok });
-    this.perbaruiProyek(state, dt, dtNyata);
+    this.perbaruiProyek(state, dt, dtNyata, suasana.malam);
     this.modernisasi.perbarui(state.terminal.teknologi);
-    this.hiasanKelas.perbarui(kelasTerminal(state), state.profil.namaTerminal);
-    this.hiasanEvent.perbarui(state.event.aktif?.id ?? null);
+    // Hiasan Musim Terminal yang dipakai pemain: hanya dibaca; tiap bagian bekerja hanya saat pilihannya berganti.
+    const pakai = hiasanAktif(state);
+    const event = state.event.aktif?.id ?? null;
+    this.hiasanKelas.perbarui(kelasTerminal(state), state.profil.namaTerminal, papanMusim(pakai));
+    this.hiasanEvent.perbarui(event, spandukMusim(pakai, event));
+    this.aturSeragam(seragamMusim(pakai));
     this.jam = w.jamDesimal;
-    this.perbaruiSayap(state);
+    const level = levelTerminal(state);
+    this.perbaruiSayap(state, level);
+    this.perbaruiHiasan(state, level, detikMain);
     this.detikPatroli += dt;
     this.luar.perbarui(this.jam, this.keramaian);
     this.material.aturBasah(this.basah);
@@ -776,21 +807,64 @@ export class Terminal3D {
     return po;
   }
 
+  /**
+   * Seragam Musim Terminal: warna baju petugas ditulis ulang hanya saat seragamnya berganti. Warna per instans
+   * orang diambil dari penampilan tiap frame, jadi tanpa draw call dan tanpa kompilasi shader.
+   */
+  private aturSeragam(seragam: string | null): void {
+    if (seragam === this.seragamLalu) return;
+    this.seragamLalu = seragam;
+    for (const b of this.bajuPetugas) {
+      const hex = bajuMusim(b.peran, seragam);
+      if (hex === null) b.warna.copy(b.bawaan);
+      else b.warna.setHex(hex);
+    }
+  }
+
   /** Proyek perluasan tahap berikutnya selama dibangun; kembang api saat tahap baru selesai. */
-  private perbaruiProyek(state: GameState, dt: number, dtNyata: number): void {
+  private perbaruiProyek(state: GameState, dt: number, dtNyata: number, malam: number): void {
     const perluasan = state.perkembangan.perluasan;
     if (perluasan > this.perluasanLalu) this.proyek.rayakan(perluasan);
     this.perluasanLalu = perluasan;
-    this.proyek.perbarui(tahapProyek(state), faseProyekSayap(state.perkembangan.proyekDetik, EKONOMI.mitra.detikProyek), dt, dtNyata);
+    this.proyek.perbarui(tahapProyek(state), faseProyekSayap(state.perkembangan.proyekDetik, EKONOMI.mitra.detikProyek), dt, dtNyata, malam);
   }
 
-  /** Sayap 2 Lantai mengikuti state: lahan & cangkang di mesh utama ditukar hanya saat keadaannya berganti. */
-  private perbaruiSayap(state: GameState): void {
+  /**
+   * Hiasan per level mengikuti level & tahap. Naik tepat satu level di sesi aktif menyalakan
+   * kembang api kecil di titik benda barunya; memuat save, lompatan beberapa level, dan
+   * hasil offline (jam main tidak bersambung) tidak.
+   */
+  private perbaruiHiasan(state: GameState, level: number, detikMain: number): void {
+    const perluasan = state.perkembangan.perluasan;
+    const detikNyata = performance.now() / 1000;
+    if (level !== this.levelLalu && jamBersambung(detikMain - this.detikMainLalu, detikNyata - this.detikNyataLalu)) {
+      for (const h of hiasanBaru(this.levelLalu, level, perluasan)) this.proyek.rayakanTitik(h.kembangApi[0], h.kembangApi[1], h.kembangApi[2], level);
+    }
+    this.levelLalu = level;
+    this.detikMainLalu = detikMain;
+    this.detikNyataLalu = detikNyata;
+    const t = this.hiasanTampil;
+    if (!t || t.level !== level || t.perluasan !== perluasan) this.hiasanTampil = { level, perluasan, id: hiasanLevel(level, perluasan) };
+    const tampil = this.hiasanTampil!.id;
+    if (!this.hiasan) {
+      if (tampil.size === 0) return;
+      this.hiasan = new HiasanLevel3D(this.material);
+      this.adegan.scene.add(this.hiasan.objek);
+    }
+    const po = state.mitra.terdaftar;
+    if ((po[0]?.id ?? null) !== this.baliho[0] || (po[1]?.id ?? null) !== this.baliho[1]) this.baliho = poBaliho(po);
+    this.hiasan.perbarui(tampil, this.baliho);
+  }
+
+  /** Sayap 2 Lantai & gedung kota yang meninggi mengikuti state: rentang mesh utama ditukar hanya saat keadaannya berganti. */
+  private perbaruiSayap(state: GameState, level: number): void {
     const keadaan = keadaanSayap(state.perkembangan.perluasan, state.perkembangan.proyekDetik);
-    if (keadaan !== this.keadaanSayap) {
+    const naik = kotaNaik(level);
+    if (keadaan !== this.keadaanSayap || naik !== this.kotaNaikLalu) {
+      if (keadaan !== this.keadaanSayap) this.hujan3d.aturSayap2(keadaan === 'berdiri');
       this.keadaanSayap = keadaan;
-      tampilkanBagian(this.potonganSayap, keadaan);
-      this.hujan3d.aturSayap2(keadaan === 'berdiri');
+      this.kotaNaikLalu = naik;
+      tampilkanBagian(this.potonganSayap, keadaan, level);
     }
     if (keadaan !== 'berdiri') {
       this.isiL2 = null;

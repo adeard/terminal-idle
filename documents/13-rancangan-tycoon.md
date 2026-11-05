@@ -1,10 +1,12 @@
 # 13 · Rancangan Tycoon: dari idle ke tycoon
 
-> **Status: dirilis sebagai 0.3.0 (9 Oktober 2026)** di `main` & bustation.games. Langkah 1–6 selesai (bagian 15): modul murni & kalibrasi, `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik memakai ekonomi tycoon, dan adegan 3D mengikuti bangunan & petugas (bagian 12). Belum: bentuk adegan bangunan bertingkat tahap 4–5 (tahap 3 dibangun 4 November 2026 sebagai Sayap 2 Lantai, dokumen 16, belum dirilis), judul game (masih "Idle Bus"), dan keputusan terbuka bagian 16. Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
+> **Status: dirilis sebagai 0.3.0 (9 Oktober 2026)** di `main` & bustation.games. Langkah 1–6 selesai (bagian 15): modul murni & kalibrasi, `GameState`, save skema 3, UI lima tab, tutorial, target, tantangan, penghargaan, notifikasi, dan analitik memakai ekonomi tycoon, dan adegan 3D mengikuti bangunan & petugas (bagian 12). Belum: bentuk adegan bangunan bertingkat tahap 4–5 (tahap 3 dirilis di 0.4.1, 5 November 2026, sebagai Sayap 2 Lantai, dokumen 16), judul game (masih "Idle Bus"), dan keputusan terbuka bagian 16. Dokumen ini mengubah arah game menjadi **tycoon**: terminal tumbuh lewat bangunan dan petugas yang nyata, bukan level tahap yang naik tanpa batas.
 >
 > **Pembaruan 0.3.1 (dirilis 9 Oktober 2026):** penumpang tidak lagi membayar terminal (biaya layanan & tarif toilet dihapus), pendapatan utama terminal kini **kontrak PO** yang dibayar di muka (bagian 6.5), dan tempo dikalibrasi ulang (bagian 14). Keputusan 9–16 di bagian 2.
 >
-> **Pembaruan dokumen 15 (disetujui owner dan dibangun 31 Oktober 2026, belum dirilis):** izin level, slot PO lebih rapat, hadiah armada & percepat proyek, tantangan laba & target harian yang menghitung kontrak dirata-rata, ambang tantangan kepuasan dari awal minggu, dan patokan tempo baru (keputusan 17–20, bagian 4.1, 6.5, 8, 10, 11, 14, 15). Temuan playtest yang masih terbuka ada di bagian 16.
+> **Pembaruan dokumen 15 (disetujui owner dan dibangun 31 Oktober 2026, dirilis di 0.4.0, 3 November 2026):** izin level, slot PO lebih rapat, hadiah armada & percepat proyek, tantangan laba & target harian yang menghitung kontrak dirata-rata, ambang tantangan kepuasan dari awal minggu, dan patokan tempo baru (keputusan 17–20, bagian 4.1, 6.5, 8, 10, 11, 14, 15). Temuan playtest yang masih terbuka ada di bagian 16.
+>
+> **Pembaruan dokumen 17 (Musim Terminal; disetujui owner 5 November 2026, ADR 009; sedang dibangun untuk 0.5.0):** musim 6 minggu, tugas harian, Rapor Musim, hiasan terminal, dan Surat Armada (keputusan 21–26, bagian 10, 11, 13, 15, 16). Angka ekonomi dan patokan tempo bagian 14 tidak berubah: Musim tidak memberi uang, XP terminal, boost, atau percepat proyek.
 >
 > Angka di dokumen ini adalah hasil kalibrasi (bagian 14), masih bisa digeser. Angka yang berlaku selalu yang di `EKONOMI.tycoon` (`src/config/economy.config.ts`).
 
@@ -58,6 +60,12 @@ flowchart LR
 | 18 | **Hadiah non-uang** (dokumen 15): armada PO & percepat proyek, dari target, tantangan, dan iklan opt-in | Hadiah tetap bermakna saat kas menumpuk. Tidak ada hadiah yang hanya lewat iklan (bagian 10) |
 | 19 | **Laba tantangan & target harian menghitung kontrak dirata-rata** (dokumen 15) | Kontrak PO sekaligus tidak lagi menyelesaikan tantangan; target harian laba ikut tumbuh (bagian 10) |
 | 20 | **Ambang tantangan kepuasan dari awal minggu** (dokumen 15) | Field save opsional `ambang` (skema tetap 3); baris tantangan membuka popup kepuasan (bagian 10, 11) |
+| 21 | **Musim Terminal** (5 November 2026, dokumen 17, ADR 009): musim 6 minggu dari kalender di config. Musim 1 "Musim Hujan" mulai Senin 30 November 2026. Terbuka di Lv 6 sesudah tutorial | Tujuan yang terbarui sesudah Terpadu, tanpa mengubah aturan offline: tugas dan Rapor hanya maju saat main aktif. Tidak ada yang direset, jadi tetap sejalan dengan keputusan 4. Hiasan dan lencana tetap dimiliki sesudah musim berganti (bagian 10) |
+| 22 | **Tugas harian dan Rapor Musim** (dokumen 17): 3 tugas per hari WIB, berlaku 2 hari, tanpa beruntun, 1 ganti gratis per hari. Tugas +10 poin, tantangan mingguan +40. Rapor 30 tingkat × 45 poin | Target harian, Bus Emas, penghargaan, event, dan iklan tidak memberi poin (bagian 10) |
+| 23 | **Hadiah musim: kosmetik dan kemudahan, bukan uang** (dokumen 17) | Lencana, bingkai foto, spanduk gapura, seragam petugas, papan gapura, tiket ganti tugas, dan Surat Armada (+½ level untuk PO pilihan pemain, di tingkat 12 dan 25). Tanpa uang, XP terminal, boost, atau percepat, jadi patokan tempo bagian 14 tidak berubah. Surat Armada menaikkan nilai kontrak secara tidak langsung; owner menerimanya sebagai kemudahan |
+| 24 | **Musim tanpa iklan** di ronde 1 (dokumen 17) | Tidak ada tugas yang menuntut iklan. Iklan tidak pernah memberi poin, tingkat, atau hiasan |
+| 25 | **Blok save `musim`** opsional, skema tetap 3 (dokumen 17) | `versiMinimal` naik ke 0.5.0 saat rilis Musim, supaya klien 0.4.x tidak menghapus progres musim lewat cloud save (bagian 13) |
+| 26 | **Analitik musim** (dokumen 17): 6 peristiwa GA4 baru dan parameter `ringkasan_sesi.musim_tingkat`, tanpa data pribadi | Owner mendaftarkan dimensinya di konsol GA4. Pemrosesan data tidak berubah jenisnya; `privasi.html` diperiksa (bagian 13) |
 
 Keputusan dokumen 12 yang **tetap berlaku**: loket milik terminal disewa PO, level & kelas terminal dari penumpang, kontrak PO, perluasan lima tahap yang permanen dan bertingkat, proyek tetap berjalan saat offline.
 
@@ -336,6 +344,13 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
 - **Hadiah "N menit pendapatan"** menjadi "N menit laba": laba rata-rata per jam hari biasa dengan tarif bawaan, termasuk kontrak PO yang dirata-rata, paling sedikit Rp 200 rb per menit supaya tetap terasa saat rugi.
 - **Boost iklan** tetap: pendapatan ×2 selama 30 menit (kontrak PO tidak ikut). Bus Emas tetap; sejak dokumen 15 ia juga memberi armada (tabel di atas). Semua iklan tetap pilihan, dan tiap jenis hadiah iklan juga bisa didapat tanpa iklan.
 - **Event musiman** tetap: pasar penumpang naik (Mudik ×1,5, Nataru ×1,3, HUT RI ×1,17), jadi kapasitas & petugas tambahan terasa gunanya.
+- **Musim Terminal** (keputusan 21–24, dokumen 17 bagian 3–5). Jangan dikacaukan dengan event musiman: event mengubah pasar, Musim tidak menyentuh angka ekonomi.
+  - **Tugas harian:** 3 per hari WIB, satu dari tiap kelompok (*main*, *sorotan*, *kelola*). Targetnya dibuat dari laju terminal saat itu, ±8–10 menit main; tugas *kelola* adalah satu keputusan yang aman bagi kas (cadangan B). Tugas maju hanya saat main aktif, tidak saat offline, dan berlaku 2 hari. Begitu selesai, +10 poin langsung masuk, tanpa tombol klaim dan tanpa 2× iklan.
+  - **Target harian** tidak berubah dan tidak memberi poin. Ia dihitung per hari terminal, jadi poin darinya akan menghadiahi lama main, bukan kehadiran.
+  - **Tantangan mingguan** tidak berubah, kecuali +40 poin musim per tantangan yang diklaim atau dikirim otomatis. Urutan di `perbaruiJamNyata` menjadi event → tantangan → musim, jadi tantangan minggu terakhir masuk ke musim yang lama. P-9 ("Bangun 15 unit") tidak diubah oleh Musim (bagian 16).
+  - **Paket hadiah armada** tetap ke PO berlevel terendah. **Surat Armada** (Rapor tingkat 12 dan 25) memakai rumus XP yang sama, ½ × kebutuhan level berikutnya, tetapi PO-nya dipilih pemain.
+  - **Tidak memberi poin:** target harian, Bus Emas, boost, klaim 2×, penghargaan, event, dan iklan. Papan peringkat tidak menerima poin musim.
+  - **Event dan Musim bersamaan:** spanduk event menang atas spanduk musim, dan target tugas memakai laju yang sudah termasuk pengali event.
 
 ## 11. UI
 
@@ -353,11 +368,21 @@ Tiap PO punya kepuasan mitra (0–100%) terhadap terminal:
   - Kartu target harian menampilkan paket hadiahnya, dengan armada dalam level: "Hadiah: +Rp X · 🚌 PO … +½ level · 🏗️ −6 mnt". Tombol 2× target berlabel "▶ 2× semua" bila paketnya berisi armada atau percepat; tombol 2× penghargaan tetap "▶ 2×".
   - Kartu tantangan menulis hadiahnya sekali: "Hadiah tiap tantangan: +Rp X · 🚌 PO … +1 level".
   - Toast setelah klaim menyebut kemajuan armada PO itu ("🚌 Armada baru PO …: 0% → 50% menuju Lv 4"). Bila armada menaikkan level PO, yang tampil teks naik level PO ("⬆️ PO … naik ke Lv 6: kelas Eksekutif & jurusan YOGYAKARTA").
+  - **Kartu Musim** (dokumen 17 bagian 7–8), di atas kartu lain tab Target. Kartu ini baru ada sesudah tutorial selesai dan Lv 6. Isinya:
+    - kepala (tema, tingkat, sisa hari), bilah poin, dan hadiah berikutnya;
+    - 3 baris tugas, ditambah set kemarin bila masih berlaku, masing-masing dengan "›" ke tuasnya, dan tombol Ganti;
+    - bagian **Hiasan terminal** (pakai/lepas) dan Surat Armada.
+- **Popup Musim** (dokumen 17 bagian 3.5, 8):
+  - sambutan, sekali saat Musim terbuka;
+  - **Rapor Musim** di akhir musim, tampil sesudah popup offline bila ada, jadi paling banyak dua popup berturut-turut;
+  - pilih PO untuk Surat Armada.
+- **Toast Musim:** tugas selesai ("📋 Tugas selesai · +10 poin Rapor") dan naik tingkat Rapor, beserta hiasan yang terpasang.
+- **Lencana tab Target** mendapat titik bila ada hadiah Rapor baru yang belum dilihat. Jumlah tugas tersisa tidak ditampilkan sebagai lencana, supaya tidak menagih.
 - **Popup Bus Emas** menyebut uang dan armadanya: "… Tonton iklan untuk Rp X dan armada baru PO … (+¼ level)."
 - **Toast & baris tujuan** (dokumen 15 bagian 3.5):
   - toast naik level menyebut izin yang terbuka ("🏢 Terminal naik ke Lv 16: slot jendela loket +1 & slot jalur +1"); bila level itu juga membuka slot PO, yang tampil toast slot PO;
   - toast slot PO saat slot jendela penuh menunjuk sasaran yang sama dengan status tab PO ("🅿️ Slot PO ke-7 terbuka: jendela loket penuh sampai Lv 18", atau sebelum Perluasan 3 "🅿️ Slot PO ke-5 terbuka: jendela loket penuh sampai Perluasan 3");
-  - tingkat 5 baris tujuan menampilkan izin terdekat ("⬆️ Lv 17: slot jendela loket +1 & slot PO ke-7 · kini Lv 16");
+  - tingkat 5 baris tujuan menampilkan izin terdekat ("⬆️ Lv 17: slot jendela loket +1 & slot PO ke-7 · kini Lv 16"). Sejak dokumen 17, bila Musim terbuka dan ada tugas yang belum selesai, tingkat 5 lebih dulu menampilkan tugas itu ("📋 Tugas: … · 210/400"), tanpa aksi, sebelum "naik level";
   - popup offline menyebut izin yang terbuka selama pergi.
 - **HUD**: kas, laba, penumpang di terminal (keputusan 16), kepuasan, jam.
   - **Laba rata-rata per hari** ("Laba ±Rp X/hari", termasuk kontrak PO yang dirata-rata), bukan lagi "Hari ini ±Rp X · N pnp". Netral selama tutorial dan jam terminal pertama, lalu hijau/merah; diketuk membuka laporan keuangan. Disetujui owner 29 Oktober 2026 dan dibangun 31 Oktober 2026 (dokumen 14 bagian 4.1): laba hari ini hampir selalu merah di hari tanpa kontrak, walau terminal sehat.
@@ -392,6 +417,21 @@ Langkah 4 (9 Oktober 2026; logika murni di `src/game/fasilitas-adegan.ts`, posis
 - Skema save **3**. Belum ada pemain, jadi save 0.1/0.2 tidak dimigrasi (`migrasiKeV3`): ekonomi dimulai baru, dan hanya profil (nama terminal & persetujuan papan peringkat) serta benih cuaca yang dibawa. Statistik ikut mulai dari nol, karena uang idle tidak sebanding dengan Rupiah tycoon dan jam terminal kembali ke Senin 06.00.
 - `versiMinimal` dinaikkan ke versi rilis tycoon (mis. 0.3.0).
 - Papan peringkat: batas kenaikan skor di server kini 100 penumpang per detik main (`ARUS_WAJAR_MAKS`, terminal terbesar ±26). Server ikut `npm run deploy:web`, dan klien lama dipaksa memperbarui lewat `versiMinimal`.
+- **`versiMinimal` sesudahnya** (`src/config/rilis.config.ts`):
+
+  | Rilis | `versiMinimal` | Alasan |
+  |---|---|---|
+  | 0.3.1 | 0.3.1 | Kontrak PO dibayar di muka (bagian 15 langkah 7) |
+  | 0.4.0 | 0.4.0 | Izin level: versi lama memotong jendela dan jalur save baru ke tabel tahap perluasan tanpa pengembalian uang, dan kerugiannya tersimpan permanen |
+  | 0.4.1 | tetap 0.4.0 | Sayap 2 Lantai hanya gambar adegan; tanda peresmian ada di localStorage terpisah |
+  | 0.5.0 (Musim) | **0.5.0** | Blok save `musim` (keputusan 25, di bawah) |
+
+- **Musim Terminal** (keputusan 25–26, dokumen 17 bagian 9):
+  - **Save:** blok opsional baru `musim` di `GameState` dan `SaveV3`, dan skema tetap 3. Save tanpa blok ini mendapat nilai bawaan "belum terbuka". Bila Lv ≥ 6 dan tutorial sudah selesai, Musim terbuka saat save dimuat, dengan popup sambutan sekali. Nilai yang tidak sah disaring saat dibaca. Ukuran blok sesudah setahun ±1.900 karakter.
+  - **Klien lama** (0.4.x) mengabaikan blok `musim` dan menghapusnya saat menyimpan. Karena itu `versiMinimal` naik ke 0.5.0 saat rilis.
+  - **Rollback ke 0.4.x** menghapus progres musim pada simpan berikutnya, sedangkan ekonomi aman. Ini dicatat di rencana rollback rilis 0.5.0.
+  - **Cloud save** membawa blok `musim` utuh, dan konflik tetap ditanyakan ke pemain. Poin musim tidak dikirim ke papan peringkat.
+  - **Analitik:** 6 peristiwa baru (`musim_buka`, `tugas_selesai`, `tugas_ganti`, `rapor_naik`, `rapor_musim`, `hiasan_pakai`) dan parameter `ringkasan_sesi.musim_tingkat`, lewat `PencatatAnalitik`, tanpa data pribadi. Owner mendaftarkan dimensinya di konsol GA4 (daftarnya di dokumen 17 bagian 9.2). Musim berjalan penuh tanpa jaringan, dan tidak ada server baru.
 
 ## 14. Kalibrasi & target tempo
 
@@ -494,12 +534,16 @@ Tes unit modul murni: `tests/bangunan.test.ts`, `petugas.test.ts`, `tarif.test.t
 
 7. ✓ **Pembaruan ekonomi**, dirilis **0.3.1** (9 Oktober 2026; `versiMinimal` 0.3.1): biaya layanan & toilet dihapus, kontrak PO dibayar di muka (bagian 6.5), slot PO terus bertambah, "+N tiket" di loket, penumpang di terminal di HUD, panel layar penuh, dan kalibrasi ulang (bagian 14). Save skema 3 tetap; PO dari save 0.3.0 dianggap berkontrak 7 hari yang sudah dibayar.
 
-8. ✓ **Fondasi tahap 0** (dokumen 15; disetujui owner dan dibangun 31 Oktober 2026, belum dirilis; brief `docs/tasks/20261031-fondasi-saran-3-6.md` di repo tim). Dibangun dalam tiga ronde:
+8. ✓ **Fondasi tahap 0** (dokumen 15; disetujui owner dan dibangun 31 Oktober 2026, dirilis di 0.4.0 pada 3 November 2026 bersama dokumen 14; brief `docs/tasks/20261031-fondasi-saran-3-6.md` di repo tim). Dibangun dalam tiga ronde:
    - **ronde 1**: tes tempo kasual (`tests/tycoon-kasual.test.ts`, `jalankanKasual`); laba tantangan & target harian dengan kontrak dirata-rata; ambang tantangan kepuasan (field save opsional `ambang`, skema tetap 3) dan tautan ke popup kepuasan; perbaikan kunci histeresis baris tujuan (U-2);
    - **ronde 2**: izin level, slot PO lebih rapat, petak tahap 3; paket hadiah (armada PO, percepat proyek; Bus Emas dan tombol iklan "Percepat 6 menit"); patokan tempo baru (bagian 14);
    - **ronde perbaikan teks** (dari playtest): label "2× semua", armada ditulis dalam level, aturan "PO berlevel terendah" tertulis, dan status/toast jendela penuh yang menunjuk izin level (bagian 11).
 
    Tanpa model 3D baru dan tanpa peristiwa analitik baru (`iklan_hadiah.tempat` mendapat nilai `percepatProyek`). Ingatkan `npm run cap:sync` sebelum APK berikutnya. Temuan yang tersisa ada di bagian 16.
+
+9. ✓ **Sayap 2 Lantai** (dokumen 16 ronde 1): gedung Perluasan 3 dan peresmian susulan, dirilis di 0.4.1 (5 November 2026; `versiMinimal` tetap 0.4.0).
+
+10. **Musim Terminal ronde 1** (dokumen 17) dan **bentuk terminal ronde 2** (dokumen 16 bagian 6: 12 hiasan per level, cadangan lahan seberang), disetujui owner 5 November 2026 (ADR 009, ADR 008). Sedang dibangun untuk 0.5.0 (`versiMinimal` 0.5.0). Rilisnya harus siap sebelum Musim 1 mulai, Senin 30 November 2026. Patokan tempo bagian 14 tidak berubah.
 
 ## 16. Keputusan terbuka
 
@@ -523,6 +567,7 @@ Untuk tugas berikutnya. Belum diputuskan, dan tidak ada angka yang diubah karena
 - **P-6 · Gerbang 45 menit tipis.**
   - Pemain serakah tanpa hadiah 41 menit; bila armada harian dan sepertiga Bus Emas diklaim, 49 menit (Lv 17); jeda antar-pembelian pengikut tujuan 69–76 menit main (menabung, bukan buntu menurut patokan).
   - Arah: jangan ubah angka sekarang. Tiap brief tempo berikutnya melaporkan tiga angka berdampingan: serakah (gerbang), serakah + hadiah, dan jeda pengikut tujuan + level yang berisi pembelian. Ukur ulang Lv 17 bila Musim Terminal menambah hadiah.
+  - Musim ronde 1 (dokumen 17 bagian 13.3) tidak memberi uang, XP terminal, atau percepat. Surat Armada pertama (Rapor tingkat 12) paling cepat datang di hari musim ke-10, dan di semua run simulasi sesudah Terpadu. Jadi Lv 17 tidak perlu diukur ulang untuk ronde ini. Tes tempo dan kasual tidak memakai Musim.
 - **P-7 · Popup offline kurang menghitung izin** (rendah).
   - Lompatan Lv 15 → 23 membuka slot PO ke-7 dan ke-8, tapi tertulis "slot PO ke-8".
   - Bila Perluasan 3 selesai selama pergi, izin level sebelum Perluasan 3 yang aktif sekaligus tidak dihitung.
@@ -530,6 +575,8 @@ Untuk tugas berikutnya. Belum diputuskan, dan tidak ada angka yang diubah karena
 - **P-8 · Armada meratakan level PO, tidak mengangkatnya.**
   - Level PO di akhir: 6–8, atau 9–10 bila semua iklan ditonton. Sleeper (PO Lv 10) dan Double Decker (Lv 15) belum muncul sampai Lv 32, kecuali Sleeper pada pemain yang menonton semua iklan.
   - Arah: memilih PO sasaran armada sendiri (tahap 1, sudah direncanakan) membuat armada menjadi keputusan.
+  - Musim ronde 1 menjawab sebagian: Surat Armada (Rapor tingkat 12 dan 25) memberi +½ level ke PO yang dipilih pemain (dokumen 17 bagian 4.1). Paket hadiah armada dari target, tantangan, dan Bus Emas tetap ke PO berlevel terendah.
 - **P-9 · Tantangan "Bangun 15 unit" di minggu ke-2 tidak tercapai** (rendah, sudah ada sebelum dokumen 15).
   - 8/8 run berakhir 0–2/15: sesudah Terpadu yang tersisa hanya jendela izin seharga Rp 0,5–10 M per unit tanpa manfaat.
   - Arah, untuk Musim Terminal: target bangun mengikuti slot yang berguna, atau diganti daftarkan/perpanjang PO atau modernisasi sesudah Terpadu. Perlu simulasi tersendiri.
+  - Dokumen 17 (bagian 3.3) tidak mengubahnya. Dengan Musim, minggu yang mengundi tantangan ini juga berarti −40 poin Rapor. Keputusannya terpisah (ADR 009), sebaiknya sesudah ada data GA4 `klaim_tantangan`.

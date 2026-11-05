@@ -7,8 +7,11 @@
  *   - lampu hias di antara umbul-umbul yang menyala di malam hari (mulai Tipe A);
  *   - bintang emas di atas gapura, satu per bintang kelas Terpadu (maks. 5).
  * Tiap bagian satu grup mesh yang dibangun sekali lalu hanya ditukar visibilitasnya.
+ * Papan gapura Musim Terminal (config/hiasan-musim.ts) hanya mengganti warna latar & tulisan papan,
+ * baik papan bawaan maupun papan bernama; tulisannya tetap.
  */
 import * as THREE from 'three';
+import { PAPAN_MUSIM } from '../config/hiasan-musim';
 import { GAPURA } from './gedung3d';
 import { Kumpulan, persegiTegak, silinder } from './geometri';
 import { LAMPU_JALAN_X } from './lingkungan3d';
@@ -77,7 +80,11 @@ export class HiasanKelas {
   private readonly bintang: THREE.Mesh[] = [];
   private kelas = -1;
   private nama = '';
-  /** Papan gapura bernama (dibuat saat nama/kelas berubah; nama bebas, jadi tidak disiapkan di awal). */
+  private papanMusim: string | null = null;
+  /**
+   * Papan gapura bernama dan/atau berwarna musim (dibuat saat nama/kelas/papan musim berubah; nama bebas,
+   * jadi tidak disiapkan di awal).
+   */
   private papanNama: { readonly grup: THREE.Group; readonly kunci: string } | null = null;
 
   constructor(private readonly m: PustakaMaterial) {
@@ -139,14 +146,17 @@ export class HiasanKelas {
   /**
    * @param kelas kelas terminal (0 = Tipe C). Hanya berubah saat naik kelas.
    * @param nama nama terminal pilihan pemain; kosong = papan bawaan.
+   * @param papanMusim id papan gapura musim (lihat papanMusim di musim-adegan.ts); null = warna kelas.
    */
-  perbarui(kelas: number, nama = ''): void {
-    if (kelas === this.kelas && nama === this.nama) return;
+  perbarui(kelas: number, nama = '', papanMusim: string | null = null): void {
+    if (kelas === this.kelas && nama === this.nama && papanMusim === this.papanMusim) return;
     this.kelas = kelas;
     this.nama = nama;
+    this.papanMusim = papanMusim;
     const indeks = Math.min(kelas, PAPAN_KELAS.length - 1);
-    this.papan.forEach((g, i) => (g.visible = !nama && i === indeks));
-    this.aturPapanNama(indeks, nama);
+    const musim = papanMusim !== null && PAPAN_MUSIM[papanMusim] ? papanMusim : null;
+    this.papan.forEach((g, i) => (g.visible = !nama && musim === null && i === indeks));
+    this.aturPapanNama(indeks, nama, musim);
     this.umbul.visible = kelas >= 1;
     this.lampuHias.visible = kelas >= 2;
     const n = Math.max(0, Math.min(MAKS_BINTANG, kelas - 2));
@@ -158,9 +168,13 @@ export class HiasanKelas {
     });
   }
 
-  /** Papan gapura "TERMINAL <NAMA>" berwarna kelasnya, kelas di baris kedua. */
-  private aturPapanNama(indeks: number, nama: string): void {
-    const kunci = nama ? `${indeks}|${nama}` : '';
+  /**
+   * Papan gapura "TERMINAL <NAMA>" (kelas di baris kedua) atau papan kelas bawaan, berwarna kelasnya atau
+   * berwarna papan musim. Tanpa nama dan tanpa papan musim, papan bawaan yang sudah disiapkan yang tampil.
+   */
+  private aturPapanNama(indeks: number, nama: string, papanMusim: string | null): void {
+    const warna = papanMusim === null ? undefined : PAPAN_MUSIM[papanMusim];
+    const kunci = nama || warna ? `${indeks}|${nama}|${warna ? papanMusim : ''}` : '';
     if (this.papanNama?.kunci === kunci) return;
     if (this.papanNama) {
       this.objek.remove(this.papanNama.grup);
@@ -169,12 +183,15 @@ export class HiasanKelas {
       });
       this.papanNama = null;
     }
-    if (!nama) return;
+    if (!kunci) return;
     const p = PAPAN_KELAS[indeks]!;
+    const { latar, warna: tinta } = warna ?? p;
     const P = GAPURA;
     const grup = new THREE.Group();
     const k = new Kumpulan();
-    const tulisan = this.m.teks(`TERMINAL ${nama.toUpperCase()}`, { lebar: 1024, tinggi: 120, latar: p.latar, warna: p.warna, ukuranHuruf: 80, baris2: p.singkat });
+    const tulisan = nama
+      ? this.m.teks(`TERMINAL ${nama.toUpperCase()}`, { lebar: 1024, tinggi: 120, latar, warna: tinta, ukuranHuruf: 80, baris2: p.singkat })
+      : this.m.teks(p.teks, { lebar: 1024, tinggi: 120, latar, warna: tinta, ukuranHuruf: 80 });
     k.tambah(tulisan.material, persegiTegak([P.x0 + 0.05, P.y1], [P.x1 - 0.05, P.y1], P.tinggi - 0.56, P.tinggi - 0.06, tulisan.uv, 0.006), { bayangan: false });
     k.bangun(grup);
     this.objek.add(grup);

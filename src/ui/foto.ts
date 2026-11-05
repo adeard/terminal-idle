@@ -6,9 +6,12 @@
  */
 import type { Analitik } from '../app/analitik';
 import type { PembacaState } from '../app/pengendali';
+import type { TemaMusimId } from '../config/musim.config';
+import { lencanaMusim, musimDariId, temaHiasan, tingkatRapor } from '../sim/musim';
+import type { GameState } from '../sim/state';
 import { formatAngka } from './format';
 import { buatModel } from './model';
-import { namaKelas, TEKS } from './teks';
+import { namaKelas, namaMusimTahun, NAMA_LENCANA, TEKS } from './teks';
 
 export interface OpsiFoto {
   /** Akar overlay (#ui) tempat popup. */
@@ -59,10 +62,39 @@ export function keteranganFoto(pembaca: PembacaState): string {
   return TEKS.fotoKeterangan(namaKelas(m.terminal.kelas), jurusan, formatAngka(Math.round(m.bangun.arusPuncak)), m.mitra.terdaftar.length, m.terminal.nama);
 }
 
+/** Bingkai foto musim yang dipakai (documents/17 bagian 4.1, 8): warna bingkai & baris "MUSIM HUJAN 2026 · Lencana Lulus". */
+export interface BingkaiFoto {
+  readonly warna: string;
+  readonly baris: string;
+}
+
+/** Warna bingkai tiap tema musim; bingkai emas tingkat 30. */
+const WARNA_BINGKAI: Readonly<Record<TemaMusimId, string>> = { hujan: '#38bdf8', imlek: '#ef4444', mudik: '#22c55e' };
+const WARNA_EMAS = '#f5c542';
+
+/**
+ * Bingkai foto dari hiasan yang dipakai (null = bingkai bawaan). Barisnya menyebut musim yang sedang diikuti
+ * dan lencana tertingginya; bila musim ini belum berlencana, musim terakhir di riwayat.
+ */
+export function bingkaiFoto(state: GameState): BingkaiFoto | null {
+  const m = state.musim;
+  const item = m.pakai.bingkai;
+  if (item === null) return null;
+  const tema = temaHiasan(item);
+  const warna = tema ? WARNA_BINGKAI[tema] : WARNA_EMAS;
+  const kini = m.id !== null ? { id: m.id, tingkat: tingkatRapor(m.poin) } : null;
+  const acuan = kini && lencanaMusim(kini.tingkat) ? kini : (m.riwayat[m.riwayat.length - 1] ?? kini);
+  const mu = acuan ? musimDariId(acuan.id) : null;
+  if (!acuan || !mu) return { warna, baris: '' };
+  const lencana = lencanaMusim(acuan.tingkat);
+  const nama = namaMusimTahun(mu.tema, mu.tahun).toUpperCase();
+  return { warna, baris: lencana ? TEKS.fotoMusim(nama, `Lencana ${NAMA_LENCANA[lencana]}`) : nama };
+}
+
 async function bukaFoto(o: OpsiFoto): Promise<void> {
   const adegan = o.ambil();
   const ikon = await muatGambar('ikon-192.png').catch(() => null);
-  const kanvas = susunFoto(adegan, keteranganFoto(o.pembaca), ikon);
+  const kanvas = susunFoto(adegan, keteranganFoto(o.pembaca), ikon, bingkaiFoto(o.pembaca.state));
   const berkas = await keBerkas(kanvas);
   o.analitik.catat('foto_terminal');
   tampilkanPopupFoto(o, berkas);
@@ -80,8 +112,8 @@ function keBerkas(kanvas: HTMLCanvasElement): Promise<File> {
   );
 }
 
-/** Adegan + bingkai bawah: ikon, nama game, keterangan terminal, alamat situs. */
-export function susunFoto(adegan: HTMLCanvasElement, keterangan: string, ikon: HTMLImageElement | null): HTMLCanvasElement {
+/** Adegan + bingkai bawah: ikon, nama game, keterangan terminal, (baris musim), alamat situs; bingkai musim bila dipakai. */
+export function susunFoto(adegan: HTMLCanvasElement, keterangan: string, ikon: HTMLImageElement | null, bingkai: BingkaiFoto | null = null): HTMLCanvasElement {
   const w = adegan.width;
   const h = adegan.height;
   const k = w / LEBAR_RANCANGAN;
@@ -90,7 +122,9 @@ export function susunFoto(adegan: HTMLCanvasElement, keterangan: string, ikon: H
   c.height = h;
   const ctx = c.getContext('2d')!;
   ctx.drawImage(adegan, 0, 0);
-  const tinggiBingkai = Math.min(h * 0.4, 300 * k);
+  // Baris musim menambah satu baris teks di atas alamat situs: blok teks naik sebanyak itu.
+  const tambah = bingkai?.baris ? 40 * k : 0;
+  const tinggiBingkai = Math.min(h * 0.4, 300 * k) + tambah;
   const gradasi = ctx.createLinearGradient(0, h - tinggiBingkai, 0, h);
   gradasi.addColorStop(0, 'rgba(10, 14, 20, 0)');
   gradasi.addColorStop(0.45, 'rgba(10, 14, 20, 0.62)');
@@ -100,7 +134,7 @@ export function susunFoto(adegan: HTMLCanvasElement, keterangan: string, ikon: H
 
   const tepi = 40 * k;
   const sisiIkon = 112 * k;
-  const yIkon = h - tepi - sisiIkon;
+  const yIkon = h - tepi - sisiIkon - tambah;
   let xTeks = tepi;
   if (ikon) {
     ctx.save();
@@ -121,9 +155,21 @@ export function susunFoto(adegan: HTMLCanvasElement, keterangan: string, ikon: H
   ctx.fillStyle = '#fde68a';
   ctx.font = huruf(700, 28);
   ctx.fillText(keterangan, xTeks, yIkon + 84 * k, lebarTeks);
+  if (bingkai?.baris) {
+    ctx.fillStyle = bingkai.warna;
+    ctx.font = huruf(800, 24);
+    ctx.fillText(bingkai.baris, xTeks, yIkon + 120 * k, lebarTeks);
+  }
   ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
   ctx.font = huruf(700, 26);
-  ctx.fillText(TEKS.fotoAjakan, xTeks, yIkon + sisiIkon, lebarTeks);
+  ctx.fillText(TEKS.fotoAjakan, xTeks, yIkon + sisiIkon + tambah, lebarTeks);
+  if (bingkai) {
+    // Bingkai musim: garis berwarna tema di tepi foto (kanvas 2D, tanpa beban adegan).
+    const tebal = 16 * k;
+    ctx.strokeStyle = bingkai.warna;
+    ctx.lineWidth = tebal;
+    ctx.strokeRect(tebal / 2, tebal / 2, w - tebal, h - tebal);
+  }
   return c;
 }
 

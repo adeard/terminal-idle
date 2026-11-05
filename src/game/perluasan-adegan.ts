@@ -182,7 +182,8 @@ export const LOKASI_PROYEK: readonly LokasiProyek[] = [
       { dari: [3.0, 18.2], ke: [9.6, 18.6] },
     ],
     pusat: [4.2, 15.6],
-    tinggiKembangApi: 6.5,
+    // Lebih rendah dari tahap lain: letupannya menempel di atas siluet A1 (pita tajam di HP), bukan di langit kabur.
+    tinggiKembangApi: 5.0,
   },
   // 4 · Gedung parkir bus & Gedung Antarpulau: lapangan timur (calon Gedung Antarpulau).
   {

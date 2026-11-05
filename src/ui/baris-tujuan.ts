@@ -4,9 +4,13 @@
  * oleh overlay.ts. Teks ≤ 60 karakter (documents/14 bagian 3.4), dites di tests/tujuan.test.ts.
  */
 import type { TujuanDinilai } from '../app/tujuan';
+import { EKONOMI } from '../config/economy.config';
+import { isPoId } from '../sim/fitur';
+import type { TugasAktif } from '../sim/musim';
 import { formatDurasi, formatUang } from './format';
+import type { ModelTugas } from './model';
 import { wajahKepuasan } from './popup-kepuasan';
-import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_BANGUNAN, NAMA_PENDEK_TEKNOLOGI, NAMA_PO, TEKS, teksIzin } from './teks';
+import { angkaTugas, EFEK_PERLUASAN, hurufJudul, namaKelas, NAMA_AREA, NAMA_BANGUNAN, NAMA_PENDEK_TEKNOLOGI, NAMA_PO, TEKS, teksIzin, teksTugasPendek } from './teks';
 
 /** Warna baris: tingkat 1 merah, 2–3 kuning (ada yang bisa dikerjakan), 4–5 netral (menunggu). */
 export type GayaTujuan = 'bahaya' | 'siap' | 'netral';
@@ -71,10 +75,20 @@ export function teksTujuan(t: TujuanDinilai): string {
       return t.izin ? TEKS.tujuanIzin(t.level, teksIzin(t.izin), t.levelSekarang) : TEKS.tujuanNaikLevel(t.tahap, t.level, t.levelSekarang);
     case 'kelasBerikut':
       return TEKS.tujuanKelas(namaKelas(t.kelas), t.level, t.levelSekarang);
+    case 'tugas': {
+      const m = modelTugasTujuan(t.tugas, t.indeks);
+      return TEKS.tujuanTugas(teksTugasPendek(m), angkaTugas(m));
+    }
   }
 }
 
-export type TabTujuan = 'bangun' | 'petugas' | 'po' | 'terminal';
+/** Tugas musim di baris tujuan sebagai ModelTugas (teks & sasaran sama dengan kartu musim). */
+function modelTugasTujuan(t: TugasAktif, indeks: number): ModelTugas {
+  const kota = t.templat === 'kota' && typeof t.param === 'number' ? hurufJudul(EKONOMI.jurusan[t.param]?.nama ?? '') : null;
+  return { ...t, indeks, kota, po: t.templat === 'poTerendah' && isPoId(t.param) ? t.param : null, rasio: t.target > 0 ? Math.min(1, t.progres / t.target) : 1, ganti: null, tuas: null };
+}
+
+export type TabTujuan = 'bangun' | 'petugas' | 'po' | 'terminal' | 'target';
 
 /** Ketukan membuka tab ini lalu menyorot elemen `selektor` (bila tidak ada di DOM: `cadangan`, lalu tab-nya). */
 export interface SasaranTujuan {
@@ -130,5 +144,32 @@ export function sasaranTujuan(t: TujuanDinilai): SasaranTujuan {
     case 'naikLevel':
     case 'kelasBerikut':
       return { tab: 'terminal', selektor: '[data-kartu="level"]' };
+    case 'tugas':
+      // Baris tugas itu di kartu musim (tab Target); tuas "›" di barisnya menuju tempat mengerjakannya.
+      return { tab: 'target', selektor: `.musim-tugas[data-indeks="${t.indeks}"]`, cadangan: '.musim-kartu' };
+  }
+}
+
+/** Tuas "›" satu tugas musim: tab & tombol aksinya, popup kepuasan, atau null (tanpa tuas). */
+export type SasaranTugas = SasaranTujuan | { readonly popup: 'kepuasan' } | null;
+
+/** Sasaran tuas dari `ModelTugas.tuas` (sim/musim.ts tuasTugas): tombol aksi yang memajukan tugas itu disorot. */
+export function sasaranTugas(t: ModelTugas): SasaranTugas {
+  const tuas = t.tuas;
+  if (!tuas) return null;
+  if (tuas.jenis === 'keuangan') return { tab: 'terminal', selektor: '[data-kartu="keuangan"]' };
+  if (tuas.jenis === 'kepuasan') return { popup: 'kepuasan' };
+  const a = tuas.aksi;
+  switch (a.jenis) {
+    case 'bangun':
+      return { tab: 'bangun', selektor: tombolBangun(a.bangunan), cadangan: `.item-bangun[data-bangunan="${a.bangunan}"]` };
+    case 'beliTeknologi':
+      return { tab: 'bangun', selektor: `.item-modern[data-teknologi="${a.teknologi}"] .tombol-beli`, cadangan: `.item-modern[data-teknologi="${a.teknologi}"]` };
+    case 'rekrut':
+      return { tab: 'petugas', selektor: tombolPetugas(a.petugas), cadangan: `.item-petugas[data-petugas="${a.petugas}"]` };
+    case 'saranTarif':
+      return { tab: 'terminal', selektor: `.item-tarif[data-tarif="${a.tarif}"] .harga-saran`, cadangan: `.item-tarif[data-tarif="${a.tarif}"]` };
+    case 'daftarPo':
+      return { tab: 'po', selektor: tombolDaftarPo(a.po), cadangan: `.item-po[data-po="${a.po}"]` };
   }
 }

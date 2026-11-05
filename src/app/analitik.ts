@@ -12,6 +12,7 @@
  * sebagai peristiwa `exception` GA4. Tidak ada data pribadi yang dikirim.
  */
 import type { Aksi } from '../sim/aksi';
+import { tingkatRapor, type TugasAktif } from '../sim/musim';
 import { jurusanDilayani, kelasTerminal, kepuasanTerminal, levelTerminal, type GameState } from '../sim/state';
 import type { JenisTujuan } from './tujuan';
 
@@ -31,9 +32,9 @@ export const TANPA_ANALITIK: Analitik = { catat: () => {} };
 
 /**
  * Peristiwa yang cukup dicatat sekali per sesi untuk data yang sama (mis. klakson telolet
- * pertama, tarif terminal: pemain biasanya mengetuk +/− berkali-kali).
+ * pertama, tarif terminal: pemain biasanya mengetuk +/− berkali-kali; hiasan musim yang dipakai/dilepas).
  */
-const SEKALI_PER_SESI: ReadonlySet<string> = new Set(['telolet', 'atur_tarif', 'saran_tarif', 'tujuan_ketuk']);
+const SEKALI_PER_SESI: ReadonlySet<string> = new Set(['telolet', 'atur_tarif', 'saran_tarif', 'tujuan_ketuk', 'hiasan_pakai']);
 
 /**
  * Pemain mengetuk baris tujuan berikutnya di HUD. Hanya jenis tujuannya (bukan teks,
@@ -95,7 +96,30 @@ export function ringkasanSesi(awal: GameState, akhir: GameState, bangun: number,
     po: akhir.mitra.terdaftar.length,
     petugas: akhir.terminal.petugas.length,
     kepuasan: Math.round(kepuasanTerminal(akhir).nilai * 100),
+    // Tingkat Rapor Musim di akhir sesi (−1 = musim belum terbuka; documents/17 bagian 9.2).
+    musim_tingkat: akhir.musim.id === null ? -1 : tingkatRapor(akhir.musim.poin),
   };
+}
+
+const kunciTugas = (t: TugasAktif): string => `${t.hari}|${t.templat}`;
+
+/**
+ * Peristiwa Musim Terminal dari perubahan state (bukan aksi): musim terbuka pertama kali, tugas selesai
+ * (tick main aktif atau aksi kelola), dan Rapor naik tingkat (documents/17 bagian 9.2). Hanya id & angka
+ * dari config, tanpa teks bebas.
+ */
+export function peristiwaMusim(lama: GameState, baru: GameState): PeristiwaAnalitik[] {
+  const a = lama.musim;
+  const b = baru.musim;
+  if (a === b || b.id === null) return [];
+  const hasil: PeristiwaAnalitik[] = [];
+  if (a.id === null) hasil.push({ nama: 'musim_buka', data: { musim: b.id } });
+  if (a.id !== b.id) return hasil;
+  const sudah = new Set(a.tugas.filter((t) => t.selesai).map(kunciTugas));
+  for (const t of b.tugas) if (t.selesai && !sudah.has(kunciTugas(t))) hasil.push({ nama: 'tugas_selesai', data: { templat: t.templat, musim: b.id, kelas: kelasTerminal(baru) } });
+  const tingkat = tingkatRapor(b.poin);
+  if (tingkat > tingkatRapor(a.poin)) hasil.push({ nama: 'rapor_naik', data: { musim: b.id, tingkat } });
+  return hasil;
 }
 
 /** Peristiwa dari satu aksi pemain yang berlaku (state berubah). */
@@ -145,10 +169,23 @@ export function peristiwaAksi(aksi: Aksi, lama: GameState, baru: GameState): Per
       return [{ nama: 'nama_terminal', data: { ada: baru.profil.namaTerminal !== '' } }];
     case 'aturIkutPeringkat':
       return [{ nama: baru.profil.ikutPeringkat ? 'peringkat_ikut' : 'peringkat_keluar' }];
+    case 'gantiTugas':
+      return [{ nama: 'tugas_ganti', data: { templat: lama.musim.tugas[aksi.indeks]?.templat ?? '', cara: aksi.cara } }];
+    case 'pakaiHiasan':
+      // Pakai/lepas manual (hiasan baru dipakai otomatis tanpa peristiwa); item = id hiasan dari config.
+      return [{ nama: 'hiasan_pakai', data: { slot: aksi.slot, item: aksi.item ?? lama.musim.pakai[aksi.slot] ?? '', pakai: aksi.item !== null } }];
+    case 'tutupRapor': {
+      // Sekali per musim: rapor ditandai sudah dilihat saat popupnya ditutup.
+      const r = lama.musim.rapor;
+      return r ? [{ nama: 'rapor_musim', data: { musim: r.id, tingkat: r.tingkat, tugas: r.tugas, tantangan: r.tantangan } }] : [];
+    }
     case 'tahanBusEmas':
     case 'lepasBusEmas':
     // Percepat proyek tercatat lewat iklan_hadiah (tempat percepatProyek); tidak ada peristiwa baru.
     case 'percepatProyek':
+    // Surat Armada & sambutan musim: tanpa peristiwa (PO pilihan pemain tidak dikirim).
+    case 'pakaiSuratArmada':
+    case 'tutupSambutanMusim':
       return [];
   }
 }
@@ -174,6 +211,11 @@ export class PencatatAnalitik implements Analitik {
   catatAksi(aksi: Aksi, lama: GameState, baru: GameState): void {
     if ((aksi.jenis === 'bangun' || aksi.jenis === 'beliTeknologi') && baru !== lama) this.jumlahBangun++;
     for (const p of peristiwaAksi(aksi, lama, baru)) this.catat(p.nama, p.data);
+  }
+
+  /** Peristiwa musim dari perubahan state (lihat peristiwaMusim); dipanggil tiap pembaruan state. */
+  catatMusim(lama: GameState, baru: GameState): void {
+    for (const p of peristiwaMusim(lama, baru)) this.catat(p.nama, p.data);
   }
 
   /** Laporkan error (peristiwa `exception` GA4): tiap pesan sekali, paling banyak MAKS_GALAT_PER_SESI per sesi. */

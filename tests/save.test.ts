@@ -64,7 +64,7 @@ describe('bentuk save', () => {
     for (const [k, v] of Object.entries(d)) if (v && typeof v === 'object' && !Array.isArray(v)) kunci[k] = Object.keys(v).sort();
     expect(VERSI_SKEMA).toBe(3);
     expect(kunci).toEqual({
-      '': ['benihCuaca', 'event', 'hadiah', 'harian', 'kas', 'keuangan', 'mitra', 'pencapaian', 'perkembangan', 'profil', 'rekor', 'schemaVersion', 'statistik', 'tantangan', 'terminal', 'waktuTerakhirMs'],
+      '': ['benihCuaca', 'event', 'hadiah', 'harian', 'kas', 'keuangan', 'mitra', 'musim', 'pencapaian', 'perkembangan', 'profil', 'rekor', 'schemaVersion', 'statistik', 'tantangan', 'terminal', 'waktuTerakhirMs'],
       terminal: ['bangunan', 'id', 'petugas', 'tarif', 'teknologi'],
       mitra: ['hadiahEvent', 'jedaSampai', 'riwayat', 'terdaftar'],
       perkembangan: ['perluasan', 'proyekDetik', 'xpTerminal'],
@@ -77,6 +77,8 @@ describe('bentuk save', () => {
       tantangan: ['daftar', 'minggu', 'penumpang', 'selesaiMs'],
       profil: ['ikutPeringkat', 'namaTerminal'],
       event: ['aktif', 'diklaim', 'edisi', 'progres', 'target'],
+      // Musim Terminal (0.5.0, documents/17 bagian 9.1): blok opsional, skema tetap 3.
+      musim: ['gantiHari', 'hariTugas', 'id', 'koleksi', 'pakai', 'poin', 'rapor', 'riwayat', 'sambutan', 'statistik', 'suratArmada', 'tiketGanti', 'tugas'],
     });
   });
 });

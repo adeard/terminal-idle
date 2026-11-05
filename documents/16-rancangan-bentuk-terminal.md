@@ -1,8 +1,8 @@
 # 16 · Rancangan Bentuk Terminal: lantai 2, denah yang tidak monoton, perubahan per level
 
-> **Status: dibangun ronde 1, 4 November 2026, belum dirilis.** Disetujui owner 3 November 2026 (Telegram, disampaikan Sapto; pilihan owner di bagian 12, ADR 007). Ronde 1 berisi Sayap 2 Lantai (A1, A2, A3), isi lantai 2, proyek tiga fase, pengunjung lantai 2, peresmian susulan, kembang api proyek yang selesai offline, serta teks kartu dan toast. Ronde ini lulus QA gameplay dan grafis, termasuk ronde perbaikan 1 (teks toast susulan dan popup offline, playtest P-1 dan P-2). Brief `docs/tasks/20261103-bentuk-terminal.md`, dasar ADR 006 dan ADR 004. Catatan kerja, denah SVG tiap opsi, dan harness ada di `docs/design/20261103-bentuk-terminal/`, playtest di `docs/design/20261103-bentuk-terminal-playtest.md`, QA di `docs/reviews/20261103-bentuk-terminal-*.md`. Semuanya di repo tim, tidak ikut repo game.
+> **Status: ronde 1 dirilis di 0.4.1 (5 November 2026). Ronde 2 disetujui owner 5 November 2026 (ADR 008) dan sedang dibangun, untuk rilis 0.5.0 bersama Musim Terminal (dokumen 17).** Ronde 1 disetujui owner 3 November 2026 (Telegram, disampaikan Sapto; pilihan owner di bagian 12, ADR 007) dan dibangun 4 November 2026 (93536c5). Ronde 1 berisi Sayap 2 Lantai (A1, A2, A3), isi lantai 2, proyek tiga fase, pengunjung lantai 2, peresmian susulan, kembang api proyek yang selesai offline, serta teks kartu dan toast. Ronde ini lulus QA gameplay dan grafis, termasuk ronde perbaikan 1 (teks toast susulan dan popup offline, playtest P-1 dan P-2). Brief `docs/tasks/20261103-bentuk-terminal.md`, dasar ADR 006 dan ADR 004. Catatan kerja, denah SVG tiap opsi, dan harness ada di `docs/design/20261103-bentuk-terminal/`, playtest di `docs/design/20261103-bentuk-terminal-playtest.md`, QA di `docs/reviews/20261103-bentuk-terminal-*.md`. Semuanya di repo tim, tidak ikut repo game.
 >
-> **Belum dibangun, tetap rencana:** ronde 2, yaitu 12 perubahan kecil per level (bagian 6, AC-GFX-08), dan temuan playtest P-3, P-4, P-7 yang ikut dipertimbangkan bersamanya. Sapto memulai ronde 2 dengan keputusan terpisah, dan ronde itu butuh APPROVE owner.
+> **Ronde 2, dibangun 5 November 2026 dan lulus QA grafis dengan catatan** (`docs/reviews/20261105-bentuk-terminal-ronde-2-graphics.md`, PASS WITH NOTES, 5 MINOR). fps AC-GFX-19 masih NOT ASSESSED sampai diukur Nisa di mesin sepi. Belum di-commit; dirilis bersama Musim Terminal di 0.5.0. Hasil bangun dan keputusan Sapto ada di bagian 6 ("Dibangun"), 11.4, dan 12. Disetujui owner ("APPROVE semua", terminal, 5 November 2026; ADR 008): 12 perubahan kecil per level dalam versi ronde 2, dengan gedung Lv 16 pindah dari lot K14 ke K13; lahan seberang jalan K14–K17 dicadangkan dengan konstanta `CADANGAN_SEBERANG`; perbaikan playtest P-3, P-4, P-7. Semuanya di bagian 6. Brief `docs/tasks/20261105-bentuk-terminal-ronde-2.md` (AC-GFX-08, 13–20, AC-GP-05, AC-PLT-01); rancangan, denah lahan seberang, dan harness di `docs/design/20261104-bentuk-terminal-ronde-2/` (`rancangan-ronde-2.md`, `denah-seberang.png`, `sim/`). Bila bagian 6 dan brief berbeda, brief yang berlaku.
 >
 > **Dibangun berbeda dari rancangan, diterima Sapto atau owner** (rinciannya di bagian yang disebut): helper peresmian susulan pindah ke `src/app/peresmian-bentuk.ts`, dan tanda lokal tahap ≥ 3 ditulis saat tayang (bagian 7, 10.1); seluruh adegan beku di balik popup offline di jalur resume (GP-1, bagian 7); papan `LANTAI 2` tidak terbaca di 412 karena tilt-shift (G-1, bagian 4.3); fase 1 dan 2 proyek sulit dibedakan di portrait (G-2, bagian 4.4); kembang api tahap 4–5 tidak terlihat di portrait (G-3, bagian 7).
 >
@@ -10,9 +10,9 @@
 >
 > **Dikoreksi dari model 3D Panji.** Gambar ada di `docs/design/20261103-bentuk-terminal/gambar/`. Angka tutup di dokumen ini berasal dari sinar kamera ke mesh model, dengan titik sampel `sim/tutup.ts`, urutan layar 540 / 412 / landscape, kecuali yang ditandai kotak proyeksi. Model itu mock-up kasar (lihat "Belum diperiksa").
 >
-> **Keputusan berdiri:** tidak ada yang berubah. Slot denah tetap, tanpa penempatan bebas, tanpa angka ekonomi baru, save tetap skema 3. **Yang berubah adalah rencana dokumen 12 bagian 8:** letak lantai 2 dan letak Gedung Antarpulau (ADR 006 memang meminta tinjauan ulang, owner menyetujui di bagian 12).
+> **Keputusan berdiri:** tidak ada yang berubah. Slot denah tetap, tanpa penempatan bebas, tanpa angka ekonomi baru, save tetap skema 3. **Yang berubah adalah rencana dokumen 12 bagian 8:** letak lantai 2 dan letak Gedung Antarpulau (ADR 006 memang meminta tinjauan ulang, owner menyetujui di bagian 12). **Ronde 2 menambah satu keputusan berdiri:** lahan seberang jalan K14–K17 dijaga kosong sampai bentuk penyeberangan ke kota diputuskan (`CADANGAN_SEBERANG`, bagian 6, ADR 008).
 >
-> **Dibandingkan dengan kode 0.4.0 (commit 8d9520b).** Bila dokumen dan kode berbeda, kode yang benar; perbedaannya ditulis di bagian 1.2. Sesudah ronde 1, dokumen ini diselaraskan dengan kode yang dibangun (4 November 2026) di bagian 1.3, 4.3, 4.4, 4.5, 5, 6, 7, 9, 10, 11, 12 dan "Belum diperiksa".
+> **Dibandingkan dengan kode 0.4.0 (commit 8d9520b).** Bila dokumen dan kode berbeda, kode yang benar; perbedaannya ditulis di bagian 1.2. Sesudah ronde 1, dokumen ini diselaraskan dengan kode yang dibangun (4 November 2026) di bagian 1.3, 4.3, 4.4, 4.5, 5, 6, 7, 9, 10, 11, 12 dan "Belum diperiksa". Sesudah APPROVE ronde 2 (5 November 2026), bagian 6 diganti versi ronde 2, dan bagian 4.4, 5, 9.3, 10, 12 diberi rujukannya.
 
 | Pertanyaan brief | Bagian |
 |---|---|
@@ -32,7 +32,7 @@
 3. **Gedung Antarpulau tidak lagi melebar ke timur.** Bangunan di `x ≥ 51,5` 0 % masuk layar portrait 540×590 pada kamera normal, dan membuat landscape mengecil 15 % (`x` sampai 57,7) sampai 28 % (`x` sampai 75, rencana lama) bila dipaksa muat.
 4. **Alur satu arah tidak bergeser.** Di Opsi A tidak ada konstanta rute bus atau penumpang yang berubah. Orang di lantai 2 memakai rute putar sendiri, terpisah dari `DuniaVisual`.
 5. **Unit yang selama ini tak terlihat jadi terlihat:** jendela ke-9 sampai ke-24 dan blok kursi ke-5 sampai ke-8 di lantai 2, kios food court ke-3 dan ke-4 di teras. Pemain serakah baru melewati 24 jendela di Lv 28, pengikut tujuan di Lv 28 juga.
-6. **12 perubahan kecil per level**, semuanya terukur minimal 6 px di layar HP, di ronde kedua: sesudah gedung lulus QA, dan hanya kalau beban gambar masih muat. Lv 21–27 mendapat satu perubahan tiap level. Ini tanda kemajuan, **bukan** obat kurangnya keputusan di dataran itu (S-4 dan saran 7 tetap terbuka).
+6. **12 perubahan kecil per level**, semuanya terukur minimal 6 px di layar HP, di ronde kedua: sesudah gedung lulus QA, dan hanya kalau beban gambar masih muat. Lv 21–27 mendapat satu perubahan tiap level. Ini tanda kemajuan, **bukan** obat kurangnya keputusan di dataran itu (S-4 dan saran 7 tetap terbuka). Ronde 2 disetujui 5 November 2026 (ADR 008) dan sedang dibangun; tabelnya kini versi ronde 2, dengan lahan seberang jalan dicadangkan (bagian 6).
 7. **Pemain lama** melihat gedungnya langsung berdiri, dengan satu kali peresmian susulan. Tahap 4–5 selama bentuk akhirnya belum ada: Sayap 2 Lantai saja, proyek Perluasan 4–5 tetap di lokasi lama (pilihan owner).
 8. **Denah terbukti murni visual** (bagian 8): lapisan sim tidak bisa mengimpor adegan, dan kapasitas hanya dihitung dari jumlah unit.
 
@@ -321,7 +321,7 @@ Biaya: tidak ada rute lama yang berubah, tambahan paling banyak ±80 instance di
 **Sesudah dibangun:**
 
 - Field `perancah` dihapus dari `LokasiProyek`, karena sesudah perancah sayap barat hilang tidak ada tahap yang memakainya. Pekerja naik ke atas pelat sejak fase 1.
-- **Fase 1 dan fase 2 sulit dibedakan pada kamera normal portrait** (G-2, playtest P-4): rangka lantai 2 lebih tipis dari 1 px, jadi proyek terbaca dua langkah (lahan → pelat), bukan tiga. Diterima tanpa tindakan di ronde 1. Perbaikannya (P-4) tetap rencana, ikut pertimbangan ronde 2 dengan APPROVE.
+- **Fase 1 dan fase 2 sulit dibedakan pada kamera normal portrait** (G-2, playtest P-4): rangka lantai 2 lebih tipis dari 1 px, jadi proyek terbaca dua langkah (lahan → pelat), bukan tiga. Diterima tanpa tindakan di ronde 1. Perbaikannya (P-4) disetujui untuk ronde 2 (ADR 008): jaring pengaman kuning di keempat muka lantai 2 selama fase 2, dengan bahan kuning crane yang sudah ada, +0 draw call (bagian 6, brief ronde 2 AC-GFX-17).
 
 ### 4.5 Sebutan: yang berlaku dan yang berubah
 
@@ -376,44 +376,79 @@ Pemain di simulasi (`sim/unit-serakah.ts`, `sim/pengikut-unit.ts`; pengikut tuju
 
 **Kios ke-3 dan ke-4:** teras, tertutup rolling door sampai `bangunan.toko ≥ 3` dan `≥ 4`. Pengikut tujuan punya 0 toko sampai Lv 31, jadi bagi banyak pemain kios ini akan tutup. Teras dan mejanya tetap ramai. Kios tutup malah menjadi petunjuk ringan "ini bisa dibuka", tanpa mengubah baris tujuan.
 
-**Sesudah dibangun, petunjuk ini belum bekerja.** Playtest P-7: kios buka dan kios tutup tampak sama pada kamera normal dan zoom 2×. Pada zoom maksimum keduanya hanya dibedakan oleh orang di depan kios buka. Perbaikannya (tanda kios buka yang terlihat, atau klaim ini dicabut) tetap rencana, ikut pertimbangan ronde 2 dengan APPROVE.
+**Sesudah dibangun, petunjuk ini belum bekerja.** Playtest P-7: kios buka dan kios tutup tampak sama pada kamera normal dan zoom 2×. Pada zoom maksimum keduanya hanya dibedakan oleh orang di depan kios buka. Perbaikannya disetujui untuk ronde 2 (ADR 008): kios teras yang sudah dibangun diberi tenda bergaris, siang dan malam, sedangkan pintu gulung tetap menandai tutup. Jadi belum dibangun, dibangun tapi tutup, dan buka bisa dibedakan (bagian 6, brief ronde 2 AC-GFX-18).
 
 **Tetap tidak digambar sampai tahapnya:** jalur 6–9 dan petak 21–60 (Perluasan 4–5), toilet ke-2. Petak 21–30 sudah dipakai sim sejak Perluasan 3 tanpa gambar; dibiarkan, karena 20 petak yang ada sudah memenuhi layar dan menambahnya butuh rute.
 
 ## 6. Perubahan kecil per level
 
-**Ronde kedua, dengan syarat (pilihan owner):** dimulai sesudah Sayap 2 Lantai lulus QA, dan hanya kalau beban gambar masih muat (bagian 11.4). Bila hanya sebagian yang muat, Sapto melapor ke owner.
+**Status 5 November 2026: disetujui owner ("APPROVE semua", terminal; ADR 008), dibangun, lulus QA grafis dengan catatan; fps belum diukur.** Hasilnya di "Dibangun" di akhir bagian ini. Ronde kedua dimulai sesudah Sayap 2 Lantai lulus QA, dengan syarat beban gambar masih muat (bagian 11.4); perkiraannya di bawah, di "Beban". Brief `docs/tasks/20261105-bentuk-terminal-ronde-2.md`; rancangan `docs/design/20261104-bentuk-terminal-ronde-2/rancangan-ronde-2.md`, dengan denah dan harness di folder yang sama (repo tim). **Tabel di bagian ini adalah versi ronde 2.** Ia menggantikan tabel rancangan 3 November, yang menaruh gedung Lv 16 di lot K14.
 
-**Status 4 November 2026: belum dibangun.** Ronde 1 sudah lulus QA, dan sisa beban ada di bagian 11.4. Sapto memutuskan mulainya secara terpisah, lalu owner memberi APPROVE.
+- **Ikut ronde 2** (temuan playtest ronde 1, disetujui bersama):
+  - **P-3, kembang api siang lebih terbaca.** Kecerahan ikut siang dan malam (siang ×1,0, malam tetap ×3,2), palet tanpa putih, partikel lebih besar (r 0,15 → 0,26), dan letupan Perluasan 3 lebih rendah (h 6,5 → 5,0). Ini juga syarat bagi kembang api kecil per benda di bawah. Brief AC-GFX-16.
+  - **P-4:** fase 2 proyek berjaring kuning (bagian 4.4). AC-GFX-17.
+  - **P-7:** kios teras yang dibangun bertenda (bagian 5). AC-GFX-18.
+- **Pemeriksaan lahan seberang jalan sudah dilakukan.** Pemeriksaan ini diminta karena usulan owner 3 November 2026 agar terminal kelak tumbuh melintasi jalan (rancangan ronde 2 bagian 2). Tidak ada gedung yang mengunci jembatan tahap 5 dokumen 12. Hanya gedung Lv 16 di K14 yang menempati separuh lahan terbaik untuk bangunan pendarat jembatan. Gedung itu pindah ke K13, dan lahannya dicadangkan (di bawah tabel).
 
-- **Ikut dipertimbangkan bersama ronde 2** (temuan playtest, semuanya rencana):
-  - **P-3:** kembang api selesai perluasan lebih terbaca di siang hari. Ronde ini juga mengandalkan kembang api kecil di titik benda.
-  - **P-4:** fase 2 proyek berbeda dari fase 1 (bagian 4.4).
-  - **P-7:** kios teras buka dan tutup bisa dibedakan (bagian 5).
-- **Sebelum ronde 2:** periksa bahwa gedung kota yang ditinggikan tidak mengunci lahan di seberang jalan. Pemeriksaan ini diminta karena usulan owner 3 November 2026 agar terminal kelak tumbuh melintasi jalan (brief bagian 9).
+Hanya dari `levelTerminal(state)`, `perkembangan.perluasan`, dan daftar PO terdaftar menurut urutan daftar (untuk baliho), tanpa field save. Semua diukur (`sim/proyeksi.ts`; untuk ronde 2 juga `docs/design/20261104-bentuk-terminal-ronde-2/sim/seberang.ts`) dan diuji tidak menutup inti permainan (`sim/tutup.ts`). Ukuran: px CSS di 360×575 / 667×420, kamera normal. Jam = jam main pemain serakah (bagian 5, ekonomi 0.4.0, tidak berubah di ronde 1).
 
-Hanya dari `levelTerminal(state)` dan `perkembangan.perluasan`, tanpa field save. Semua diukur (`sim/proyeksi.ts`) dan diuji tidak menutup inti permainan (`sim/tutup.ts`). Ukuran: px CSS di 360×575 / 667×420, kamera normal.
-
-| Lv | Perubahan | Letak | Ukuran |
-|---|---|---|---|
-| 5 | 6 pohon peneduh tepi selatan plaza | `y 17,65`, `x` 13,6 · 15,6 · 20,6 · 23,4 · 26,4 · 29,0 | Satu pohon 12×14 / 12×15 |
-| 8 | Kanopi antar-jemput di atas mobil golf | `x 26,6…29,1, y 15,55…16,3`, h 0,9…1,1 | 18×16 / 21×16 |
-| 13 | Baliho PO terdaftar pertama di atap ruang tunggu | `x 32…36, y 13`, h 2,2…3,2, warna liveri PO | 22×27 / 30×26 |
-| 16 | Gedung kota meninggi 4,4 → 7,5 | Sekeliling gedung `x 24,8…28, y −4,6…−1,6` | 38×43 / 39×43 |
-| 21 | Gedung kota 5,9 → 9,0 | `x 17…20,6, y −5,4…−1,6` | 43×45 / 44×46 |
-| 22 | Baliho kedua (PO kedua) | `x 42,5…46,5, y 13`, h 2,2…3,2 | 24×29 / 34×29 |
-| 23 | Gedung kota 5,0 → 8,5 | `x −5…−1,6, y −5…−1,6` | 36×42 / 36×42 |
-| 24 | 3 pohon atap di teras, bila tahap ≥ 3 | `x 10,0`, `y` 17,7 · 18,6 · 19,5, h 1,35…2,35 | 10×13 / 11×12 |
-| 25 | Menara jam plaza | `x 28,6…29,3, y 16,4…17,1`, h 4,6 | 9×35 / 11×35 |
-| 26 | Gedung kota 3,7 → 7,2 | `x 2,8…5,8, y −4,4…−1,5` | 31×40 / 32×40 |
-| 27 | Monumen bus di atas alas | `x 26…28,4, y 16,5…17,0`, h s.d. 1,2 | 15×21 / 19×21 |
-| 35 | Gedung kota 2,8 → 6,5 | `x 13,4…16,2, y −3,6…−1,5` | 27×40 / 29×39 |
+| Lv | Jam | Perubahan | Letak | Ukuran | Berubah dari rancangan 3 Nov |
+|---|---|---|---|---|---|
+| 5 | < 0,5 | 6 pohon peneduh tepi selatan plaza | `y 17,65`, `x` 13,6 · 15,6 · 20,6 · 23,4 · 26,4 · 29,0 | 12×14 / 12×15 | |
+| 8 | 1,0 | Kanopi antar-jemput di atas mobil golf | `x 26,6…29,1, y 15,55…16,3`, h 0,9…1,1 | 18×16 / 21×16 | |
+| 13 | 2,5 | Baliho PO terdaftar pertama di atap ruang tunggu, warna liveri | `x 32…36, y 13`, h 2,2…3,2 | 22×27 / 30×26 | Warna dari `LIVERY_PO`. Bila PO < 1: warna terminal `#1d4ed8` dan putih |
+| 16 | 3,4 | **Gedung kota K13 meninggi 2,5 → 6,0** | `x 21,4…24,0, y −3,8…−1,5` | 30×56 / 32×55 | **Dulu K14** `x 24,8…28` 4,4 → 7,5 |
+| 21 | 5,5 | Gedung kota K12 5,9 → 9,0 | `x 17…20,6, y −5,4…−1,6` | 43×45 / 44×46 | |
+| 22 | 6,0 | Baliho PO kedua | `x 42,5…46,5, y 13`, h 2,2…3,2 | 24×29 / 34×29 | Bila PO < 2: warna terminal |
+| 23 | 6,5 | Gedung kota K07 5,0 → 8,5 | `x −5…−1,6, y −5…−1,6` | 36×42 / 36×42 | Catatan: pita kabur portrait |
+| 24 | 7,1 | 3 pohon atap di teras, bila tahap ≥ 3 | `x 10,0`, `y` 17,7 · 18,6 · 19,5, h 1,35…2,35; **dibangun h 1,35…2,68** | 10×13 / 11×12 | Dibangun lebih tinggi supaya lolos ukuran AC-GFX-13 (bagian "Dibangun") |
+| 25 | 7,7 | Menara jam plaza | `x 28,6…29,3, y 16,4…17,1`, h 4,6 | 9×35 / 11×35 | |
+| 26 | 8,3 | Gedung kota K09 3,7 → 7,2 | `x 2,8…5,8, y −4,4…−1,5` | 31×40 / 32×40 | Catatan: pita kabur portrait |
+| 27 | 8,9 | Monumen bus di atas alas | `x 26…28,4, y 16,5…17,0`, h s.d. 1,2 | 15×21 / 19×21 | |
+| 35 | 14,7 | Gedung kota K11 2,8 → 6,5 | `x 13,4…16,2, y −3,6…−1,5` | 27×40 / 29×39 | |
+| | | **Cadangan lahan seberang**, tanpa hiasan | `x 24,8…39,0, y −5,0…−1,2` (K14–K17) | | **Baru** |
 
 Lv 10, 20, 30, dan tiap bintang sudah punya tanda kelas (`kelas3d.ts`). Lv 2–4 sudah penuh tutorial dan perluasan.
 
-**Gedung kota** dibuat sebagai kotak sedikit lebih besar yang menyelubungi gedung lama, satu `InstancedMesh` (fasad) dan satu (atap) dengan `count` naik. Dua draw call untuk lima gedung. Kota mengisi hampir separuh layar portrait, jadi tumbuhnya terlihat di tempat yang selama ini tidak pernah berubah, dan ceritanya masuk akal: kota ikut tumbuh bersama terminal.
+**Cadangan lahan seberang (`CADANGAN_SEBERANG`, ADR 008):**
 
-**Menarik mata.** Saat satu level naik di sesi aktif dan ada benda baru, kembang api kecil sekali di titik benda itu (`KembangApi`, sudah ada), tanpa suara baru dan tanpa toast baru. Lompatan level offline tidak memicu kembang api: bendanya langsung ada.
+- **Lahan:** lot kota K14–K17, di seberang ruang tunggu dan gerbang. Di kode: `CADANGAN_SEBERANG = { x0: 24.8, y0: -5.0, x1: 39.0, y1: -1.2 }` di `src/game/tata-letak.ts`.
+- **Aturan:** sampai bentuk penyeberangan diputuskan, lahan ini tidak diberi hiasan level, gedung kota yang dinaikkan, atau hiasan lain.
+  - Satu tes menjaganya (brief ronde 2 AC-GFX-14), jadi janji ini tidak bergantung pada ingatan.
+  - Gedung yang dinaikkan hanya K07, K09, K11, K12, K13. Lot K14–K17 tidak berubah.
+- **Kenapa lahan ini:** jembatan ke kota hanya bisa berdiri di depan peron kedatangan (barat) atau ruang tunggu (timur), tidak di atas pangkalan, karena pangkalan termasuk inti permainan (bagian 1.3).
+  - **K14+K15** (`x 24,8…31,4`): 100 % di layar dan tajam di keempat layar, 103×103 / 68×69 / 56×57 / 62×56 px (540 / 412 / 360 / landscape). Hanya ujung K15 yang menyentuh kolom tombol di 540 dan 412.
+  - **K16–K17** menampung jembatan tahap 5 dokumen 12 (`x 37,8…39,2`).
+- **Belum diputuskan:** bentuk penyeberangan itu sendiri. Ia masuk rancangan Perluasan 4–5. Gambar lahan, koridor, dan jejak layar: `docs/design/20261104-bentuk-terminal-ronde-2/denah-seberang.png`.
+
+**Pita tilt-shift portrait** (tengah benda, 412 / 360; `hasil-seberang.txt` bagian 8 di folder rancangan ronde 2):
+
+- **Tajam:** semua benda plaza, yaitu Lv 5, 8, 13, 24, 25, 27.
+- **Landai 22–26 %:** Lv 22.
+- **Landai sampai kabur penuh di puncaknya:** gedung kota.
+
+Di 540 dan landscape, benda plaza ada di pita landai bawah, 18–72 %, dan baliho Lv 22 di pita kabur penuh. **Diterima owner** (ADR 008 butir 3): gedung Lv 23 dan Lv 26 tumbuh di pita kabur atas layar HP, seperti papan `LANTAI 2`. Pertambahan tingginya 21–38 px tetap terbaca sebagai siluet, dan tidak ada lot tajam lain yang masih bebas.
+
+**Gedung kota** tumbuh sebagai tambahan lantai di atas atap lama, dengan bahan kota yang sudah ada, jadi jendela fasad bersambung. Rancangan ronde 2 mengusulkan menaruhnya di ujung mesh gabungan lingkungan dan memotongnya dengan `setDrawRange` seperti lahan Sayap, sehingga +0 draw call. Cadangannya wadah sendiri, +4. `InstancedMesh` fasad dari rancangan 3 November tidak dipakai, karena kotak satuan yang diskalakan meregangkan tekstur jendela ±1,6×. Panji yang memilih caranya. Kota mengisi hampir separuh layar portrait, jadi tumbuhnya terlihat di tempat yang selama ini tidak pernah berubah, dan ceritanya masuk akal: kota ikut tumbuh bersama terminal.
+
+**Menarik mata.** Saat satu level naik di sesi aktif dan ada benda baru, kembang api kecil sekali di titik benda itu, tanpa suara baru dan tanpa toast baru. Ia memakai `KembangApi` yang sudah ada dengan perbaikan P-3: 3 letupan, sebaran ±1,0, pusat 1,5 di atas puncak benda, +0 draw call. Memuat save dan lompatan level offline tidak memicu kembang api: bendanya langsung ada.
+
+**Beban** (perkiraan dari primitif sebelum dibangun; rancangan ronde 2 bagian 4; angka terukur di bagian 11.4):
+
+- **Hiasan selain gedung kota:** satu wadah dengan satu bahan, ditambah bayangannya, jadi +2 draw call. Wadah itu dibangun saat hiasan pertama tampil (Lv 5).
+- **Gedung kota, P-3, P-4, P-7, dan kembang api kecil:** +0 draw call.
+- **Jumlah di tahap 3 Lv ≥ 35:** ±5,9 rb segitiga dan +2 draw call (paling banyak +6), dari sisa ronde 1 ±11,9 rb dan ≥ 19 (bagian 11.4).
+- **Tahap 0–2 naik +2 draw call sejak Lv 5.** Ini pengecualian dari syarat ronde 1 (AC-GFX-10). Sapto menerimanya, karena gabungan dua ronde paling banyak +9 dari batas 25 (ADR 008).
+- **Batas ukur** ada di brief ronde 2 AC-GFX-19. Bila lewat, benda dipotong dari bawah menurut urutan di rancangan ronde 2 bagian 4.3: pohon plaza Lv 5 dipotong pertama, P-3 terakhir.
+
+**Dibangun (5 November 2026, keputusan Sapto atas laporan Panji dan QA grafis; brief ronde 2 bagian 9):**
+
+- **Palet P-3 berlaku untuk semua kembang api peresmian,** termasuk Perluasan 1, bukan hanya Perluasan 3 dan hiasan level. Biru muda dan putih diganti `0x2563eb` dan `0xf97316`. AC-GFX-20 hanya tentang adegan statis, jadi ini bukan pelanggaran.
+- **Kilatan tidak dibuat.** Kilatan adalah tambahan opsional dari rancangan ronde 2 (≤ 7 instance, 56 segitiga). Kembang api siang lolos AC-GFX-16 tanpa kilatan.
+- **Pohon atap Lv 24 setinggi 1,35–2,68,** bukan 1,35–2,35, supaya sisi terpendeknya ≥ 6 px (AC-GFX-13). Margin di 360×575 tinggal 0,6 px: terkecil 6,6 px (G-2). Perubahan skala atau kamera kecil bisa membuatnya lewat batas.
+- **Kembang api kecil dilewati bila naik level jatuh di frame yang lebih panjang dari ±2 detik** (`jamBersambung`, sama dengan jalur resume; G-4). Itu terjadi bila naik level jatuh pada beberapa detik pertama sesudah memuat di perangkat lambat, saat shader dikompilasi. Bendanya tetap muncul; hanya kembang apinya yang tidak.
+- **Kembang api siang di 412 samar** (G-1): ada tiga letupan berwarna dan partikel 4–5,1 px, jadi AC-GFX-16 terpenuhi. Tapi di bawah tilt-shift titiknya kecil, dan pemain ponsel kecil bisa melewatkannya. Diterima; bisa dipertajam di ronde berikutnya bila owner mau (partikel lebih besar atau lebih terang di bawah 480 px).
+- **Beban terukur:** bagian 11.4, "Hasil ronde 2". **Tahap 0–2 kini tepat di batas +2 draw call** (G-3). Tambahan apa pun berikutnya di tahap 0–2, termasuk hiasan Perluasan 4–5 yang tampil sebelum tahap 3, harus memotong atau menggabung mesh lebih dulu.
 
 **Dataran Lv 21–27.** Satu benda per level, kira-kira tiap 34 menit main (serakah Lv 21 → 27 = 3,4 jam; pengikut 3,5 jam). **Jujur soal batasnya:** ini memberi tanda kemajuan, bukan keputusan. S-4 (3 keputusan dalam 3,5 jam) tetap ada; obatnya P-5 dan saran 7.
 
@@ -559,6 +594,8 @@ Bukan pengaruh ke ekonomi, tapi harus dijaga waktu membangun:
 | Toast peresmian susulan | `🎉 Perluasan 3 kini punya gedung: Sayap 2 lantai!` |
 | Popup offline, proyek selesai | `🏗️ Perluasan ${tahap} selesai selama kamu pergi: ${nama}!`, nama dari `NAMA_PERLUASAN`. Tahap 3: `🏗️ Perluasan 3 selesai selama kamu pergi: Sayap 2 lantai!` |
 | Papan 3D | `LANTAI 2`, `FOOD COURT`, `NASI & SOTO`, `KOPI & ES` |
+| Catatan rilis 0.4.1 (dirilis 5 Nov 2026, `src/config/rilis.config.ts`) | `Perluasan 3 kini membangun gedung sungguhan: Sayap 2 lantai di sisi barat terminal.` · `Jendela loket, kursi, dan kios tambahan yang kamu bangun muncul di dalamnya.` · `Yang sudah melewati Perluasan 3 mendapat peresmian susulan, sekali saja.` |
+| Catatan rilis ronde 2 (0.5.0, brief ronde 2 AC-PLT-01) | `Terminal dan kota di seberangnya kini berubah sedikit demi sedikit saat naik level.` |
 
 **Diperbarui sesudah playtest (P-1, P-2; ronde perbaikan 1, tanpa APPROVE karena hanya teks):**
 
@@ -568,7 +605,7 @@ Bukan pengaruh ke ekonomi, tapi harus dijaga waktu membangun:
   - menjanjikan kursi dan food court yang belum tentu ada di save pemain;
   - terlalu panjang untuk 3,5 detik. Teks baru ±48 karakter dan benar untuk semua save.
 - **Popup offline kini menyebut gedungnya.** Sesudah "Oke", kembang api meledak di atas gedung itu (bagian 7). Tahap di luar `NAMA_PERLUASAN` ditulis tanpa nama.
-| Catatan rilis (maks 3 butir, dikerjakan saat rilis) | `Perluasan 3 kini punya gedung sungguhan: Sayap 2 lantai dengan loket, ruang tunggu, dan food court.` · Bila ronde kedua ikut: `Terminal berubah sedikit demi sedikit saat naik level.` |
+- **Catatan rilis.** Rancangan awal hanya punya satu butir untuk ronde 1: `Perluasan 3 kini punya gedung sungguhan: Sayap 2 lantai dengan loket, ruang tunggu, dan food court.` Yang dirilis di 0.4.1 adalah tiga butir di tabel di atas.
 
 Toast naik level tidak berubah. Sudah padat di Lv 11–30 (dokumen 15 bagian 10), jadi benda baru tidak diberi toast sendiri.
 
@@ -592,7 +629,10 @@ export function perluPeresmianSusulan(perluasan: number, sudah: boolean): boolea
 **Seperti dibangun (4 November 2026):**
 
 - **Helper peresmian:** `perluPeresmianSusulan` ada di `src/app/peresmian-bentuk.ts`, milik gameplay, bersama `AntreanPerayaan`, `TAHAP_SAYAP_2_LANTAI`, dan `JEDA_PERAYAAN_DETIK` (bagian 7). Ini keputusan brief bagian 5, supaya `main.ts` tidak mengimpor dari adegan.
-- **Belum ada:** `hiasanLevel`, karena milik ronde 2.
+- **Belum ada di ronde 1:** `hiasanLevel`, karena milik ronde 2. Antarmuka ronde 2 yang berlaku ada di brief `docs/tasks/20261105-bentuk-terminal-ronde-2.md` bagian 5 dan menggantikan tanda tangan di atas:
+  - modul murni baru di `GAME_MURNI` (Panji memilih nama, usul `src/game/hiasan-level.ts`): `HIASAN_LEVEL`, `hiasanLevel(level, perluasan)`, `hiasanBaru(levelLalu, levelSekarang, perluasan)` yang kosong saat muat dan saat lompatan offline, dan `poBaliho(daftar)`;
+  - `tata-letak.ts` hanya menambah `GEDUNG_KOTA_NAIK` dan `CADANGAN_SEBERANG = { x0: 24.8, y0: -5.0, x1: 39.0, y1: -1.2 }`;
+  - tanpa state, aksi, save, atau analitik baru.
 - **`bentuk-adegan.ts` menambah, tanpa mengubah arti:**
   - `isiLantai2` juga mengembalikan `kiosBuka`;
   - `posisiPengunjung` juga mengembalikan `hadap` dan bisa memakai ulang objek hasil;
@@ -621,7 +661,8 @@ export function perluPeresmianSusulan(perluasan: number, sudah: boolean): boolea
 - **Lulus:** AC-GP-01 sampai 04, dan semua AC-GFX kecuali yang di bawah.
 - **AC-GFX-12** tidak terpenuhi di 412 (G-1). Owner menerimanya (bagian 4.3).
 - **AC-GFX-10:** hasil di bagian 11.4.
-- **Belum dibangun:** AC-GFX-08 (ronde 2) dan AC-PLT-01 (dikerjakan saat rilis).
+- **AC-PLT-01** selesai saat rilis 0.4.1 (catatan rilis di bagian 9.3; `versiMinimal` tetap 0.4.0).
+- **AC-GFX-08 (ronde 2)** sedang dibangun. Teks yang dipakai QA adalah versi brief `docs/tasks/20261105-bentuk-terminal-ronde-2.md` bagian 6: AC-GFX-08 dengan tabel ronde 2 (Lv 16 di K13), ditambah AC-GFX-13 sampai 20 (ukuran dan tutup, lahan seberang, baliho, P-3, P-4, P-7, beban, keadaan), AC-GP-05, dan AC-PLT-01 ronde 2.
 
 **Gameplay & UI**
 
@@ -696,7 +737,7 @@ Ronde 1 sudah menepati janji kartu Perluasan 3 dan memecah siluet.
 
 | Risiko | Mitigasi |
 |---|---|
-| Bangunan di kiri layar tidak disadari. Model 3D: di 360 dan landscape terbaca sebagai gumpalan | Kembang api, toast, papan, tangga berwarna; diuji di playtest. **Playtest Citra di build:** di 540 dan landscape gedungnya jelas baru; di 412 dan 360 kecil dan kabur oleh tilt-shift (P-8). Kembang api kuat di malam hari, lemah di siang hari (P-3, rencana ronde 2), jadi maknanya dibawa toast dan munculnya gedung. Tetap NOT ASSESSED sampai playtest 5 orang |
+| Bangunan di kiri layar tidak disadari. Model 3D: di 360 dan landscape terbaca sebagai gumpalan | Kembang api, toast, papan, tangga berwarna; diuji di playtest. **Playtest Citra di build:** di 540 dan landscape gedungnya jelas baru; di 412 dan 360 kecil dan kabur oleh tilt-shift (P-8). Kembang api kuat di malam hari, lemah di siang hari (P-3, perbaikannya disetujui untuk ronde 2, bagian 6), jadi maknanya dibawa toast dan munculnya gedung. Tetap NOT ASSESSED sampai playtest 5 orang |
 | Massa sementara terlihat murah | Sudah terjadi di `opsi-a-tahap4-siluet.png`, jadi dipilih "kosong" (bagian 7). Fasad dari bahan yang ada belum dicoba |
 | Tahap 4–5 tetap tanpa bangunan sampai sesudah Musim Terminal | Diterima owner. Kartu Perluasan 4–5 tidak diubah; janjinya ditepati saat bentuknya dibangun |
 | Draw call melampaui batas (mock-up +41–44, batas 25) | Bagian 11.4. Bila tidak tercapai, kurangi isi dan lapor; ronde kedua tidak dimulai. **Tidak terjadi:** ronde 1 menambah +3 draw call (bagian 11.4) |
@@ -764,6 +805,24 @@ Pengukuran Panji sendiri: +2 draw call, +9–11 rb segitiga, dalam derau yang sa
 - **Anggaran skill tetap terlewati.** Landscape tingkat 1 kini 241–246 draw call, terhadap ±210. Ini sudah terlewati sejak 0.4.0.
 - **Sisa batas gabungan** (25 draw call dan 25 rb segitiga): ronde 1 memakai +3 … +6 draw call dan +13,1 rb segitiga. Sisanya paling sedikit 19 draw call, tapi hanya 11,9 rb segitiga. Bagian hiasan dari brief tetap ≤ 9 draw call. Untuk ronde 2, segitiga kini batas yang lebih sempit.
 
+**Hasil ronde 2.** Sumber: QA grafis `docs/reviews/20261105-bentuk-terminal-ronde-2-graphics.md` pada salinan tree 10.28. Patokan 0.4.1 (f677391) diukur bergantian dengan tree. Landscape 900×420, tingkat 1, jam 12, median per sampel 90 frame.
+
+| Kasus | Batas (brief AC-GFX-19) | Patokan → tree | Putusan |
+|---|---|---|---|
+| Tahap 2 Lv 13, draw call | ≤ +2 | 248 → 250, **+2**, tepat di batas | PASS, tanpa ruang sisa |
+| Tahap 2 Lv 13, segitiga | ≤ +3,5 rb | 309,9 rb → 312,1 rb, +2,2 rb (hitung pasti Panji +2,54 rb) | PASS |
+| Tahap 3 Lv 35, draw call | ≤ +6 | 246 → 249, +3 (Panji: 246 → 248, +2) | PASS |
+| Tahap 3 Lv 35, segitiga | ≤ +8 rb | 347,7 rb → 349,3 rb, +1,6 rb (hitung pasti Panji +4,87 rb) | PASS |
+| Lv 4 tahap 1, 900×420 dan 540×960 | tidak berubah | 248 = 248, 243 = 243 | PASS |
+| fps tingkat 3, throttle 4× | turun ≤ 10 % | tidak diukur | **NOT ASSESSED**; diukur Nisa di mesin sepi sesudah integrasi |
+
+- **Selisih segitiga dua metode.** Hitungan dari kait WebGL hanya menghitung yang tergambar per frame. Hitungan pasti Panji menghitung semua mesh. Keduanya di bawah batas.
+- **Sesudah Musim Terminal.** Spanduk musim menambah +2 draw call saat dipakai di tahap 3 Lv 35. Seragam dan papan +0. Di minggu event, draw call sama dengan tanpa hiasan musim (dokumen 17 bagian 4.2).
+- **Sisa untuk tugas berikutnya:**
+  - **Tahap 0–2: tidak ada.** Tambahan harus memotong atau menggabung mesh dulu.
+  - **Tahap 3+:** dari batas gabungan 25 draw call, ronde 1 memakai +3…+6 dan ronde 2 +2…+3, lalu spanduk musim +2 saat dipakai. Segitiga ronde 2 +1,6…4,9 rb dari sisa ±11,9 rb.
+  - Anggaran skill (±210) tetap terlewati di landscape tingkat 1.
+
 **Tetap NOT ASSESSED:** HP Android sungguhan, yaitu tingkat grafis yang dipilih otomatis, apakah tilt-shift aktif di sana, dan fps. Belum ada AVD, dan belum ada uji HP di 0.4.0.
 
 ## 12. Keputusan owner
@@ -788,6 +847,11 @@ Pengukuran Panji sendiri: +2 draw call, +9–11 rb segitiga, dalam derau yang sa
 | 4 Nov 2026 | Adegan beku di balik popup offline di jalur resume diterima apa adanya (GP-1) | Sapto |
 | 4 Nov 2026 | Diterima tanpa tindakan: fase 1 dan 2 proyek sulit dibedakan di portrait (G-2); kembang api tahap 4–5 tidak terlihat di portrait (G-3) | Dicatat di brief bagian 9 bersama keputusan G-1 |
 | 3–4 Nov 2026 | Helper peresmian pindah ke `src/app/peresmian-bentuk.ts`; tanda tahap ≥ 3 ditulis saat tayang; jalur resume memakai perayaan adegan sendiri | Sapto |
+| 5 Nov 2026 | Ronde 1 dirilis sebagai 0.4.1 | Owner (deploy) |
+| 5 Nov 2026 | Ronde 2 disetujui: 12 hiasan versi ronde 2 ditambah P-3, P-4, P-7; lahan seberang K14–K17 dicadangkan (`CADANGAN_SEBERANG`) dan gedung Lv 16 pindah ke K13; gedung Lv 23 dan Lv 26 di pita kabur diterima (bagian 6, ADR 008) | Owner, terminal ("APPROVE semua") |
+| 5 Nov 2026 | Tahap 0–2 boleh naik +2 draw call sejak Lv 5, karena gabungan dua ronde paling banyak +9 dari batas 25 (ADR 008) | Sapto |
+| 5 Nov 2026 | Ronde 2 dibangun. Diterima: palet P-3 untuk semua kembang api peresmian; tahap 0–2 tepat di batas +2, jadi tambahan berikutnya harus memotong atau menggabung mesh; kembang api kecil dilewati pada frame > ±2 dtk; pohon atap Lv 24 1,35–2,68; kilatan tidak dibuat (bagian 6, "Dibangun") | Sapto |
+| 5 Nov 2026 | QA grafis ronde 2: G-1 (kembang api siang samar di 412) diterima; G-2, G-3, G-4 catatan; G-5 alat uji | Sapto |
 
 ## Belum diperiksa
 
@@ -801,8 +865,13 @@ Diperbarui sesudah ronde 1 (4 November 2026). **Sudah diperiksa di build:**
 **Masih belum diperiksa:**
 
 - **fps:** hanya landscape tahap 3 yang diukur (bagian 11.4). Portrait, tahap 0, dan HP sungguhan belum.
+- **Ronde 2 (5 November 2026):**
+  - fps tingkat 3 dengan throttle 4× (AC-GFX-19) belum diukur.
+  - Tutorial baru dan kecepatan 2× belum dimainkan; QA memakai 1× dan 3×.
+  - Baliho PO ke-2 hanya dilihat lewat screenshot.
+  - Semuanya dibawa ke QA grafis tree gabungan.
 - Musholla 11 % dan benda tutup lainnya diukur dengan titik sampel `sim/tutup.ts`, bukan seluruh benda.
 - **Apakah pemain menyadari tiap perubahan:** butuh playtest 5 orang.
 - **Kecepatan dan kamera:** 2× dan 3×, satu proyek penuh 24 menit di 1×, dan kamera yang diputar bebas belum dimainkan (playtest Citra, NOT ASSESSED).
 - Rute bus J6–J9 dan dek parkir bus (Perluasan 4–5): hanya tempatnya.
-- Semua yang termasuk ronde 2 (bagian 6).
+- Semua yang termasuk ronde 2 (bagian 6): sedang dibangun, diperiksa QA ronde 2. Angka beban di bagian 6 masih perkiraan sampai Panji mengukurnya (AC-GFX-19).

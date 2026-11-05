@@ -27,7 +27,11 @@ import { pasangSiklusHidup } from './platform/siklus-hidup';
 import { MesinSuara } from './platform/suara';
 import type { Aksi } from './sim/aksi';
 import { isEventId } from './sim/fitur';
-import { bisaAktifkanBoost, bisaKlaimBonusOffline, paketHadiah, type LaporanOffline } from './sim/state';
+import { bisaBukaMusim, bukaMusim, musimDariId } from './sim/musim';
+import { buatModel } from './ui/model';
+import { notifArmada, notifikasiMusim } from './ui/notifikasi';
+import { tampilkanPopupRapor, tampilkanPopupSambutanMusim } from './ui/popup-musim';
+import { bisaAktifkanBoost, bisaKlaimBonusOffline, levelTerminal, paketHadiah, type LaporanOffline } from './sim/state';
 import { pasangBingkai } from './ui/bingkai';
 import { pasangOverlay } from './ui/overlay';
 import { tampilkanPopupAkun } from './ui/popup-akun';
@@ -57,6 +61,9 @@ function pesanGalatAkun(e: unknown, bawaan: string): string | null {
 }
 
 async function mulai(): Promise<void> {
+  // Server dev: ?tanggal=2026-12-02 (10.00 WIB) atau ?tanggal=2026-12-02T23:59 (WIB) menggeser jam dinding seluruh
+  // game, untuk mencoba Musim Terminal sebelum Musim 1 (30 November 2026). Tidak ada di build produksi.
+  if (import.meta.env.DEV) geserJamDev(new URLSearchParams(location.search).get('tanggal'));
   const akar = ambil('akar');
   const wadahAdegan = ambil('adegan');
   const wadahLabel = ambil('label-dunia');
@@ -155,12 +162,17 @@ async function mulai(): Promise<void> {
   // Tutorial terpandu untuk pemain baru; statusnya disimpan per perangkat.
   const KUNCI_TUTORIAL = 'terminal-bus-tycoon/tutorial';
   const statusTutorial = await penyimpanan.baca(KUNCI_TUTORIAL).catch(() => null);
+  // Musim Terminal terbuka sesudah tutorial selesai atau dilewati (documents/17 bagian 7.1); pemain lama ditandai selesai.
+  let tutorialTamat = statusTutorial === 'selesai' || statusTutorial === 'dilewati';
   pasangTutorial({
     akar: ui,
     area: overlay.area,
     pengendali: sesi.pengendali,
     status: STATUS_TUTORIAL.find((st) => st === statusTutorial) ?? null,
-    simpan: (st) => void penyimpanan.tulis(KUNCI_TUTORIAL, st).catch(() => undefined),
+    simpan: (st) => {
+      tutorialTamat = st !== 'aktif';
+      void penyimpanan.tulis(KUNCI_TUTORIAL, st).catch(() => undefined);
+    },
     analitik,
   });
   // Pintasan keyboard: 1, 2, 3.
@@ -375,6 +387,65 @@ async function mulai(): Promise<void> {
     tampilkanLaporan(l);
   };
 
+  // Musim Terminal (documents/17): dibuka di Lv 6 sesudah tutorial; popup rapor (musim berganti) lalu sambutan
+  // tampil sesudah popup lain (offline, pembaruan) dan gelembung tutorial tertutup, masing-masing sekali.
+  let popupMusim = false;
+  // Sambutan menunggu saat tenang (playtest P-7): tidak selama ada toast dan tidak dalam DETIK_TENANG_SAMBUTAN detik
+  // main sesudah naik level di sesi ini (Lv 6 juga membuka Perluasan 2 dan slot PO). Naik level sesi lalu tidak
+  // dihitung, jadi paling lambat sambutan tampil di awal sesi berikutnya. Musim sendiri tetap terbuka di Lv 6.
+  const DETIK_TENANG_SAMBUTAN = 90;
+  let levelLalu = levelTerminal(sesi.pengendali.state);
+  let naikLevelMain = Number.NEGATIVE_INFINITY;
+  const bukaKartuMusim = (): void => {
+    if (ui.classList.contains('panel-ringkas')) ui.querySelector<HTMLElement>('.tombol-ringkas')?.click();
+    ui.querySelector<HTMLElement>('.tab[data-tab="target"]')?.click();
+    ui.querySelector('.musim-kartu')?.scrollIntoView({ block: 'start' });
+  };
+  const periksaMusim = (): void => {
+    if (sesi.sedangDijeda || sesi.sudahDihentikan) return;
+    const sekarang = Date.now();
+    if (tutorialTamat && bisaBukaMusim(sesi.pengendali.state, sekarang)) sesi.pengendali.ubah((s) => bukaMusim(s, sekarang));
+    const st = sesi.pengendali.state;
+    const lv = levelTerminal(st);
+    if (lv !== levelLalu) {
+      levelLalu = lv;
+      naikLevelMain = st.statistik.waktuMainDetik;
+    }
+    if (popupMusim || ui.querySelector('.popup-latar, .tutorial')) return;
+    const m = st.musim;
+    const mu = m.id !== null ? musimDariId(m.id) : null;
+    if (m.rapor) {
+      popupMusim = true;
+      void tampilkanPopupRapor(ui, m.rapor, mu).then(() => {
+        kirim({ jenis: 'tutupRapor' });
+        popupMusim = false;
+      });
+    } else if (mu && !m.sambutan && overlay.notifSepi() && st.statistik.waktuMainDetik - naikLevelMain >= DETIK_TENANG_SAMBUTAN) {
+      popupMusim = true;
+      void tampilkanPopupSambutanMusim(ui, mu.tema).then((pilihan) => {
+        kirim({ jenis: 'tutupSambutanMusim' });
+        popupMusim = false;
+        if (pilihan === 'lihat') bukaKartuMusim();
+      });
+    }
+  };
+  window.setInterval(periksaMusim, 1000);
+  // Toast & analitik musim dari perubahan state (tugas selesai, Rapor naik, musim berganti, musim terbuka).
+  let stateLalu = sesi.pengendali.state;
+  sesi.pengendali.berlangganan((s) => {
+    if (s.musim !== stateLalu.musim) {
+      analitik.catatMusim(stateLalu, s);
+      for (const teks of notifikasiMusim(stateLalu.musim, s.musim)) overlay.notif(teks);
+    }
+    stateLalu = s;
+  });
+  // Surat Armada: kemajuan level PO pilihan pemain (toast armada yang sama dengan hadiah berpaket).
+  sesi.pengendali.pantauAksi((aksi, lama, baru) => {
+    if (aksi.jenis !== 'pakaiSuratArmada') return;
+    const teks = notifArmada(buatModel(lama), buatModel(baru));
+    if (teks) overlay.notif(teks);
+  });
+
   // Versi baru (web/PWA): tawarkan lewat popup; "Nanti" menyisakan tombol kecil di pojok adegan.
   let popupPembaruanTerbuka = false;
   let tombolPembaruan: { hapus(): void } | null = null;
@@ -454,6 +525,17 @@ async function mulai(): Promise<void> {
       });
     },
   });
+}
+
+/** Dev saja (?tanggal=…): jam dinding (Date.now) digeser ke tanggal itu, WIB; tanpa jam: 10.00 WIB. */
+function geserJamDev(tanggal: string | null): void {
+  if (!tanggal) return;
+  const ms = Date.parse(tanggal.includes('T') ? `${tanggal}:00+07:00` : `${tanggal}T10:00:00+07:00`);
+  if (!Number.isFinite(ms)) return;
+  const geser = ms - Date.now();
+  const asli = Date.now.bind(Date);
+  Date.now = () => asli() + geser;
+  console.info(`[dev] jam dinding digeser ke ${new Date(ms).toISOString()}`);
 }
 
 /** Pilihan mode sinema → tampilan adegan: satu hari tampilan ≈ 1 atau 3 menit, kerumunan ikut dipercepat. */

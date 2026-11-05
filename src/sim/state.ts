@@ -47,6 +47,7 @@ import {
   type SyaratDaftarKurang,
   type TawaranKontrak,
 } from './mitra';
+import { buatMusimAwal, kreditTantangan, majukanTugas, perbaruiMusim, type MusimState } from './musim';
 import { hitungOperasi, multTeknologi, retribusiDipungut, type AreaId, type HasilOperasi, type KeadaanOperasi, type KepuasanTycoon } from './operasi';
 import { SYARAT_PENCAPAIAN } from './pencapaian';
 import { biayaPerluasan, levelCukupPerluasan } from './perluasan';
@@ -256,6 +257,8 @@ export interface GameState {
   readonly profil: ProfilState;
   readonly rekor: RekorState;
   readonly tantangan: TantanganState;
+  /** Musim Terminal: tugas harian, Rapor Musim, hiasan (sim/musim.ts; documents/17). */
+  readonly musim: MusimState;
   /**
    * Timestamp (ms epoch) terakhir game dianggap aktif: diperbarui lewat
    * `tandaiWaktu` saat save/pause. Dasar perhitungan offline.
@@ -360,6 +363,7 @@ export function buatStateBaru(sekarangMs: number, cfg: KonfigEkonomi = EKONOMI):
     profil: { namaTerminal: '', ikutPeringkat: false },
     rekor: buatRekorAwal(),
     tantangan: buatTantanganAwal(),
+    musim: buatMusimAwal(),
     waktuTerakhirMs: sekarangMs,
   };
   return { ...s, harian: buatTargetHarian(s, hariKe, cfg) };
@@ -628,6 +632,29 @@ export function labaDenganKontrak(a: AcuanHarian): number {
   return a.laba + a.kontrak;
 }
 
+/** Rugi operasi sehari tanpa kontrak (tarif pemain), ≥ 0: dasar yang sama dengan kas menipis (app/tujuan.ts). */
+function rugiHarian(state: GameState, cfg: KonfigEkonomi): number {
+  return Math.max(0, -acuanHarian(state, cfg, state.terminal.tarif).laba * 24);
+}
+
+/** Hari terminal sampai tawaran perpanjangan kontrak PO berikutnya, paling sedikit 1 (aturan pemain serakah tests/tycoon-sim.ts). */
+function hariKeTawaran(state: GameState, cfg: KonfigEkonomi): number {
+  const t = state.mitra.terdaftar;
+  if (t.length === 0) return 1;
+  return Math.max(1, Math.min(...t.map((p) => p.kontrakDetik / DETIK_SEHARI - cfg.mitra.kontrak.hariTawaran)));
+}
+
+/**
+ * Cadangan kas (documents/14 bagian 3.2): rugi operasi sehari × (hari sampai tawaran
+ * kontrak berikutnya + `tambahHari`). Cadangan A (perluasan) = tambahHari 0; cadangan B
+ * (bangunan, modernisasi, petugas) = tambahHari 1, karena "kas menipis" muncul saat kas
+ * kurang dari rugi sehari. `state` = keadaan sesudah aksi. Dipakai baris tujuan (app/tujuan.ts)
+ * dan tugas kelola musim (sim/musim.ts).
+ */
+export function cadanganKas(state: GameState, cfg: KonfigEkonomi = EKONOMI, tambahHari = 0): number {
+  return rugiHarian(state, cfg) * (hariKeTawaran(state, cfg) + tambahHari);
+}
+
 /** Hadiah "N menit laba" = N jam terminal laba rata-rata (tarif bawaan, termasuk kontrak PO), paling sedikit N × hadiah.minPerMenit. */
 export function hadiahMenit(state: GameState, menit: number, cfg: KonfigEkonomi = EKONOMI): number {
   return Math.floor(Math.max(labaDenganKontrak(acuanHarian(state, cfg)), cfg.hadiah.minPerMenit) * menit);
@@ -685,6 +712,8 @@ export function tick(state: GameState, dtDetik: number, cfg: KonfigEkonomi = EKO
     hadiah: majukanHadiah(state, dtDetik, cfg),
     event: state.event.aktif && penumpang > 0 ? { ...state.event, progres: state.event.progres + penumpang } : state.event,
     tantangan: majukanTantangan(state.tantangan, op.kepuasan.nilai, penumpang, labaKemajuan, dtDetik, cfg),
+    // Tugas musim hanya maju di sini (main aktif), tidak di terapkanOffline.
+    musim: majukanTugas(state.musim, { dt: dtDetik, op, keu, labaKemajuan }, cfg),
     mitra: majukanMitra(state.mitra, op, kelasTerminal(state, cfg), dtDetik, 1, true, cfg),
     perkembangan: majukanPerkembangan(state.perkembangan, penumpang, dtDetik),
   };
@@ -887,7 +916,7 @@ export function percepatProyek(state: GameState, cfg: KonfigEkonomi = EKONOMI): 
 // Target harian
 
 /** Bulatkan ke 2 angka penting (target yang enak dibaca: 31.000, bukan 31.680). */
-function bulatkanTarget(n: number): number {
+export function bulatkanTarget(n: number): number {
   if (n < 100) return Math.max(10, Math.round(n / 10) * 10);
   const skala = Math.pow(10, Math.floor(Math.log10(n)) - 1);
   return Math.round(n / skala) * skala;
@@ -1709,7 +1738,8 @@ export function perbaruiTantangan(state: GameState, sekarangMs: number, cfg: Kon
   const m = mingguWib(sekarangMs);
   if (state.tantangan.minggu === m.kunci) return state;
   let s = state;
-  for (const x of state.tantangan.daftar) if (!x.diklaim && x.progres >= x.target) s = berikanPaket(s, paketHadiah(s, 'tantangan', cfg), false, cfg);
+  // Hadiah & poin musim (+40) tantangan minggu lalu masuk ke musim minggu itu: musim baru berganti sesudahnya (perbaruiJamNyata).
+  for (const x of state.tantangan.daftar) if (!x.diklaim && x.progres >= x.target) s = { ...berikanPaket(s, paketHadiah(s, 'tantangan', cfg), false, cfg), musim: kreditTantangan(s.musim) };
   const daftar = jenisTantanganMinggu(m.kunci).map(
     (jenis): TantanganAktif => ({
       jenis,
@@ -1730,12 +1760,15 @@ export function bisaKlaimTantangan(state: GameState, indeks: number): boolean {
 export function klaimTantangan(state: GameState, indeks: number, cfg: KonfigEkonomi = EKONOMI): GameState {
   if (!bisaKlaimTantangan(state, indeks)) return state;
   const daftar = state.tantangan.daftar.map((x, i) => (i === indeks ? { ...x, diklaim: true } : x));
-  return { ...berikanPaket(state, paketHadiah(state, 'tantangan', cfg), false, cfg), tantangan: { ...state.tantangan, daftar } };
+  return { ...berikanPaket(state, paketHadiah(state, 'tantangan', cfg), false, cfg), tantangan: { ...state.tantangan, daftar }, musim: kreditTantangan(state.musim) };
 }
 
-/** Semua yang mengikuti jam nyata: event musiman & tantangan mingguan (dipanggil sesi). */
+/**
+ * Semua yang mengikuti jam nyata (dipanggil sesi): event musiman → tantangan mingguan (kiriman otomatis
+ * minggu lalu, poinnya ke musim lama) → Musim Terminal (hari baru, pergantian musim & rapor).
+ */
 export function perbaruiJamNyata(state: GameState, sekarangMs: number, cfg: KonfigEkonomi = EKONOMI, eventUji: EventId | null = null): GameState {
-  return perbaruiTantangan(perbaruiEvent(state, sekarangMs, cfg, eventUji), sekarangMs, cfg);
+  return perbaruiMusim(perbaruiTantangan(perbaruiEvent(state, sekarangMs, cfg, eventUji), sekarangMs, cfg), sekarangMs, cfg);
 }
 
 // ---------------------------------------------------------------------------

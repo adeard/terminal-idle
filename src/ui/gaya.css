@@ -2796,6 +2796,225 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Musim Terminal (documents/17 bagian 7.1 & 8): kartu teratas tab Target, warna mengikuti tema musim. */
+.target-kartu.musim-kartu {
+  --warna: #38bdf8;
+  border-left-color: var(--warna);
+}
+
+.musim-kartu[data-tema='imlek'] {
+  --warna: #ef4444;
+}
+
+.musim-kartu[data-tema='mudik'] {
+  --warna: #22c55e;
+}
+
+.musim-kepala {
+  color: #bae6fd;
+}
+
+.musim-kartu[data-tema='imlek'] .musim-kepala {
+  color: #fecaca;
+}
+
+.musim-kartu[data-tema='mudik'] .musim-kepala {
+  color: #bbf7d0;
+}
+
+.musim-angka {
+  flex: none;
+  color: var(--redup);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.musim-subjudul {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--redup);
+}
+
+.musim-daftar,
+.musim-hiasan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Satu baris tugas: teks satu baris + bilah, tuas "›" dan tombol Ganti (target ketuk 44 px). */
+.musim-tugas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto;
+  gap: 2px 8px;
+  align-items: center;
+}
+
+.musim-label {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.musim-bilah-tugas {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.musim-tuas {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #a9bcff;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 800;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.musim-tuas.kosong {
+  visibility: hidden;
+}
+
+/* Panel samping landscape sempit: teks tugas memakai seluruh lebar baris (tetap satu baris), bilah, "›", dan Ganti di bawahnya. */
+#ui.lanskap:not(.panel-penuh) .musim-label {
+  grid-column: 1 / -1;
+}
+
+#ui.lanskap:not(.panel-penuh) .musim-tuas,
+#ui.lanskap:not(.panel-penuh) .musim-ganti {
+  grid-row: 2;
+}
+
+.musim-tuas:focus-visible {
+  outline: 3px solid #ffd479;
+  outline-offset: 2px;
+}
+
+.musim-ganti {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  min-width: 64px;
+  height: 44px;
+  padding: 0 10px;
+  background: #2f3a47;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.musim-tugas.selesai .musim-label {
+  color: var(--redup);
+}
+
+.musim-tugas.selesai .musim-label::before {
+  content: '✓ ';
+  color: #4ade80;
+}
+
+.musim-tugas.selesai .bar-isi {
+  background: #4ade80;
+}
+
+.musim-semua {
+  color: #bbf7d0;
+}
+
+.musim-hiasan-baris,
+.musim-surat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.musim-hiasan-nama,
+.musim-surat-teks {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.musim-hiasan-baris.dipakai .musim-hiasan-nama::before {
+  content: '✓ ';
+  color: #4ade80;
+}
+
+.musim-surat {
+  margin-top: 4px;
+}
+
+.musim-surat-judul {
+  color: #fde68a;
+}
+
+.musim-pakai {
+  min-width: 76px;
+  height: 44px;
+  padding: 0 12px;
+  font-size: 13.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* Popup sambutan, rapor, dan Surat Armada (ukuran logis sama dengan popup lain). */
+.popup-musim .musim-isi {
+  margin: 14px 0 0;
+  line-height: 1.4;
+  color: #dbe3ea;
+}
+
+.popup-musim .musim-isi:last-of-type {
+  margin-bottom: 22px;
+}
+
+.popup-musim .musim-nilai {
+  margin: 18px 0 0;
+  font-size: 34px;
+  color: #fde68a;
+}
+
+/* "tingkat 24 dari 30" kecil tepat di bawah nilai rapor (P-12). */
+.popup-musim .musim-tingkat-rapor {
+  margin: 2px 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fde68a;
+  opacity: 0.85;
+}
+
+.musim-surat-daftar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+.musim-surat-po {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 16px;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: normal;
+}
+
 .rekor-daftar {
   display: grid;
   grid-template-columns: 1fr auto;

@@ -6,8 +6,8 @@
  * menjalankan aksi; teks & sasaran ketukannya di ui/baris-tujuan.ts.
  *
  * Urutan prioritas (tingkat): 1 mendesak · 2 siap (gratis atau uang masuk, dan
- * perluasan) · 3 perbaikan · 4 menunggu · 5 naik level (selalu ada, jadi daftar
- * tidak pernah kosong). Saran berbiaya menyisakan cadangan kas untuk rugi operasi
+ * perluasan) · 3 perbaikan · 4 menunggu · 5 tugas musim yang terbuka, lalu naik level
+ * (selalu ada, jadi daftar tidak pernah kosong). Saran berbiaya menyisakan cadangan kas untuk rugi operasi
  * sampai uang kontrak PO berikutnya bisa masuk (bagian 3.2), supaya mengikuti saran
  * tidak pernah memunculkan "kas menipis".
  */
@@ -17,6 +17,7 @@ import { izinBerikut, type Izin } from '../sim/bangunan';
 import { PO_IDS, TEKNOLOGI_IDS, type BangunanId, type PetugasId, type PoId, type TeknologiId } from '../sim/fitur';
 import { levelMinimalKelas } from '../sim/level-terminal';
 import { urutanPo } from '../sim/mitra';
+import type { TugasAktif } from '../sim/musim';
 import { penumpangMenunggu, type AreaId } from '../sim/operasi';
 import {
   acuanHarian,
@@ -24,6 +25,7 @@ import {
   biayaBangunState,
   bisaDaftarPo,
   bisaRekrutPetugas,
+  cadanganKas,
   DETIK_SEHARI,
   hitungOffline,
   jendelaKosong,
@@ -93,6 +95,8 @@ export type TujuanDinilai = DasarTujuan &
     /** izin: izin level terdekat bila lebih dulu dari perluasan berikut (`level` = level izin itu), selain itu null. */
     | { readonly jenis: 'naikLevel'; readonly tahap: number; readonly level: number; readonly levelSekarang: number; readonly izin: Izin | null }
     | { readonly jenis: 'kelasBerikut'; readonly kelas: number; readonly level: number; readonly levelSekarang: number }
+    /** Tugas musim yang belum selesai (documents/17 bagian 5): `indeks` di state.musim.tugas. */
+    | { readonly jenis: 'tugas'; readonly tugas: TugasAktif; readonly indeks: number }
   );
 
 /** Jenis tujuan (juga parameter peristiwa analitik `tujuan_ketuk`). */
@@ -104,27 +108,8 @@ export function kasMenipis(state: GameState, cfg: KonfigEkonomi = EKONOMI): bool
   return rata.laba < 0 && state.kas < -rata.laba * 24;
 }
 
-/** Rugi operasi sehari tanpa kontrak (tarif pemain), ≥ 0: dasar yang sama dengan kas menipis. */
-function rugiHarian(state: GameState, cfg: KonfigEkonomi): number {
-  return Math.max(0, -acuanHarian(state, cfg, state.terminal.tarif).laba * 24);
-}
-
-/** Hari terminal sampai tawaran perpanjangan kontrak PO berikutnya, paling sedikit 1 (aturan pemain serakah tests/tycoon-sim.ts). */
-function hariKeTawaran(state: GameState, cfg: KonfigEkonomi): number {
-  const t = state.mitra.terdaftar;
-  if (t.length === 0) return 1;
-  return Math.max(1, Math.min(...t.map((p) => p.kontrakDetik / DETIK_SEHARI - cfg.mitra.kontrak.hariTawaran)));
-}
-
-/**
- * Cadangan kas (documents/14 bagian 3.2): rugi operasi sehari × (hari sampai tawaran
- * kontrak berikutnya + `tambahHari`). Cadangan A (perluasan) = tambahHari 0; cadangan B
- * (bangunan, modernisasi, petugas) = tambahHari 1, karena "kas menipis" muncul saat kas
- * kurang dari rugi sehari. `state` = keadaan sesudah aksi.
- */
-export function cadanganKas(state: GameState, cfg: KonfigEkonomi = EKONOMI, tambahHari = 0): number {
-  return rugiHarian(state, cfg) * (hariKeTawaran(state, cfg) + tambahHari);
-}
+/** Cadangan kas (documents/14 bagian 3.2) kini di sim/state.ts supaya tugas kelola musim memakai aturan yang sama. */
+export { cadanganKas };
 
 /** Kas khayalan untuk menerapkan aksi tanpa memeriksa kas. */
 const KAS_KAYA = 1e15;
@@ -307,6 +292,12 @@ export function daftarTujuan(state: GameState, kunciTampil: string | null, cfg: 
   const p = state.perkembangan;
   if (p.proyekDetik > 0) hasil.push({ jenis: 'proyek', tingkat: 4, kunci: `proyek:${p.perluasan + 1}`, siap: false, aksi: null, tahap: p.perluasan + 1, sisaDetik: p.proyekDetik });
 
+  // 5 Tugas musim yang terbuka (status tanpa aksi, jadi pengikut tujuan tidak berubah perilaku), sebelum naik level.
+  const tugasMusim = state.musim.id === null ? -1 : state.musim.tugas.findIndex((t) => !t.selesai);
+  if (tugasMusim >= 0) {
+    const t = state.musim.tugas[tugasMusim]!;
+    hasil.push({ jenis: 'tugas', tingkat: 5, kunci: `tugas:${t.hari}:${t.templat}`, siap: false, aksi: null, tugas: t, indeks: tugasMusim });
+  }
   // 5 Naik level (selalu ada)
   const level = levelTerminal(state, cfg);
   if (berikut && !berikut.levelCukup) {

@@ -15,6 +15,7 @@
  * (nama terminal, papan peringkat) dan benih cuaca yang dibawa (bagian 13).
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
+import { KOMPONEN_PERBAIKAN, MUSIM, SLOT_HIASAN, TEMPLAT_TUGAS, type KonfigMusim, type TemplatTugas } from '../config/musim.config';
 import { slotBangunan } from './bangunan';
 import {
   BANGUNAN_IDS,
@@ -34,6 +35,7 @@ import {
 import type { RincianBiaya, RincianPendapatan } from './keuangan';
 import { levelTerminalDariXp } from './level-terminal';
 import { tingkatPo } from './mitra';
+import { buatMusimAwal, musimDariId, semuaHiasan, slotHiasan, type MusimState, type TugasAktif } from './musim';
 import { rapikanPetugas } from './petugas';
 import { rapikanNamaTerminal } from './profil';
 import {
@@ -124,6 +126,11 @@ export interface SaveV3 {
     readonly diklaim: number;
     readonly target: readonly number[];
   };
+  /**
+   * Musim Terminal (sejak 0.5.0, documents/17 bagian 9.1). Opsional, skema tetap 3: tanpa blok ini musim
+   * belum terbuka. Isinya disaring saat dimuat (bacaMusim), tidak pernah menolak save.
+   */
+  readonly musim?: MusimState;
 }
 
 type DataMentah = Record<string, unknown>;
@@ -195,6 +202,25 @@ export function keSaveV3(state: GameState): SaveV3 {
     tantangan: { ...state.tantangan, daftar: state.tantangan.daftar.map((x) => ({ ...x })) },
     profil: { namaTerminal: state.profil.namaTerminal, ikutPeringkat: state.profil.ikutPeringkat },
     event: { ...state.event, aktif: state.event.aktif ? { ...state.event.aktif } : null, target: [...state.event.target] },
+    musim: simpanMusim(state.musim),
+  };
+}
+
+function simpanMusim(m: MusimState): MusimState {
+  return {
+    id: m.id,
+    poin: m.poin,
+    tugas: m.tugas.map((t) => ({ ...t })),
+    hariTugas: m.hariTugas,
+    gantiHari: m.gantiHari,
+    tiketGanti: m.tiketGanti,
+    suratArmada: m.suratArmada,
+    koleksi: [...m.koleksi],
+    pakai: { ...m.pakai },
+    statistik: { ...m.statistik },
+    riwayat: m.riwayat.map((r) => ({ ...r })),
+    rapor: m.rapor ? { ...m.rapor, hiasan: [...m.rapor.hiasan] } : null,
+    sambutan: m.sambutan,
   };
 }
 
@@ -316,6 +342,7 @@ function dariSaveV3(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
     profil: bacaProfil(akar['profil']),
     rekor: bacaRekor(akar['rekor']),
     tantangan: bacaTantangan(akar['tantangan'], cfg),
+    musim: bacaMusim(akar['musim'], sekarangMs, cfg),
     waktuTerakhirMs: opsional(akar['waktuTerakhirMs'], sekarangMs, wajibAngkaNonNegatif, 'waktuTerakhirMs'),
   };
   return lengkapiAmbangTantangan(state, cfg);
@@ -562,6 +589,118 @@ function bacaEvent(nilai: unknown, bawaan: EventState): EventState {
     progres: opsional(o['progres'], 0, wajibAngkaNonNegatif, 'event.progres'),
     diklaim: opsional(o['diklaim'], 0, wajibIntegerNonNegatif, 'event.diklaim'),
     target: target.map((t, i) => wajibAngkaNonNegatif(t, `event.target.${i}`)),
+  };
+}
+
+/**
+ * Musim Terminal (documents/17 bagian 7.2 & 9.1). Berbeda dengan blok lain, blok ini DISARING dan tidak
+ * pernah menolak save, supaya progres ekonomi tidak hilang karena data musim: bukan objek → bawaan (belum
+ * terbuka); nilai tidak sah → bawaan atau dibuang. Id musim harus awal musim menurut config; poin dijepit
+ * 0–(hari musim × 6 tugas × 10 + 7 × 40 × minggu); tugas dengan templat, target, atau param tidak sah dibuang;
+ * koleksi & hiasan yang dipakai hanya id dari config (dan yang dipakai harus dimiliki, di slotnya).
+ */
+function bacaMusim(nilai: unknown, sekarangMs: number, cfg: KonfigEkonomi, cm: KonfigMusim = MUSIM): MusimState {
+  const awal = buatMusimAwal();
+  const o = objekAtauNull(nilai);
+  if (!o) return awal;
+  const angka = (v: unknown, bawaan: number): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : bawaan);
+  const bulat = (v: unknown, bawaan: number): number => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : bawaan);
+  const hari = (v: unknown): string | null => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v)) ? v : null);
+  const daftar = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+  const mu = typeof o['id'] === 'string' ? musimDariId(o['id'], cm) : null;
+
+  let poin = 0;
+  if (mu) {
+    // Hari musim menurut jam sekarang atau hari tugas tersimpan (hanya maju), mana yang lebih akhir: jam perangkat
+    // yang mundur tidak memotong poin yang sah (GP-3), dan poin tetap dijepit ke yang mungkin di musim itu.
+    const hariSimpan = hari(o['hariTugas']);
+    const acuanMs = Math.max(sekarangMs, hariSimpan !== null ? Date.parse(hariSimpan) - 7 * 3_600_000 : Number.NEGATIVE_INFINITY);
+    const hariMusim = Math.min(cm.mingguPerMusim * 7, Math.max(1, Math.floor((acuanMs - mu.mulaiMs) / 86_400_000) + 1));
+    const maks = hariMusim * cm.tugas.maksTerbuka * cm.poin.tugas + 7 * cm.poin.tantangan * Math.ceil(hariMusim / 7);
+    poin = Math.min(maks, angka(o['poin'], 0));
+  }
+  // Tiket & Surat Armada paling banyak sebanyak yang bisa diberikan tabel hadiah sejak Musim 1 sampai musim ini
+  // (tiket: hadiah tiket + tiket pengganti hiasan yang sudah dimiliki) (GP-2).
+  const musimKe = mu ? mu.ke + 1 : 0;
+  const perMusim = (jenis: 'tiket' | 'surat'): number =>
+    cm.hadiah.reduce((n, h) => {
+      if (h.jenis === 'tiket' || h.jenis === 'surat') return h.jenis === jenis ? n + h.jumlah : n;
+      return jenis === 'tiket' && h.jenis === 'hiasan' ? n + cm.tiketDuplikat : n;
+    }, 0);
+
+  const paramSah = (templat: TemplatTugas, p: unknown): boolean => {
+    switch (templat) {
+      case 'kota':
+        return typeof p === 'number' && Number.isInteger(p) && p >= 0 && p < cfg.jurusan.length;
+      case 'poTerendah':
+        return isPoId(p);
+      case 'kepuasan':
+        return typeof p === 'number' && p >= cm.tugas.kepuasanMin - 1e-9 && p <= cm.tugas.kepuasanMaks + 1e-9;
+      case 'perbaikan':
+        return typeof p === 'string' && (KOMPONEN_PERBAIKAN as readonly string[]).includes(p);
+      default:
+        return p === null;
+    }
+  };
+  const tugas: TugasAktif[] = [];
+  if (mu) {
+    for (const x of daftar(o['tugas'])) {
+      const t = objekAtauNull(x);
+      const templat = t?.['templat'];
+      const h = hari(t?.['hari']);
+      if (!t || h === null || typeof templat !== 'string' || !(TEMPLAT_TUGAS as readonly string[]).includes(templat)) continue;
+      const tp = templat as TemplatTugas;
+      const target = t['target'];
+      if (typeof target !== 'number' || !Number.isFinite(target) || target <= 0 || !paramSah(tp, t['param'] ?? null)) continue;
+      tugas.push({ hari: h, templat: tp, target, progres: angka(t['progres'], 0), param: (t['param'] ?? null) as TugasAktif['param'], selesai: t['selesai'] === true });
+    }
+  }
+
+  const sah = new Set(semuaHiasan(cm));
+  const koleksi = [...new Set(daftar(o['koleksi']).filter((x): x is string => typeof x === 'string' && sah.has(x)))];
+  const pakaiMentah = objekAtauNull(o['pakai']);
+  const pakai = { ...awal.pakai };
+  for (const slot of SLOT_HIASAN) {
+    const v = pakaiMentah?.[slot];
+    pakai[slot] = typeof v === 'string' && koleksi.includes(v) && slotHiasan(v, cm) === slot ? v : null;
+  }
+  const st = objekAtauNull(o['statistik']);
+  const riwayat = daftar(o['riwayat']).flatMap((x) => {
+    const r = objekAtauNull(x);
+    const id = typeof r?.['id'] === 'string' ? musimDariId(r['id'], cm)?.id : undefined;
+    const tingkat = r?.['tingkat'];
+    return id && typeof tingkat === 'number' && Number.isInteger(tingkat) && tingkat >= 0 && tingkat <= cm.poin.tingkat ? [{ id, tingkat }] : [];
+  });
+  const rp = objekAtauNull(o['rapor']);
+  const idRapor = typeof rp?.['id'] === 'string' ? musimDariId(rp['id'], cm)?.id : undefined;
+  const rapor =
+    rp && idRapor
+      ? {
+          id: idRapor,
+          tingkat: Math.min(cm.poin.tingkat, bulat(rp['tingkat'], 0)),
+          poin: angka(rp['poin'], 0),
+          tugas: bulat(rp['tugas'], 0),
+          tantangan: bulat(rp['tantangan'], 0),
+          lvAwal: bulat(rp['lvAwal'], 0),
+          lvAkhir: bulat(rp['lvAkhir'], 0),
+          penumpang: angka(rp['penumpang'], 0),
+          hiasan: daftar(rp['hiasan']).filter((x): x is string => typeof x === 'string' && sah.has(x)),
+        }
+      : null;
+  return {
+    id: mu?.id ?? null,
+    poin,
+    tugas: tugas.slice(-cm.tugas.maksTerbuka),
+    hariTugas: hari(o['hariTugas']),
+    gantiHari: hari(o['gantiHari']),
+    tiketGanti: Math.min(musimKe * perMusim('tiket'), bulat(o['tiketGanti'], 0)),
+    suratArmada: Math.min(musimKe * perMusim('surat'), bulat(o['suratArmada'], 0)),
+    koleksi,
+    pakai,
+    statistik: { tugas: bulat(st?.['tugas'], 0), tantangan: bulat(st?.['tantangan'], 0), lvAwal: bulat(st?.['lvAwal'], 0), penumpangAwal: angka(st?.['penumpangAwal'], 0) },
+    riwayat,
+    rapor,
+    sambutan: o['sambutan'] === true,
   };
 }
 

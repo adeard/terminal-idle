@@ -19,15 +19,23 @@ import { KembangApi, MAKS_PARTIKEL, WARNA_KEMBANG_API } from './kembang-api';
 import type { PustakaMaterial } from './material3d';
 import { lokasiProyek, type CraneProyek, type LokasiProyek } from './perluasan-adegan';
 import { BUSUR_A1 } from './sayap2-3d';
-import { H_LANTAI_2, LOKET, SAYAP_DUA, TINGGI_LANTAI_GEDUNG, X_LOKET, type Persegi, type Titik } from './tata-letak';
+import { H_DINDING_L2, H_LANTAI_2, LOKET, SAYAP_DUA, TINGGI_LANTAI_GEDUNG, X_LOKET, type Persegi, type Titik } from './tata-letak';
 
 /** Tinggi pagar seng & jarak tiang pagar. */
 const PAGAR = { tinggi: 0.5, jarakTiang: 1.2, tebal: 0.025 } as const;
 /** Laju putar lengan crane (radian/detik main). */
 const PUTAR_CRANE = 0.07;
-/** Kecerahan partikel kembang api (di atas 1 supaya berpendar oleh bloom). */
-const TERANG_KEMBANG_API = 3.2;
+/**
+ * Kecerahan partikel kembang api: malam di atas 1 supaya berpendar oleh bloom; siang
+ * apa adanya, karena ×3,2 di siang hari diputihkan tone mapping jadi pastel pucat.
+ */
+const TERANG_KEMBANG_API = { siang: 1.0, malam: 3.2 } as const;
+/** Jari-jari partikel kembang api: ±3 px di layar 412 pada kamera normal. */
+const R_PARTIKEL = 0.26;
+/** Jaring pengaman fase 2: lajur tegak selebar ini dengan celah, sedikit di luar muka bangunan. */
+const JARING = { lajur: 0.8, celah: 0.2, geser: 0.1 } as const;
 const POLOS = { bayangan: false } as const;
+const PENUH = { u0: 0, v0: 0, u1: 1, v1: 1 } as const;
 
 /** Tempat geometri lokasi proyek: semuanya masuk unit 0 KumpulanUnit, jadi berbagi mesh dengan bangunan fase. */
 type Penampung = Pick<Kumpulan, 'tambah'>;
@@ -69,9 +77,11 @@ export class ProyekPerluasan {
   private readonly matriks = new THREE.Matrix4();
   private readonly warna = new THREE.Color();
   private readonly palet = WARNA_KEMBANG_API.map((c) => new THREE.Color(c));
+  private terang: number = TERANG_KEMBANG_API.siang;
+  private malam = 0;
 
   constructor(private readonly m: PustakaMaterial) {
-    this.partikel = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.15, 0), new THREE.MeshBasicMaterial({ toneMapped: false }), MAKS_PARTIKEL);
+    this.partikel = new THREE.InstancedMesh(new THREE.OctahedronGeometry(R_PARTIKEL, 0), new THREE.MeshBasicMaterial({ toneMapped: false }), MAKS_PARTIKEL);
     this.partikel.frustumCulled = false;
     // instanceColor dibuat sekarang supaya shader tidak dikompilasi ulang saat kembang api pertama.
     this.partikel.setColorAt(0, this.warna.setRGB(1, 1, 1));
@@ -89,9 +99,12 @@ export class ProyekPerluasan {
    * @param fase fase bangunan proyek Sayap 2 Lantai (tahap lain mengabaikannya)
    * @param dt detik main sejak frame lalu (crane ikut dipercepat)
    * @param dtNyata detik nyata (kembang api tidak ikut dipercepat)
+   * @param malam tingkat gelap langit (0 siang – 1 malam): kecerahan kembang api
    */
-  perbarui(tahap: number | null, fase: number, dt: number, dtNyata: number): void {
+  perbarui(tahap: number | null, fase: number, dt: number, dtNyata: number, malam = 0): void {
     this.waktu += dt;
+    this.malam = malam;
+    this.terang = TERANG_KEMBANG_API.siang + (TERANG_KEMBANG_API.malam - TERANG_KEMBANG_API.siang) * malam;
     const t = tahap !== null && lokasiProyek(tahap) ? tahap : null;
     if (t !== this.aktif) {
       if (this.aktif !== null) this.grup.get(this.aktif)!.grup.visible = false;
@@ -117,6 +130,11 @@ export class ProyekPerluasan {
     this.kembangApi.rayakan(l.pusat[0], l.pusat[1], l.tinggiKembangApi, 11 + tahap);
   }
 
+  /** Kembang api kecil di titik hiasan level yang baru muncul (InstancedMesh yang sama, tanpa draw call baru). */
+  rayakanTitik(x: number, y: number, h: number, benih?: number): void {
+    this.kembangApi.rayakanKecil(x, y, h, benih);
+  }
+
   private perbaruiKembangApi(dt: number): void {
     if (!this.kembangApi.aktif && this.partikel.count === 0) return;
     this.kembangApi.perbarui(dt);
@@ -128,7 +146,8 @@ export class ProyekPerluasan {
       this.matriks.makeScale(s, s, s);
       this.matriks.setPosition(p.x, p.h, p.y);
       this.partikel.setMatrixAt(n, this.matriks);
-      this.warna.copy(this.palet[p.warna]!).multiplyScalar(TERANG_KEMBANG_API * sisa);
+      // Malam memudar ke gelap; siang hanya mengecil, karena warna yang meredup tampak seperti jelaga di langit terang.
+      this.warna.copy(this.palet[p.warna]!).multiplyScalar(this.terang * (1 - (1 - sisa) * this.malam));
       this.partikel.setColorAt(n, this.warna);
       n++;
     }
@@ -164,12 +183,14 @@ export class ProyekPerluasan {
 
   /**
    * Bangunan Sayap 2 Lantai setengah jadi. Unit 0 fondasi (tanah galian, sloof keliling,
-   * besi stek), 1 rangka lantai dasar & pelat, 2 rangka lantai 2 & rusuk atap tanpa kaca.
-   * Sengaja bukan cangkang akhirnya: lantai dalamnya masih tanah, tempat pekerja & material.
+   * besi stek), 1 rangka lantai dasar & pelat, 2 rangka lantai 2 & rusuk atap tanpa kaca,
+   * berjaring pengaman kuning. Sengaja bukan cangkang akhirnya: lantai dalamnya masih
+   * tanah, tempat pekerja & material. Rangka fase 2 lebih tebal dan berjaring supaya
+   * terbaca sebagai langkah baru di HP (tiang 0,06 di bawah 1 px).
    */
   private bangunanFase(k: KumpulanUnit): void {
     const { a1, a2a, a2b } = SAYAP_DUA;
-    const tiang = (unit: number, x: number, y: number, h0: number, h1: number): void => k.tambah(unit, this.m.besi, kotak(x - 0.03, y - 0.03, x + 0.03, y + 0.03, h0, h1));
+    const tiang = (unit: number, x: number, y: number, h0: number, h1: number, r = 0.03): void => k.tambah(unit, this.m.besi, kotak(x - r, y - r, x + r, y + r, h0, h1));
     const keliling = (p: Persegi, aksi: (x: number, y: number) => void): void => {
       for (let x = p.x0; x <= p.x1 + 1e-6; x += 1) {
         aksi(x, p.y0);
@@ -194,9 +215,38 @@ export class ProyekPerluasan {
       keliling(p, (x, y) => tiang(1, x, y, 0.34, 1.28));
       k.tambah(1, this.m.beton, kotak(p.x0, p.y0, p.x1, p.y1, p === a1 ? 1.28 : 1.25, H_LANTAI_2));
     }
-    keliling(a1, (x, y) => tiang(2, x, y, H_LANTAI_2, BUSUR_A1.tinggi(x)));
+    keliling(a1, (x, y) => tiang(2, x, y, H_LANTAI_2, BUSUR_A1.tinggi(x), 0.07));
     const [tA, tB] = [BUSUR_A1.tDari(a1.x0), BUSUR_A1.tDari(a1.x1)];
-    for (let y = a1.y0; y <= a1.y1 + 1e-6; y += 1) k.tambah(2, this.m.besi, rusukBusur('y', y, BUSUR_A1, 0.05, -0.085, 0.012, 8, tA, tB));
+    for (let y = a1.y0; y <= a1.y1 + 1e-6; y += 1) k.tambah(2, this.m.besi, rusukBusur('y', y, BUSUR_A1, 0.12, -0.085, 0.012, 8, tA, tB));
+    this.jaring(k, a1);
+  }
+
+  /**
+   * Jaring pengaman kuning di keempat muka lantai 2: lajur tegak bercelah (tetap terbaca
+   * sebagai jaring, bukan dinding), dari pelat sampai tepi dinding, di muka timur & barat
+   * sampai busur atap. Dua muka per lajur: dari dalam bangunan yang belum beratap muka
+   * jauhnya juga terlihat. Bahan kuning crane sudah ada di proyek, jadi tanpa draw call baru.
+   */
+  private jaring(k: KumpulanUnit, p: Persegi): void {
+    const { lajur, celah, geser } = JARING;
+    const lajurDi = (a0: number, a1: number, pasang: (b0: number, b1: number) => void): void => {
+      const n = Math.floor((a1 - a0 + celah) / (lajur + celah));
+      const tepi = (a1 - a0 - n * lajur - (n - 1) * celah) / 2;
+      for (let i = 0; i < n; i++) pasang(a0 + tepi + i * (lajur + celah), a0 + tepi + i * (lajur + celah) + lajur);
+    };
+    const muka = (a: Titik, b: Titik, h1: number): void => {
+      k.tambah(2, this.kuning, persegiTegak(a, b, H_LANTAI_2, h1, PENUH, 0));
+      k.tambah(2, this.kuning, persegiTegak(b, a, H_LANTAI_2, h1, PENUH, 0));
+    };
+    const [hBarat, hTimur] = [BUSUR_A1.tinggi(p.x0), BUSUR_A1.tinggi(p.x1)];
+    lajurDi(p.x0, p.x1, (b0, b1) => {
+      muka([b0, p.y1 + geser], [b1, p.y1 + geser], H_DINDING_L2);
+      muka([b1, p.y0 - geser], [b0, p.y0 - geser], H_DINDING_L2);
+    });
+    lajurDi(p.y0, p.y1, (b0, b1) => {
+      muka([p.x1 + geser, b1], [p.x1 + geser, b0], hTimur);
+      muka([p.x0 - geser, b0], [p.x0 - geser, b1], hBarat);
+    });
   }
 
   /**

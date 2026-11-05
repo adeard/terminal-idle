@@ -35,6 +35,8 @@ export interface Overlay {
   aturKecepatan(kecepatan: number): void;
   /** Notifikasi singkat di atas adegan. */
   notif(teks: string): void;
+  /** Tidak ada notifikasi yang tampil atau menunggu di antrean (popup Musim menunggu saat tenang). */
+  notifSepi(): boolean;
   /** Buka tab Bangun di bagian area ini (label area di peta diketuk); panel ringkas dibuka dulu. */
   bukaArea(area: AreaId): void;
   /** Panel sedang layar penuh (menutupi adegan): adegan 3D tidak perlu digambar. */
@@ -438,7 +440,7 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     window.clearTimeout(timerNotif);
     lepasSorot();
   };
-  return { area, kontrol, aturKecepatan: hud.aturKecepatan, notif: tampilkanNotif, bukaArea, panelPenuh: () => penuh, lepas };
+  return { area, kontrol, aturKecepatan: hud.aturKecepatan, notif: tampilkanNotif, notifSepi: () => notifTampil === null && antrean.length === 0, bukaArea, panelPenuh: () => penuh, lepas };
 }
 
 // ---------------------------------------------------------------------------

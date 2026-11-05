@@ -168,6 +168,10 @@ describe('proyek perluasan', () => {
     expect(terdekat).toBeGreaterThan(0.05);
   });
 
+  it('kembang api Sayap 2 Lantai lebih rendah supaya menempel di siluet A1 (P-3); tahap lain tetap', () => {
+    expect(LOKASI_PROYEK.map((l) => l.tinggiKembangApi)).toEqual([6.5, 6.5, 5.0, 7, 7.5]);
+  });
+
   it('pekerja bolak-balik di rutenya dengan jeda kerja di tiap ujung, tidak serempak', () => {
     const rute = { dari: [0, 0], ke: [2, 0] } as const;
     for (let t = 0; t < 40; t += 0.25) {

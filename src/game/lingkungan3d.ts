@@ -15,6 +15,7 @@ import { PAPAN_JURUSAN } from './papan-jurusan3d';
 import { SKALA_UV, type PustakaMaterial } from './material3d';
 import {
   BUKAAN_MEDIAN,
+  GEDUNG_KOTA_NAIK,
   SAYAP_BARAT,
   HALTE_BERANGKAT_X,
   HALTE_DATANG_X,
@@ -245,7 +246,7 @@ function taman(k: Kumpulan, m: PustakaMaterial): void {
 // ---------------------------------------------------------------------------
 // Kota di seberang jalan
 
-interface Bangunan {
+export interface Bangunan {
   readonly x0: number;
   readonly y0: number;
   readonly x1: number;
@@ -254,7 +255,8 @@ interface Bangunan {
   readonly jenis: number;
 }
 
-const KOTA: readonly Bangunan[] = [
+/** Gedung deret depan kota (lot K01–K22 urut barat → timur bersama masjid; lihat GEDUNG_KOTA_NAIK di tata-letak.ts). */
+export const KOTA: readonly Bangunan[] = [
   { x0: -12, y0: -4.4, x1: -9.2, y1: -1.6, tinggi: 3.2, jenis: 0 },
   { x0: -8.4, y0: -3.6, x1: -5.8, y1: -1.5, tinggi: 2.3, jenis: 1 },
   { x0: -5.0, y0: -5.0, x1: -1.6, y1: -1.6, tinggi: 5.0, jenis: 2 },
@@ -314,6 +316,33 @@ function kota(k: Kumpulan, m: PustakaMaterial): void {
     k.tambah(m.hijauGelap, kotak(b.x0 + 0.1, b.y1, b.x1 - 0.1, b.y1 + 0.35, 0.55, 0.6));
   }
   masjid(k, m, 7.2);
+  gedungNaik(k, m);
+}
+
+/**
+ * Gedung kota yang meninggi saat terminal naik level (GEDUNG_KOTA_NAIK): lantai tambahan
+ * di atas atap lama dengan fasad yang sama (UV dunia, jadi jendelanya bersambung), atap
+ * baru, dan dua kotak mesin. Bibir atap lama sengaja tersisa sebagai garis "tumbuh".
+ * Masuk mesh gabungan utama sebagai tambahan per level, jadi tanpa draw call baru. Kotak
+ * mesin memakai bahan atap: besiGelap juga dipakai sayap, dan bahan bertambahan per level
+ * tidak boleh punya bagian sayap (lihat Kumpulan.bangun).
+ */
+function gedungNaik(k: Kumpulan, m: PustakaMaterial): void {
+  for (const g of GEDUNG_KOTA_NAIK) {
+    const b = KOTA.find((x) => x.x0 === g.x0 && x.y0 === g.y0 && x.x1 === g.x1 && x.y1 === g.y1)!;
+    k.level = g.level;
+    k.tambah(m.kotaFasad[b.jenis]!, uvDunia(kotak(g.x0, g.y0, g.x1, g.y1, g.tinggiLama, g.tinggiBaru), SKALA_UV.kota));
+    k.tambah(m.atapKota, uvDunia(kotak(g.x0 - 0.05, g.y0 - 0.05, g.x1 + 0.05, g.y1 + 0.05, g.tinggiBaru, g.tinggiBaru + 0.08), SKALA_UV.beton));
+    for (const [u, v] of [
+      [0.2, 0.25],
+      [0.6, 0.55],
+    ] as const) {
+      const x = g.x0 + u * (g.x1 - g.x0);
+      const y = g.y0 + v * (g.y1 - g.y0);
+      k.tambah(m.atapKota, uvDunia(kotak(x, y, x + 0.45, y + 0.4, g.tinggiBaru + 0.08, g.tinggiBaru + 0.32), SKALA_UV.beton));
+    }
+  }
+  k.level = 0;
 }
 
 function masjid(k: Kumpulan, m: PustakaMaterial, x0: number): void {
