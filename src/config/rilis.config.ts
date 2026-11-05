@@ -19,11 +19,16 @@ export const RILIS = {
   // peresmian ada di localStorage terpisah. Dijalankan 0.4.0 pada save 0.4.1 (Perluasan 3, 4, 5): bangunan,
   // level, perluasan, kas, dan semua kolom save terbaca & tertulis utuh; yang hilang hanya gedung barunya
   // (kebun barat tampak lama) dan peresmian susulan. Tidak ada data rusak, jadi tidak perlu memaksa pembaruan.
-  versiMinimal: '0.4.0',
+  // 0.5.0: Musim Terminal. Save tetap skema 3, tetapi 0.5.0 menambah blok `musim`. Dijalankan 0.4.1 pada save
+  // 0.5.0 dengan Musim aktif: save termuat tanpa galat dan semua kolom lain utuh, tetapi 0.4.1 tidak mengenal blok
+  // itu dan menulis save berikutnya TANPA blok `musim` (juga ke cloud save): poin dan Rapor Musim, tugas harian,
+  // hiasan yang dimiliki dan dipakai, tiket ganti, Surat Armada yang belum dipakai, riwayat musim, lencana, dan
+  // sambutan hilang diam-diam dan permanen; 0.5.0 lalu membuka Musim dari nol. Karena itu versi lama dipaksa.
+  versiMinimal: '0.5.0',
   /** Catatan singkat "Yang baru" di versi ini, ditampilkan di popup (maks 3 butir pendek). */
   catatan: [
-    'Perluasan 3 kini membangun gedung sungguhan: Sayap 2 lantai di sisi barat terminal.',
-    'Jendela loket, kursi, dan kios tambahan yang kamu bangun muncul di dalamnya.',
-    'Yang sudah melewati Perluasan 3 mendapat peresmian susulan, sekali saja.',
+    'Musim Terminal: 3 tugas harian dan Rapor Musim berhadiah hiasan, terbuka di Lv 6.',
+    'Musim 1 (Musim Hujan) mulai Senin, 30 November 2026.',
+    'Terminal dan kota di seberangnya kini berubah sedikit demi sedikit saat naik level.',
   ] as readonly string[],
 } as const;
