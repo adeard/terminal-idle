@@ -11,11 +11,12 @@ import { cuacaTerminal, cuacaTerminalState, kilatPada, type Cuaca } from '../sim
 import type { BangunanId, PetugasId, PoId, TeknologiId } from '../sim/fitur';
 import type { AreaId } from '../sim/operasi';
 import { hiasanAktif } from '../sim/musim';
+import type { JumlahBangunan } from '../sim/bangunan';
 import { hitungPetugas, type JumlahPetugas } from '../sim/petugas';
 import { busEmasAktif, kelasBusBeroperasi, kelasTerminal, levelTerminal, loketTerisi, type GameState, type PoTerdaftar } from '../sim/state';
 import { keramaianTerminal, waktuTerminal, waktuTerminalState } from '../sim/waktu';
 import { URL_ATLAS } from './aset';
-import { Adegan } from './adegan';
+import { Adegan, type PoseKamera } from './adegan';
 import { faseProyekSayap, isiLantai2, jumlahPengunjung, keadaanSayap, MAKS_PENGUNJUNG, pengunjungDiTeras, posisiPengunjung, type IsiLantai2, type KeadaanSayap, type PosisiPengunjung } from './bentuk-adegan';
 import { CahayaMalam } from './cahaya3d';
 import { PencucianBus } from './cuci3d';
@@ -52,15 +53,34 @@ import { RollingDoor } from './malam3d';
 import { PapanJadwal } from './papan-jadwal3d';
 import { Modernisasi } from './modernisasi3d';
 import { PapanJurusan } from './papan-jurusan3d';
-import { LaluLintas, Trotoar } from './lalu-lintas';
+import { KENDARAAN_PER_LAJUR_BELAKANG, LaluLintas, Trotoar } from './lalu-lintas';
 import { suasanaLangit, terapkanCuaca } from './langit';
 import { bangunLingkungan, kibarkan, TITIK_LAMPU } from './lingkungan3d';
 import { buatMaterial, type PustakaMaterial } from './material3d';
 import { LaluLintas3D } from './mobil3d';
+import { kapasitasLaluLintas3D, LaluLintasParkir } from './mobil-parkir';
 import { bajuMusim, papanMusim, seragamMusim, spandukMusim } from './musim-adegan';
 import { buatPenampilan, buatPenampilanAnak, Kerumunan3D, WARNA_PAYUNG, type DataOrang, type Penampilan } from './orang3d';
 import { Rombongan } from './rombongan';
 import { bangunSayap2, IsiSayap2 } from './sayap2-3d';
+import {
+  atapHujanLantai,
+  AZIMUT_KAMERA_LANTAI,
+  bagiIsiLantai,
+  cangkangTerlihat,
+  kameraLepasDariGedung,
+  kunciLantai,
+  lantaiAdegan,
+  lantaiDibeli,
+  mobilTanahTersembunyi,
+  TANPA_LANTAI,
+  titikKameraLantai,
+  titikKembangApiLantai,
+  unitIsiTerlihat,
+  type LantaiGedung,
+} from './lantai-adegan';
+import { bangunLantai, IsiLantai } from './lantai3d';
+import { GEDUNG_LANTAI_IDS, type LantaiDilihat } from '../sim/fitur';
 import { bangunSekitar, JALAN_BELAKANG } from './sekitar3d';
 import { PopUang3D } from './pop-uang3d';
 import { ProyekPerluasan } from './proyek3d';
@@ -206,8 +226,10 @@ interface OrangStatis {
  * @param jendela banyaknya jendela loket yang dipakai mitra PO di siang hari (lihat jendelaDipakai)
  * @param petugas banyaknya petugas tiap peran yang direkrut
  */
-function hadir(s: OrangStatis, state: GameState, jam: number, jendela: number, petugas: JumlahPetugas): boolean {
-  if (s.bangunan && state.terminal.bangunan[s.bangunan.id] <= s.bangunan.ke) return false;
+function hadir(s: OrangStatis, state: GameState, jam: number, jendela: number, petugas: JumlahPetugas, dasar: JumlahBangunan): boolean {
+  // Penjaga kios & toko ikut unit yang digambar di lantai dasar (lantai tambahan diisi lebih dulu); lainnya ikut total.
+  const bangunan = s.bangunan && (s.bangunan.id === 'kios' || s.bangunan.id === 'toko') ? dasar : state.terminal.bangunan;
+  if (s.bangunan && bangunan[s.bangunan.id] <= s.bangunan.ke) return false;
   if (s.staf && petugas[s.staf.peran] <= s.staf.ke) return false;
   if (s.teknologi && !state.terminal.teknologi[s.teknologi]) return false;
   if (s.toko && !tokoBuka(s.toko, jam)) return false;
@@ -307,7 +329,8 @@ function orangStatis(): OrangStatis[] {
     // Pangkalan ojek: satu duduk di bangku gubuk, satu menawarkan ojek di mulut gang (siang).
     { orang: { id: ID_STATIS + 94, x: GUBUK_OJEK.x - 0.02, y: (GUBUK_OJEK.y0 + GUBUK_OJEK.y1) / 2, h: 0.055, penampilan: seragam(0x7f1d1d, 0x1f2937, false), pose: 'duduk', hadap: 0 }, ambang: 0 },
     { orang: { id: ID_STATIS + 95, x: GUBUK_OJEK.x + 0.55, y: 19.75, h: H_TROTOAR, penampilan: seragam(0x1f2937, 0x334155, true), hadap: -Math.PI / 2 }, ambang: 0.35 },
-    { orang: { id: ID_STATIS + 90, x: LORONG_PARKIR.x0 - 0.3, y: LORONG_PARKIR.y + 0.6, h: H_LANTAI, penampilan: rompi(0xf97316), hadap: Math.PI }, ambang: 0, bangunan: { id: 'lahanParkir', ke: 0 }, staf: { peran: 'juruParkir', ke: 0 } },
+    // Juru parkir di tepi lorong, di antara moncong mobil baris 2 dan kolom selatan gedung parkir (y 16,35–16,49).
+    { orang: { id: ID_STATIS + 90, x: LORONG_PARKIR.x0 - 0.3, y: LORONG_PARKIR.y + 0.27, h: H_LANTAI, penampilan: rompi(0xf97316), hadap: Math.PI }, ambang: 0, bangunan: { id: 'lahanParkir', ke: 0 }, staf: { peran: 'juruParkir', ke: 0 } },
     // Petugas kebersihan toilet berjaga di lorong sayap barat, di sisi dinding aula (tidak menghalangi jalan).
     { orang: { id: ID_STATIS + 91, x: GEDUNG.x0 - 0.15, y: 12.3, h: hAula, penampilan: seragam(0x16a34a, 0x1f2937, false), hadap: Math.PI }, ambang: 0, bangunan: { id: 'toilet', ke: 0 }, staf: { peran: 'petugasToilet', ke: 0 } },
     { orang: { id: ID_STATIS + 1, x: POS_RETRIBUSI.x0 - 0.5, y: POS_RETRIBUSI.y1 + 0.3, h: 0, penampilan: seragam(0x8b6b3d, 0x4a3b24, true), hadap: Math.PI / 4 }, ambang: 0, bangunan: { id: 'posRetribusi', ke: 0 }, staf: { peran: 'petugasRetribusi', ke: 0 } },
@@ -376,6 +399,8 @@ export class Terminal3D {
   saatTelolet: () => void = () => {};
   /** Dipanggil saat pemain mengetuk label area di peta (membuka tab Bangun; diatur dari main.ts). */
   saatKetukArea: (area: AreaId) => void = () => {};
+  /** Dipanggil saat kamera digeser jauh dari gedung yang dilihat di mode lantai (UI keluar dari mode itu; diatur dari main.ts). */
+  saatLantaiDilepas: () => void = () => {};
   /** Mode sinema (lihat aturSinema); null = tampilan biasa. */
   private sinema: OpsiSinema | null = null;
   /** Selisih jam tampilan terhadap jam main selama mode sinema (detik main). */
@@ -398,6 +423,25 @@ export class Terminal3D {
   private keadaanSayap: KeadaanSayap | null = null;
   /** Gedung kota yang sedang tergambar meninggi (lihat kotaNaik); -1 = belum pernah diterapkan. */
   private kotaNaikLalu = -1;
+  /** Lantai tambahan yang sedang tergambar (lihat lantaiAdegan) dan kuncinya bersama lantai yang dilihat; -1 = belum pernah diterapkan. */
+  private lantaiTampil: LantaiGedung = TANPA_LANTAI;
+  private kunciLantaiLalu = -1;
+  /** Mode lihat per lantai; null = tampilan biasa. */
+  private lantaiDilihat: LantaiDilihat | null = null;
+  /** Unit cangkang lantai yang terlihat sekarang (dipakai tampilkanBagian, dibuat sekali). */
+  private readonly lantaiTerlihat = (unit: number): boolean => cangkangTerlihat(unit, this.lantaiTampil, this.lantaiDilihat);
+  /** Pembagian isi lantai dasar terakhir (lihat bangunanDasar). */
+  private isiBagi: { readonly bangunan: JumlahBangunan; readonly lantai: GameState['terminal']['lantai']; readonly perluasan: number; readonly dasar: JumlahBangunan } | null = null;
+  /** Isi lantai tambahan di mode lantai: dibangun saat mode lantai pertama kali dibuka. */
+  private isiLantai: IsiLantai | null = null;
+  /** Isi lantai yang tergambar: untuk kunci lantai & objek bangunan state ini (-1 / null = belum). */
+  private kunciIsiLalu = -1;
+  private bangunanIsiLalu: GameState['terminal']['bangunan'] | null = null;
+  /** Pose kamera sebelum mode lantai (dipulihkan saat keluar) dan pose bingkai gedung yang dilihat. */
+  private poseSebelumLantai: PoseKamera | null = null;
+  private poseLantai: PoseKamera | null = null;
+  /** Kamera sudah digeser jauh dari gedung yang dilihat: saatLantaiDilepas sudah dipanggil, kamera tidak dikembalikan. */
+  private lantaiLepas = false;
   /** Hiasan per level: dibangun saat hiasan pertama tampil (Lv 5). */
   private hiasan: HiasanLevel3D | null = null;
   /** Hiasan yang tampil untuk level & tahap terakhir: objek tetap selama keduanya tetap. */
@@ -488,8 +532,12 @@ export class Terminal3D {
     /** Blok kursi ruang tunggu (urut BLOK_KURSI): terpasang sesuai kursi yang dibangun. */
     private readonly blokKursi: readonly THREE.Group[],
     private readonly posRetribusi: THREE.Group,
-    /** Mesh gabungan utama yang isinya mengikuti keadaan Sayap 2 Lantai (lahan / cangkang). */
+    /** Mesh gabungan utama yang isinya mengikuti keadaan Sayap 2 Lantai (lahan / cangkang) dan lantai tambahan. */
     private readonly potonganSayap: readonly PotonganBagian[],
+    /** Mobil tanah baris 2 di bawah ramp gedung parkir (bagian 'lahan' kumpulannya). */
+    private readonly mobilTertimpa: readonly PotonganBagian[],
+    /** Mobil yang naik-turun gedung parkir (digambar LaluLintas3D bersama lalu lintas jalan belakang). */
+    private readonly laluLintasParkir: LaluLintasParkir,
   ) {
     this.pasangKetuk(adegan.renderer.domElement);
     // 40 = kelipatan jumlah bus terminal (8) & kendaraan lewat (5), jadi keduanya merata.
@@ -507,6 +555,8 @@ export class Terminal3D {
     this.dunia.pemanasan(PEMANASAN_DETIK, { ...awal, loketBuka: loketBuka(w.jamDesimal, awal.jendela), jam: w.jamDesimal });
     laluLintas.aturKepadatanSegera(kepadatanLuar(this.keramaian));
     trotoar.aturKepadatanSegera(kepadatanLuar(this.keramaian));
+    // Gedung parkir yang sudah ada di save: mobilnya tersebar di jalur pada frame pertama (atur di perbarui).
+    laluLintasParkir.aturKepadatanSegera(kepadatanLuar(this.keramaian));
   }
 
   static async buat(wadah: HTMLElement, wadahLabel: HTMLElement, pembaca: PembacaState): Promise<Terminal3D> {
@@ -524,19 +574,22 @@ export class Terminal3D {
     const parkir = [new Kumpulan(), new Kumpulan()] as const;
     bangunSekitar(k, m, kabel, parkir);
     bangunSayap2(k, m);
+    bangunLantai(k, m);
     const potonganSayap = k.bangun(adegan.scene);
     const { perluasan, proyekDetik } = pembaca.state.perkembangan;
-    // Sebelum kompilasi shader: bahan yang hanya dipakai sayap tidak perlu dikompilasi di sesi pertama.
-    tampilkanBagian(potonganSayap, keadaanSayap(perluasan, proyekDetik), levelTerminal(pembaca.state));
-    const parkirMobil = parkir.map((kp) => {
-      const g = new THREE.Group();
-      kp.bangun(g);
-      return g;
-    });
+    const lantai = lantaiAdegan(pembaca.state.terminal.lantai, perluasan);
+    // Sebelum kompilasi shader: bahan yang hanya dipakai sayap atau lantai tambahan tidak perlu dikompilasi di sesi pertama.
+    tampilkanBagian(potonganSayap, keadaanSayap(perluasan, proyekDetik), levelTerminal(pembaca.state), (u) => cangkangTerlihat(u, lantai, null));
+    const parkirMobil = [new THREE.Group(), new THREE.Group()] as const;
+    parkir[0].bangun(parkirMobil[0]);
+    const mobilTertimpa = parkir[1].bangun(parkirMobil[1]);
+    tampilkanBagian(mobilTertimpa, mobilTanahTersembunyi(lantai) ? 'berdiri' : 'lahan');
     adegan.scene.add(bendera, kabel, posRetribusi, ...parkirMobil, ...blokKursi);
 
-    const laluLintas = new LaluLintas({ x0: -64, x1: 100, lajurTimur: JALAN_BELAKANG.lajurTimur, lajurBarat: JALAN_BELAKANG.lajurBarat, jumlahPerLajur: 25 });
-    const laluLintas3D = new LaluLintas3D(48);
+    const laluLintas = new LaluLintas({ x0: -64, x1: 100, lajurTimur: JALAN_BELAKANG.lajurTimur, lajurBarat: JALAN_BELAKANG.lajurBarat, jumlahPerLajur: KENDARAAN_PER_LAJUR_BELAKANG });
+    const laluLintasParkir = new LaluLintasParkir();
+    // Kapasitas = semua kendaraan kedua model (pada kepadatan 1 semuanya aktif); kolong satu instans per kendaraan aktif.
+    const laluLintas3D = new LaluLintas3D(kapasitasLaluLintas3D(laluLintas, laluLintasParkir));
     // Trotoar seberang jalan raya dan kedua sisi jalan belakang.
     const trotoar = new Trotoar({ x0: -48, x1: 76, jalur: [-0.5, Y_TROTOAR_BELAKANG, 22.05], jumlahPerJalur: 20, jumlahVarian: JUMLAH_PENAMPILAN });
 
@@ -578,7 +631,7 @@ export class Terminal3D {
     adegan.bingkai(adegan.lebarCss > adegan.tinggiCss ? TITIK_INTI : TITIK_INTI_POTRET);
     // Kompilasi shader sebelum frame pertama supaya tidak tersendat saat mulai.
     await adegan.renderer.compileAsync(adegan.scene, adegan.kamera);
-    return new Terminal3D(adegan, pembaca, armada, kerumunan, zona, labelBus, papanJurusan, modernisasi, rollingDoor, luar, papanJadwal, bendera, laluLintas, laluLintas3D, trotoar, m, cahaya, cuci, popUang, spanduk, hiasanKelas, hiasanEvent, pembangunan, proyek, parkirMobil, blokKursi, posRetribusi, potonganSayap);
+    return new Terminal3D(adegan, pembaca, armada, kerumunan, zona, labelBus, papanJurusan, modernisasi, rollingDoor, luar, papanJadwal, bendera, laluLintas, laluLintas3D, trotoar, m, cahaya, cuci, popUang, spanduk, hiasanKelas, hiasanEvent, pembangunan, proyek, parkirMobil, blokKursi, posRetribusi, potonganSayap, mobilTertimpa, laluLintasParkir);
   }
 
   /** Sambungkan mesin suara; tiap frame adegan mengirim lapisan suara & bunyi sesaat. */
@@ -595,6 +648,27 @@ export class Terminal3D {
     this.sinema = o;
     if (!o) this.geserWaktu = 0;
     this.adegan.aturSinema(o !== null);
+  }
+
+  /**
+   * Mode lihat per lantai (documents/18): lantai di atas yang dilihat disembunyikan, atap
+   * lantai itu dibuka dan isinya digambar. null = kembali ke tampilan biasa. Hanya tampilan;
+   * state UI tidak disimpan dan simulasi tetap berjalan.
+   */
+  aturLantaiDilihat(v: LantaiDilihat | null): void {
+    const lama = this.lantaiDilihat;
+    this.lantaiDilihat = v;
+    if (v && v.gedung !== lama?.gedung) {
+      // Masuk mode lantai, atau pindah gedung: kamera bergeser ke gedung itu sekali; ‹ › di gedung yang sama tidak menggeser.
+      if (!lama) this.poseSebelumLantai = this.adegan.pose();
+      this.poseLantai = this.adegan.poseBingkai(titikKameraLantai(v.gedung), AZIMUT_KAMERA_LANTAI[v.gedung]);
+      this.adegan.geserKe(this.poseLantai);
+      this.lantaiLepas = false;
+    } else if (!v && lama) {
+      // Keluar lewat ✕, tab, atau popup: kamera kembali; keluar karena kamera digeser jauh: kamera dibiarkan.
+      if (!this.lantaiLepas && this.poseSebelumLantai) this.adegan.geserKe(this.poseSebelumLantai);
+      this.poseSebelumLantai = this.poseLantai = null;
+    }
   }
 
   /** Jam tampilan adegan (0–24; dalam mode sinema bisa mendahului jam terminal). */
@@ -634,6 +708,13 @@ export class Terminal3D {
     if (lanskap !== this.lanskap) {
       this.lanskap = lanskap;
       this.adegan.bingkai(lanskap ? TITIK_INTI : TITIK_INTI_POTRET);
+      // Di mode lantai gedungnya dibingkai ulang untuk orientasi baru; keluar nanti kembali ke bingkai awal yang baru.
+      const v = this.lantaiDilihat;
+      if (v && !this.lantaiLepas) {
+        this.poseSebelumLantai = this.adegan.pose();
+        this.poseLantai = this.adegan.poseBingkai(titikKameraLantai(v.gedung), AZIMUT_KAMERA_LANTAI[v.gedung]);
+        this.adegan.geserKe(this.poseLantai);
+      }
     }
   }
 
@@ -682,8 +763,11 @@ export class Terminal3D {
     this.aturSeragam(seragamMusim(pakai));
     this.jam = w.jamDesimal;
     const level = levelTerminal(state);
-    this.perbaruiSayap(state, level);
-    this.perbaruiHiasan(state, level, detikMain);
+    // Jam main bersambung dengan jam nyata = sesi aktif: hanya di situ kembang api naik level & beli lantai menyala.
+    const detikNyata = performance.now() / 1000;
+    const bersambung = jamBersambung(detikMain - this.detikMainLalu, detikNyata - this.detikNyataLalu);
+    this.perbaruiSayap(state, level, bersambung);
+    this.perbaruiHiasan(state, level, detikMain, detikNyata, bersambung);
     this.detikPatroli += dt;
     this.luar.perbarui(this.jam, this.keramaian);
     this.material.aturBasah(this.basah);
@@ -697,6 +781,7 @@ export class Terminal3D {
       loketBuka: loketBuka(this.jam, this.jendela),
       jam: this.jam,
       busEmas: busEmasAktif(state) && this.tampilkanBusEmas(),
+      gedungParkir: this.lantaiTampil.parkir >= 1,
     };
     // Bangunan yang terlihat: blok kursi, mobil di parkir, pos retribusi, pintu gulung kios & toko per unit.
     const f = laju.fasilitas ?? FASILITAS_LENGKAP;
@@ -705,6 +790,9 @@ export class Terminal3D {
     this.parkirMobil.forEach((g, i) => (g.visible = i < f.barisParkir));
     this.posRetribusi.visible = f.posRetribusi;
     this.rollingDoor.perbarui(this.jam, this.jendela, f, state.terminal.bangunan.jalur);
+    // Mobil gedung parkir mengikuti lantai parkir & lahan parkir; hujan tidak mengubah jumlahnya.
+    this.laluLintasParkir.kepadatan = kepadatanLuar(this.keramaian);
+    this.laluLintasParkir.atur(this.lantaiTampil.parkir, state.terminal.bangunan.lahanParkir);
     const langkah = Math.max(1, Math.ceil(dt / LANGKAH_SIM));
     this.peristiwa.length = 0;
     this.transaksi.length = 0;
@@ -713,6 +801,7 @@ export class Terminal3D {
       this.peristiwa.push(...this.dunia.peristiwa);
       this.transaksi.push(...this.dunia.transaksi);
       this.laluLintas.perbarui(dt / langkah);
+      this.laluLintasParkir.perbarui(dt / langkah);
       this.trotoar.perbarui(dt / langkah);
     }
     this.rombongan.perbarui(this.dunia.orang, dt, this.dunia.bus);
@@ -726,11 +815,12 @@ export class Terminal3D {
     // Genangan cahaya lampu jalan hanya terlihat saat benar-benar gelap (bukan siang mendung).
     this.cahaya.perbarui(Math.max(langit.malam, 0.3 * suasana.malam), this.dunia.bus);
     this.cuci.perbarui(this.dunia.bus, dt, this.waktu);
-    this.laluLintas3D.perbarui(this.laluLintas);
+    this.laluLintas3D.perbarui(this.laluLintas, this.laluLintasParkir, this.lantaiDilihat);
     this.anakTelolet.perbarui(dtNyata);
     this.spanduk.perbarui(anakTeloletHadir(this.jam, this.hujan));
     this.sinkronOrang(dt);
     const pandang = this.adegan.titikPandang();
+    this.periksaLantaiDilepas(pandang.x, pandang.y);
     const pikselPerUnit = this.adegan.renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(this.adegan.kamera.fov / 2)));
     this.hujan3d.perbarui(this.hujan, this.basah, this.waktu, pandang.x, pandang.y, 1 - suasana.malam, pikselPerUnit);
     this.zona.perbarui(state, this.waktu, this.adegan, this.adegan.lebarCss, this.adegan.tinggiCss);
@@ -834,10 +924,9 @@ export class Terminal3D {
    * kembang api kecil di titik benda barunya; memuat save, lompatan beberapa level, dan
    * hasil offline (jam main tidak bersambung) tidak.
    */
-  private perbaruiHiasan(state: GameState, level: number, detikMain: number): void {
+  private perbaruiHiasan(state: GameState, level: number, detikMain: number, detikNyata: number, bersambung: boolean): void {
     const perluasan = state.perkembangan.perluasan;
-    const detikNyata = performance.now() / 1000;
-    if (level !== this.levelLalu && jamBersambung(detikMain - this.detikMainLalu, detikNyata - this.detikNyataLalu)) {
+    if (level !== this.levelLalu && bersambung) {
       for (const h of hiasanBaru(this.levelLalu, level, perluasan)) this.proyek.rayakanTitik(h.kembangApi[0], h.kembangApi[1], h.kembangApi[2], level);
     }
     this.levelLalu = level;
@@ -856,16 +945,31 @@ export class Terminal3D {
     this.hiasan.perbarui(tampil, this.baliho);
   }
 
-  /** Sayap 2 Lantai & gedung kota yang meninggi mengikuti state: rentang mesh utama ditukar hanya saat keadaannya berganti. */
-  private perbaruiSayap(state: GameState, level: number): void {
+  /**
+   * Sayap 2 Lantai, gedung kota yang meninggi, dan lantai tambahan mengikuti state: rentang &
+   * index buffer mesh utama ditukar hanya saat salah satu keadaannya berganti.
+   */
+  private perbaruiSayap(state: GameState, level: number, bersambung: boolean): void {
     const keadaan = keadaanSayap(state.perkembangan.perluasan, state.perkembangan.proyekDetik);
     const naik = kotaNaik(level);
-    if (keadaan !== this.keadaanSayap || naik !== this.kotaNaikLalu) {
+    const lantai = lantaiAdegan(state.terminal.lantai, state.perkembangan.perluasan);
+    const kunci = kunciLantai(lantai, this.lantaiDilihat);
+    if (keadaan !== this.keadaanSayap || naik !== this.kotaNaikLalu || kunci !== this.kunciLantaiLalu) {
       if (keadaan !== this.keadaanSayap) this.hujan3d.aturSayap2(keadaan === 'berdiri');
+      if (kunci !== this.kunciLantaiLalu) {
+        tampilkanBagian(this.mobilTertimpa, mobilTanahTersembunyi(lantai) ? 'berdiri' : 'lahan');
+        GEDUNG_LANTAI_IDS.forEach((g, i) => this.hujan3d.aturAtapLantai(i, atapHujanLantai(g, lantai, this.lantaiDilihat)));
+        // Lantai dibeli di sesi aktif: kembang api kecil di atas lantai baru (tidak saat memuat save atau sesudah offline).
+        const dibeli = this.kunciLantaiLalu !== -1 && bersambung ? lantaiDibeli(this.lantaiTampil, lantai) : null;
+        if (dibeli) this.proyek.rayakanTitik(...titikKembangApiLantai(dibeli, lantai[dibeli]), 40 + lantai[dibeli]);
+      }
       this.keadaanSayap = keadaan;
       this.kotaNaikLalu = naik;
-      tampilkanBagian(this.potonganSayap, keadaan, level);
+      this.lantaiTampil = lantai;
+      this.kunciLantaiLalu = kunci;
+      tampilkanBagian(this.potonganSayap, keadaan, level, this.lantaiTerlihat);
     }
+    this.perbaruiIsiLantai(state, lantai, kunci);
     if (keadaan !== 'berdiri') {
       this.isiL2 = null;
       if (this.isiSayap) this.isiSayap.objek.visible = false;
@@ -876,8 +980,46 @@ export class Terminal3D {
       this.adegan.scene.add(this.isiSayap.objek);
     }
     this.isiSayap.objek.visible = true;
-    this.isiL2 = isiLantai2(state.terminal.bangunan, loketTerisi(state), this.jam);
+    this.isiL2 = isiLantai2(this.bangunanDasar(state), loketTerisi(state), this.jam);
     this.isiSayap.perbarui(this.isiL2, this.keramaian, this.hujan > HUJAN_PAYUNG);
+  }
+
+  /** Isi lantai yang dilihat di mode lantai: unitnya dipilih ulang hanya saat lantai, lantai yang dilihat, atau bangunan berganti. */
+  private perbaruiIsiLantai(state: GameState, lantai: LantaiGedung, kunci: number): void {
+    const bangunan = state.terminal.bangunan;
+    if (kunci === this.kunciIsiLalu && bangunan === this.bangunanIsiLalu) return;
+    if (!this.lantaiDilihat && !this.isiLantai) return;
+    this.kunciIsiLalu = kunci;
+    this.bangunanIsiLalu = bangunan;
+    if (!this.isiLantai) {
+      this.isiLantai = new IsiLantai(this.material);
+      this.adegan.scene.add(this.isiLantai.objek);
+    }
+    this.isiLantai.tampilkan(unitIsiTerlihat(this.lantaiDilihat, lantai, bangunan, state.perkembangan.perluasan));
+  }
+
+  /** Mode lantai: kamera yang digeser pemain jauh dari gedung yang dilihat memanggil saatLantaiDilepas (sekali). */
+  private periksaLantaiDilepas(x: number, y: number): void {
+    const v = this.lantaiDilihat;
+    const p = this.poseLantai;
+    if (!v || !p || this.lantaiLepas || this.adegan.sedangBergeser) return;
+    if (!kameraLepasDariGedung(x, y, p.target.x, p.target.z, v.gedung)) return;
+    this.lantaiLepas = true;
+    this.saatLantaiDilepas();
+  }
+
+  /**
+   * Bangunan yang digambar di lantai dasar (bagiIsiLantai: lantai tambahan diisi lebih dulu), dihitung ulang hanya
+   * saat objek bangunan, lantai, atau tahap state berganti.
+   */
+  private bangunanDasar(state: GameState): JumlahBangunan {
+    const { bangunan, lantai } = state.terminal;
+    const perluasan = state.perkembangan.perluasan;
+    const c = this.isiBagi;
+    if (c && c.bangunan === bangunan && c.lantai === lantai && c.perluasan === perluasan) return c.dasar;
+    const dasar = { ...bangunan, ...bagiIsiLantai(bangunan, lantai, perluasan).dasar };
+    this.isiBagi = { bangunan, lantai, perluasan, dasar };
+    return dasar;
   }
 
   /** Pendapatan per detik tiap sumber, dihitung ulang hanya saat state berganti. */
@@ -964,8 +1106,9 @@ export class Terminal3D {
     const state = this.pembaca.state;
     const patroli = dalamRentang(this.jam, JAM_PATROLI);
     const petugas = this.petugasDari(state);
+    const dasar = this.bangunanDasar(state);
     for (const s of this.statis) {
-      if (this.keramaian < s.ambang || !hadir(s, state, this.jam, this.jendela, petugas.jumlah)) continue;
+      if (this.keramaian < s.ambang || !hadir(s, state, this.jam, this.jendela, petugas.jumlah, dasar)) continue;
       // Malam: satpam luar berkeliling plaza (siang berjaga di posnya).
       const orang = s.orang.id === ID_STATIS && patroli ? this.satpamBerpatroli(s.orang) : s.orang;
       if (berteduh && diLuar(orang)) {

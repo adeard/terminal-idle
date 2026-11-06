@@ -45,8 +45,13 @@ export interface FasilitasAdegan {
   readonly toko: number;
   /** Toilet & musholla di sayap barat sudah dibangun (baru didatangi penumpang). */
   readonly toilet: boolean;
-  /** Baris mobil pengunjung di parkir: 0 (belum ada lahan parkir), 1, atau 2. */
+  /** Baris mobil pengunjung di parkir tanah: 0 (belum ada lahan parkir di tanah), 1, atau 2. */
   readonly barisParkir: number;
+  /**
+   * Ada lahan parkir sama sekali (tanah atau gedung parkir): pengantar datang dari parkir dan mobil gedung parkir
+   * berjalan. Bawaan (tanpa field ini): barisParkir > 0.
+   */
+  readonly adaParkir?: boolean;
   readonly posRetribusi: boolean;
 }
 
@@ -63,13 +68,18 @@ export const FASILITAS_LENGKAP: FasilitasAdegan = {
   posRetribusi: true,
 };
 
-export function fasilitasAdegan(b: JumlahBangunan): FasilitasAdegan {
+/**
+ * @param dasar unit yang digambar di lantai dasar (bagiIsiLantai di lantai-adegan.ts; bawaan semuanya). Kursi, kios,
+ *   toko, dan baris mobil tanah mengikuti `dasar`; toilet (singgah toilet & musholla) dan ada lahan parkir mengikuti total.
+ */
+export function fasilitasAdegan(b: JumlahBangunan, dasar: Pick<JumlahBangunan, 'kursi' | 'kios' | 'toko' | 'lahanParkir'> = b): FasilitasAdegan {
   return {
-    blokKursi: blokKursiTerpasang(b.kursi),
-    kios: Math.min(KIOS_TUNGGU.length, Math.max(0, b.kios)),
-    toko: Math.min(TOKO_AULA.length, Math.max(0, b.toko)),
+    blokKursi: blokKursiTerpasang(dasar.kursi),
+    kios: Math.min(KIOS_TUNGGU.length, Math.max(0, dasar.kios)),
+    toko: Math.min(TOKO_AULA.length, Math.max(0, dasar.toko)),
     toilet: b.toilet > 0,
-    barisParkir: Math.min(BARIS_PARKIR, Math.max(0, b.lahanParkir)),
+    barisParkir: Math.min(BARIS_PARKIR, Math.max(0, dasar.lahanParkir)),
+    adaParkir: b.lahanParkir > 0,
     posRetribusi: b.posRetribusi > 0,
   };
 }

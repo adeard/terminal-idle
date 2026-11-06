@@ -26,7 +26,7 @@ import { pasangPembaruan } from './platform/pembaruan';
 import { pasangSiklusHidup } from './platform/siklus-hidup';
 import { MesinSuara } from './platform/suara';
 import type { Aksi } from './sim/aksi';
-import { isEventId } from './sim/fitur';
+import { isEventId, type LantaiDilihat } from './sim/fitur';
 import { bisaBukaMusim, bukaMusim, musimDariId } from './sim/musim';
 import { buatModel } from './ui/model';
 import { notifArmada, notifikasiMusim } from './ui/notifikasi';
@@ -142,6 +142,9 @@ async function mulai(): Promise<void> {
   if (peringkat) sesi.pengendali.berlangganan((s) => peringkat.periksa(s));
   // Menu akun dipasang di bawah; tombol "Masuk untuk ikut" di papan peringkat memanggilnya lewat ini.
   let bukaAkun: () => void = () => {};
+  // Mode lihat per lantai (documents/18): UI memegang lantai yang dilihat, adegan hanya menerimanya.
+  let lantaiDilihat: LantaiDilihat | null = null;
+  let terminal: Terminal3D | null = null;
   const overlay = pasangOverlay(ui, sesi.pengendali, {
     iklan: { siap: () => iklan.siap(), tonton: tontonIklan },
     ...(peringkat
@@ -158,6 +161,10 @@ async function mulai(): Promise<void> {
     kecepatan,
     saatUbahKecepatan: ubahKecepatan,
     analitik,
+    saatLantaiDilihat: (v) => {
+      lantaiDilihat = v;
+      terminal?.aturLantaiDilihat(v);
+    },
   });
   // Tutorial terpandu untuk pemain baru; statusnya disimpan per perangkat.
   const KUNCI_TUTORIAL = 'terminal-bus-tycoon/tutorial';
@@ -311,7 +318,6 @@ async function mulai(): Promise<void> {
   if (bisaLogin) pasangTombolAkun(overlay.kontrol, uidAktif !== null, bukaMenuAkun);
 
   // Adegan 3D dimuat di latar; UI & simulasi sudah jalan sebelum grafis siap.
-  let terminal: Terminal3D | null = null;
   let tombolKamera: TombolKamera | null = null;
   let ukuran = { lebar: 1, tinggi: 1 };
   pasangBingkai({
@@ -353,6 +359,9 @@ async function mulai(): Promise<void> {
       });
       t.saatTelolet = () => analitik.catat('telolet');
       t.saatKetukArea = (area) => overlay.bukaArea(area);
+      // Mode lantai: yang sudah dibuka sebelum adegan siap ikut diteruskan; kamera digeser jauh = keluar.
+      t.aturLantaiDilihat(lantaiDilihat);
+      t.saatLantaiDilepas = () => overlay.keluarLantai();
       analitik.catat('adegan_siap', { detik: Math.round((performance.now() - mulaiGrafis) / 100) / 10 });
     })
     .catch((e: unknown) => {

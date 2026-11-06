@@ -95,6 +95,7 @@ import {
   ruteMasukSayap,
   SINGGAH,
   X_MUKA_KIOS,
+  X_ORANG_GEDUNG_PARKIR,
   type GayaSinggah,
   type JenisKelamin,
   type KelompokSinggah,
@@ -513,6 +514,8 @@ export class DuniaVisual {
   private jam = 12;
   /** Bangunan yang dipakai penumpang: blok kursi, kios & toko per unit, toilet, lahan parkir. */
   private fasilitas: FasilitasAdegan = FASILITAS_LENGKAP;
+  /** Gedung parkir berdiri (lihat LajuVisual.gedungParkir). */
+  private gedungParkir = false;
   private readonly wanita: (varian: number) => boolean;
   /** Titik singgah yang sedang dipakai atau dituju seseorang (satu orang per titik). */
   private readonly titikTerpakai = new Set<TitikSinggah>();
@@ -546,6 +549,7 @@ export class DuniaVisual {
     this.loketBuka = laju.loketBuka && laju.loketBuka.length > 0 ? laju.loketBuka : SEMUA_LOKET;
     this.jam = laju.jam ?? 12;
     this.fasilitas = laju.fasilitas ?? FASILITAS_LENGKAP;
+    this.gedungParkir = laju.gedungParkir ?? false;
 
     this.munculkanBus(dt, laju);
     for (const b of this.bus) this.perbaruiBus(b, dt);
@@ -1172,8 +1176,11 @@ export class DuniaVisual {
     this.menujuAntrean++;
     this.totalDatang++;
     // Tanpa lahan parkir pengantar tidak bisa parkir: semua datang lewat gerbang pejalan kaki.
-    if (this.fasilitas.barisParkir > 0 && this.acak() < PELUANG_DARI_PARKIR) {
-      const x = LORONG_PARKIR.x0 + this.acak() * (LORONG_PARKIR.x1 - LORONG_PARKIR.x0) * 0.6;
+    // Ada lahan parkir di mana pun (tanah atau gedung parkir): pengantar datang dari parkir.
+    if ((this.fasilitas.adaParkir ?? this.fasilitas.barisParkir > 0) && this.acak() < PELUANG_DARI_PARKIR) {
+      // Dengan gedung parkir mereka keluar dari kolongnya, di barat kaki ramp (lajur mobil bergerak di timurnya); urutan acak() tetap.
+      const lebar = this.gedungParkir ? X_ORANG_GEDUNG_PARKIR - LORONG_PARKIR.x0 : (LORONG_PARKIR.x1 - LORONG_PARKIR.x0) * 0.6;
+      const x = LORONG_PARKIR.x0 + this.acak() * lebar;
       const o = this.buatOrang(x, LORONG_PARKIR.y + (this.acak() - 0.5) * 0.3, 'keAntrean');
       o.rute = [...RUTE_DARI_PARKIR, MULUT_ANTREAN];
       this.transaksi.push({ jenis: 'parkir', x: o.x, y: o.y });

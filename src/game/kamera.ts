@@ -187,6 +187,7 @@ export interface BingkaiAwal extends BingkaiKamera {
  * titik di tengah (tidak berubah sejak 0.3.1). Portrait: dari AZIMUT_POTRET, titik ditaruh
  * di JENDELA_POTRET. Batas zoom keluar dipisah dari jarak awal: dari titik pandang awal,
  * zoom keluar selalu bisa memuat seluruh terminal (`terminal`, biasanya TITIK_INTI).
+ * @param azimut azimut pengganti per orientasi (mis. mode lantai aula); bawaan AZIMUT_LANSKAP & AZIMUT_POTRET.
  */
 export function bingkaiAwal(
   titik: readonly (readonly [number, number, number])[],
@@ -194,9 +195,10 @@ export function bingkaiAwal(
   lebar: number,
   tinggi: number,
   margin = 0.94,
+  azimutGanti: { readonly lanskap?: number; readonly potret?: number } = {},
 ): BingkaiAwal {
   const potret = lebar <= tinggi;
-  const azimut = potret ? AZIMUT_POTRET : AZIMUT_LANSKAP;
+  const azimut = potret ? (azimutGanti.potret ?? AZIMUT_POTRET) : (azimutGanti.lanskap ?? AZIMUT_LANSKAP);
   const aspek = lebar / tinggi;
   const b = potret ? bingkaiJendela(titik, azimut, lebar, tinggi, JENDELA_POTRET) : bingkaiTengah(titik, azimut, aspek, margin);
   const jarakTerminal = jarakMuat(terminal, b.x, b.y, azimut, aspek, margin);

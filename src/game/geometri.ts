@@ -490,8 +490,16 @@ const jumlahVerteks = (daftar: readonly THREE.BufferGeometry[]): number => dafta
  * Bagian denah sebuah mesh gabungan, berurutan [lahan][dasar][sayap]: lahan hanya
  * ada sebelum bangunan baru, sayap hanya sesudahnya, dasar selalu. Keadaan mana pun
  * adalah satu rentang bersambung, jadi tidak menambah draw call (lihat tampilkanBagian).
+ * Lantai tambahan ('lantai') ada di ekor per unit (lihat Kumpulan.unitLantai).
  */
-export type BagianDenah = 'lahan' | 'dasar' | 'sayap';
+export type BagianDenah = 'lahan' | 'dasar' | 'sayap' | 'lantai';
+
+/** Rentang verteks satu unit lantai tambahan di ekor mesh gabungan. */
+export interface RentangUnit {
+  readonly unit: number;
+  readonly mulai: number;
+  readonly jumlah: number;
+}
 
 /** Mesh gabungan yang isinya bergantung bagian denah, dengan jumlah verteks tiap bagian. */
 export interface PotonganBagian {
@@ -501,21 +509,41 @@ export interface PotonganBagian {
   readonly sayap: number;
   /** Tambahan bagian dasar yang muncul mulai level terminal tertentu: [level, verteks], urut level, tepat sesudah dasar. */
   readonly naik: readonly (readonly [number, number])[];
+  /** Unit lantai tambahan di ekor mesh (sesudah sayap). Bila ada, mesh memakai index buffer yang ditulis ulang tampilkanBagian. */
+  readonly lantai: readonly RentangUnit[];
+  readonly indeks: THREE.BufferAttribute | null;
 }
 
+const tanpaLantai = (): boolean => false;
+
 /**
- * Potong mesh gabungan menurut keadaan bangunan dan level terminal; dipanggil hanya
- * saat salah satunya berganti. Tambahan per level hanya ada di bahan tanpa bagian
- * sayap, jadi [lahan][dasar][level…] tetap satu rentang bersambung.
+ * Potong mesh gabungan menurut keadaan bangunan, level terminal, dan lantai tambahan yang
+ * terlihat; dipanggil hanya saat salah satunya berganti. Tambahan per level hanya ada di
+ * bahan tanpa bagian sayap, jadi [lahan][dasar][level…] tetap satu rentang bersambung.
+ * Lantai dibeli bebas urutan, jadi bahan yang punya unit lantai menulis ulang index buffer
+ * (rentang utama + unit terpilih): tetap satu draw call per bahan.
  */
-export function tampilkanBagian(potongan: readonly PotonganBagian[], keadaan: 'lahan' | 'proyek' | 'berdiri', level = 0): void {
-  for (const { mesh, lahan, dasar: dasarSaja, sayap, naik } of potongan) {
+export function tampilkanBagian(potongan: readonly PotonganBagian[], keadaan: 'lahan' | 'proyek' | 'berdiri', level = 0, lantaiTerlihat: (unit: number) => boolean = tanpaLantai): void {
+  for (const { mesh, lahan, dasar: dasarSaja, sayap, naik, lantai, indeks } of potongan) {
     let dasar = dasarSaja;
     for (const [lv, n] of naik) if (level >= lv) dasar += n;
     const [mulai, jumlah] = keadaan === 'lahan' ? [0, lahan + dasar] : keadaan === 'proyek' ? [lahan, dasar] : [lahan, dasar + sayap];
-    mesh.geometry.setDrawRange(mulai, jumlah);
-    // three.js tetap memanggil gambar untuk rentang kosong: bahan yang hanya dipakai satu bagian disembunyikan.
-    mesh.visible = jumlah > 0;
+    if (!indeks) {
+      mesh.geometry.setDrawRange(mulai, jumlah);
+      // three.js tetap memanggil gambar untuk rentang kosong: bahan yang hanya dipakai satu bagian disembunyikan.
+      mesh.visible = jumlah > 0;
+      continue;
+    }
+    const larik = indeks.array;
+    let n = 0;
+    for (let v = mulai; v < mulai + jumlah; v++) larik[n++] = v;
+    for (const r of lantai) {
+      if (!lantaiTerlihat(r.unit)) continue;
+      for (let v = r.mulai; v < r.mulai + r.jumlah; v++) larik[n++] = v;
+    }
+    indeks.needsUpdate = true;
+    mesh.geometry.setDrawRange(0, n);
+    mesh.visible = n > 0;
   }
 }
 
@@ -525,16 +553,24 @@ export class Kumpulan {
   bagian: BagianDenah = 'dasar';
   /** Level terminal sejak geometri tambah() berikutnya tampil (0 = selalu); hanya untuk bagian dasar. */
   level = 0;
-  private readonly isi = new Map<THREE.Material, { daftar: Record<BagianDenah, THREE.BufferGeometry[]>; naik: Map<number, THREE.BufferGeometry[]>; opsi: OpsiMesh }>();
+  /** Unit lantai tambahan untuk tambah() berikutnya saat bagian = 'lantai' (lihat lantai-adegan.ts). */
+  unitLantai = 0;
+  private readonly isi = new Map<THREE.Material, { daftar: Record<Exclude<BagianDenah, 'lantai'>, THREE.BufferGeometry[]>; naik: Map<number, THREE.BufferGeometry[]>; lantai: Map<number, THREE.BufferGeometry[]>; opsi: OpsiMesh }>();
 
   tambah(material: THREE.Material, g: THREE.BufferGeometry, opsi: OpsiMesh = {}): void {
     let e = this.isi.get(material);
     if (!e) {
-      e = { daftar: { lahan: [], dasar: [], sayap: [] }, naik: new Map(), opsi };
+      e = { daftar: { lahan: [], dasar: [], sayap: [] }, naik: new Map(), lantai: new Map(), opsi };
       this.isi.set(material, e);
     }
     const geo = g.index ? g.toNonIndexed() : g;
     if (g.index) g.dispose();
+    if (this.bagian === 'lantai') {
+      const daftar = e.lantai.get(this.unitLantai);
+      if (daftar) daftar.push(geo);
+      else e.lantai.set(this.unitLantai, [geo]);
+      return;
+    }
     if (this.level <= 0) {
       e.daftar[this.bagian].push(geo);
       return;
@@ -548,14 +584,29 @@ export class Kumpulan {
   /** @returns mesh yang isinya bergantung bagian denah atau level (kosong bila semuanya bagian dasar). */
   bangun(induk: THREE.Object3D): PotonganBagian[] {
     const potongan: PotonganBagian[] = [];
-    for (const [material, { daftar, naik: perLevel, opsi }] of this.isi) {
+    for (const [material, { daftar, naik: perLevel, lantai: perUnit, opsi }] of this.isi) {
       const [lahan, dasar, sayap] = [jumlahVerteks(daftar.lahan), jumlahVerteks(daftar.dasar), jumlahVerteks(daftar.sayap)];
       const urut = [...perLevel].sort(([a], [b]) => a - b);
       // Tambahan per level di antara dasar dan sayap memutus rentang 'berdiri' selama levelnya belum tercapai.
       if (urut.length > 0 && sayap > 0) throw new Error('bahan bertambahan per level tidak boleh punya bagian sayap');
       const naik = urut.map(([lv, d]): [number, number] => [lv, jumlahVerteks(d)]);
-      const mesh = meshDari(gabungkan([...daftar.lahan, ...daftar.dasar, ...urut.flatMap(([, d]) => d), ...daftar.sayap]), material, opsi, induk);
-      if (lahan > 0 || sayap > 0 || naik.length > 0) potongan.push({ mesh, lahan, dasar, sayap, naik });
+      // Unit lantai di ekor, sesudah sayap; dipilih lewat index buffer.
+      let ujung = lahan + dasar + naik.reduce((s, [, n]) => s + n, 0) + sayap;
+      const lantai: RentangUnit[] = [];
+      for (const [unit, d] of perUnit) {
+        const jumlah = jumlahVerteks(d);
+        lantai.push({ unit, mulai: ujung, jumlah });
+        ujung += jumlah;
+      }
+      const g = gabungkan([...daftar.lahan, ...daftar.dasar, ...urut.flatMap(([, d]) => d), ...daftar.sayap, ...[...perUnit.values()].flat()]);
+      let indeks: THREE.BufferAttribute | null = null;
+      if (lantai.length > 0) {
+        indeks = new THREE.BufferAttribute(ujung > 65535 ? new Uint32Array(ujung) : new Uint16Array(ujung), 1);
+        indeks.setUsage(THREE.DynamicDrawUsage);
+        g.setIndex(indeks);
+      }
+      const mesh = meshDari(g, material, opsi, induk);
+      if (lahan > 0 || sayap > 0 || naik.length > 0 || lantai.length > 0) potongan.push({ mesh, lahan, dasar, sayap, naik, lantai, indeks });
     }
     this.isi.clear();
     return potongan;

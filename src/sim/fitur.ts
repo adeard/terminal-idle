@@ -127,3 +127,10 @@ export function isPetugasId(nilai: unknown): nilai is PetugasId {
 export function isTarifId(nilai: unknown): nilai is TarifId {
   return typeof nilai === 'string' && (TARIF_IDS as readonly string[]).includes(nilai);
 }
+
+/** Gedung yang bisa ditambah lantai (documents/18); angkanya di EKONOMI.tycoon.lantai. */
+export const GEDUNG_LANTAI_IDS = ['parkir', 'ruangTunggu', 'sayapBarat', 'aula'] as const;
+export type GedungLantaiId = (typeof GEDUNG_LANTAI_IDS)[number];
+
+/** Mode lihat per lantai: `lantai` = nomor lantai (1 = lantai dasar, sampai 1 + terminal.lantai[gedung]). Hanya UI, tidak disimpan. */
+export type LantaiDilihat = { readonly gedung: GedungLantaiId; readonly lantai: number };

@@ -399,7 +399,8 @@ export function majukanTugas(m: MusimState, ctx: KemajuanTick, cfg: KonfigEkonom
 export function nilaiTugasKelola(state: GameState, jenisAksi: string, cfg: KonfigEkonomi = EKONOMI, cm: KonfigMusim = MUSIM): GameState {
   const m = state.musim;
   if (m.id === null || !m.tugas.some((t) => !t.selesai && KELOMPOK_TUGAS[t.templat] === 'kelola')) return state;
-  const bangunan = jenisAksi === 'bangun' || jenisAksi === 'beliTeknologi';
+  // Lantai dihitung satu (isinya tidak dihitung terpisah; documents/18).
+  const bangunan = jenisAksi === 'bangun' || jenisAksi === 'beliTeknologi' || jenisAksi === 'tambahLantai';
   let berubah = false;
   const tugas = m.tugas.map((t): TugasAktif => {
     if (t.selesai) return t;

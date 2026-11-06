@@ -2,11 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { butirLencana, cadanganKas, daftarTujuan, jumlahLencana, kasMenipis, manajerUntung, pilihTujuan, TAHAN_TUJUAN_MS, type JenisTujuan, type TujuanDinilai } from '../src/app/tujuan';
 import { cocokUntukTutorial } from '../src/app/tutorial';
 import { EKONOMI } from '../src/config/economy.config';
-import { PO_IDS, TEKNOLOGI_IDS, type PoId } from '../src/sim/fitur';
-import { acuanHarian, aturTarif, bangun, beliTeknologi, biayaBangunState, buatStateBaru, daftarPo, DETIK_SEHARI, hitungOffline, mulaiPerluasan, rekrutPetugas, type GameState } from '../src/sim/state';
+import { PO_IDS, TEKNOLOGI_IDS, type GedungLantaiId, type PoId } from '../src/sim/fitur';
+import {
+  acuanHarian,
+  aturTarif,
+  bangun,
+  beliTeknologi,
+  biayaBangunState,
+  buatStateBaru,
+  daftarPo,
+  DETIK_SEHARI,
+  hitungOffline,
+  mulaiPerluasan,
+  operasiState,
+  rekrutPetugas,
+  tambahLantai,
+  type GameState,
+} from '../src/sim/state';
 import { gayaTujuan, sasaranTujuan, teksTujuan } from '../src/ui/baris-tujuan';
 import { buatModel } from '../src/ui/model';
-import { NAMA_PO, TEKS } from '../src/ui/teks';
+import { NAMA_GEDUNG_LANTAI, NAMA_PO, TEKS } from '../src/ui/teks';
 import { denganBangunan, denganLevelTerminal, denganPerluasan, denganPetugas, denganPo, kaya, stateOtomatis, T0 } from './helpers';
 
 const P1 = EKONOMI.mitra.perluasan[0]!;
@@ -261,6 +276,94 @@ describe('daftarTujuan: tingkat 3 hanya yang aman', () => {
   });
 });
 
+describe('daftarTujuan: lantai hanya sebagai perbaikan kepuasan yang aman (AC-GP-06, documents/18)', () => {
+  const P4 = EKONOMI.mitra.perluasan[3]!;
+  /**
+   * Terminal ramai (setup langsung, jalur boleh di atas slot): PO 3 jendela masing-masing, petugas lengkap, unit
+   * lantai yang sudah dibangun terisi penuh, kas berlimpah. Kepuasan < 75 % karena kelancaran & harga (tanpa
+   * perbaikan), lalu kenyamanan atau fasilitas sebagai komponen yang bisa diperbaiki.
+   */
+  const terminalRamai = (
+    level: number,
+    o: { readonly po: number; readonly jalur: number; readonly lantai?: Partial<Record<GedungLantaiId, number>>; readonly tahap?: number; readonly levelPo?: number; readonly teknologi?: boolean },
+  ): GameState => {
+    const l = { parkir: 0, ruangTunggu: 0, sayapBarat: 0, aula: 0, ...o.lantai };
+    const lahan = 2 + 2 * l.parkir;
+    const toilet = 2 + l.sayapBarat;
+    let s = stateOtomatis({ jalur: o.jalur, kursi: 8 + 4 * l.ruangTunggu + 2 * l.aula, kios: 3 + l.ruangTunggu, toko: 4 + 2 * l.aula, toilet, lahanParkir: lahan, posRetribusi: 1 }, 1e13);
+    s = PO_IDS.slice(0, o.po).reduce((x, id) => denganPo(x, id, { level: o.levelPo ?? 8, loket: 3 }), s);
+    s = denganPetugas(s, [
+      ...Array<'peron'>(o.jalur).fill('peron'),
+      ...Array<'gerbang'>(o.jalur).fill('gerbang'),
+      ...Array<'satpam'>(o.jalur).fill('satpam'),
+      ...Array<'kebersihan'>(10).fill('kebersihan'),
+      ...Array<'petugasToilet'>(toilet).fill('petugasToilet'),
+      ...Array<'juruParkir'>(lahan).fill('juruParkir'),
+    ]);
+    s = denganLevelTerminal(denganPerluasan(s, o.tahap ?? 3), level);
+    const teknologi = o.teknologi ? { ...s.terminal.teknologi, ...Object.fromEntries(TEKNOLOGI_IDS.map((id) => [id, true])) } : s.terminal.teknologi;
+    return { ...s, terminal: { ...s.terminal, lantai: l, teknologi } };
+  };
+  const ramai = (level: number): GameState => terminalRamai(level, { po: 12, jalur: 8, lantai: { parkir: 1 } });
+  /** Terpadu, arus ±1.600 pnp/jam. */
+  const terpadu = (level: number, lantai: Partial<Record<GedungLantaiId, number>>): GameState => terminalRamai(level, { po: 16, jalur: 9, tahap: 5, levelPo: 20, teknologi: true, lantai });
+
+  it('kursi 8/8 penuh & kenyamanan terlemah: "tambah lantai Ruang tunggu" (tingkat 3), kunci memuat gedung & nomor lantai', () => {
+    const s = ramai(21);
+    expect(biayaBangunState(s, 'kursi')).toBeNull();
+    const t = cari(daftarTujuan(s, null), 'lantai')!;
+    expect(t).toMatchObject({ tingkat: 3, siap: true, kunci: 'lantai:kenyamanan:ruangTunggu:2', komponen: 'kenyamanan', gedung: 'ruangTunggu', lantai: 2, biaya: 500_000_000 });
+    expect(t.aksi).toEqual({ jenis: 'tambahLantai', gedung: 'ruangTunggu' });
+    expect(t.nilai).toBeCloseTo(operasiState(s).kepuasan.kenyamanan, 9);
+    expect(teksTujuan(t)).toBe(`🪑 Kenyamanan ${Math.round(t.nilai * 100)}%: tambah lantai ${NAMA_GEDUNG_LANTAI.ruangTunggu.nama}`);
+    expect(sasaranTujuan(t)).toEqual({ tab: 'bangun', selektor: '.item-lantai[data-gedung="ruangTunggu"] .tombol-beli', cadangan: '.item-lantai[data-gedung="ruangTunggu"]' });
+    // Sesudah dibeli: kursi 12/12, tidak disarankan lagi.
+    const b = tambahLantai(s, 'ruangTunggu');
+    expect(b.terminal.bangunan.kursi).toBe(12);
+    expect(jenis(daftarTujuan(b, null))).not.toContain('lantai');
+  });
+
+  it('lantai yang belum terbuka (Lv 20) tidak disarankan, dan lantai tidak pernah menjadi tujuan menabung atau naik level', () => {
+    const d = daftarTujuan(ramai(20), null);
+    expect(jenis(d)).not.toContain('lantai');
+    // Kursi penuh tanpa lantai terbuka: tidak ada saran kenyamanan lain.
+    expect(d.some((t) => t.jenis === 'kepuasan' && t.komponen === 'kenyamanan')).toBe(false);
+    for (const lv of [14, 20, 21, 25, 33, 38]) for (const t of daftarTujuan(ramai(lv), null)) if (t.jenis === 'lantai') expect(t.tingkat).toBe(3);
+  });
+
+  it('fasilitas: lahan parkir kurang & penuh → Gedung parkir; toilet kurang & penuh → Gedung toilet (sayapBarat)', () => {
+    const parkir = cari(daftarTujuan(terminalRamai(21, { po: 8, jalur: 6 }), null), 'lantai')!;
+    expect(parkir).toMatchObject({ kunci: 'lantai:fasilitas:parkir:2', komponen: 'fasilitas', gedung: 'parkir', lantai: 2, aksi: { jenis: 'tambahLantai', gedung: 'parkir' } });
+    expect(teksTujuan(parkir)).toBe(`🚻 Fasilitas ${Math.round(parkir.nilai * 100)}%: tambah lantai ${NAMA_GEDUNG_LANTAI.parkir.nama}`);
+    // Gedung parkir 3 di Lv 38 (lantai lain sudah dibangun): kunci baru dengan nomor lantai berikutnya.
+    expect(cari(daftarTujuan(terpadu(38, { parkir: 1, ruangTunggu: 1, sayapBarat: 1, aula: 1 }), null), 'lantai')).toMatchObject({
+      kunci: 'lantai:fasilitas:parkir:3',
+      gedung: 'parkir',
+      lantai: 3,
+      biaya: 2_000_000_000,
+    });
+    // Gedung parkir sudah maksimal, toilet 2/2 penuh dan kurang untuk arus ±1.600: Gedung toilet (sayapBarat).
+    const toilet = terpadu(40, { parkir: 2, ruangTunggu: 1 });
+    expect(biayaBangunState(toilet, 'toilet')).toBeNull();
+    const sayap = cari(daftarTujuan(toilet, null), 'lantai')!;
+    expect(sayap).toMatchObject({ kunci: 'lantai:fasilitas:sayapBarat:2', komponen: 'fasilitas', gedung: 'sayapBarat', lantai: 2, aksi: { jenis: 'tambahLantai', gedung: 'sayapBarat' } });
+    expect(teksTujuan(sayap)).toBe(`🚻 Fasilitas ${Math.round(sayap.nilai * 100)}%: tambah lantai ${NAMA_GEDUNG_LANTAI.sayapBarat.nama}`);
+  });
+
+  it('aman: kas sesudah membeli lantai ≥ cadangan B, dan Perluasan 4 yang terbuka didahulukan', () => {
+    const s = ramai(21);
+    expect(s.perkembangan.perluasan).toBe(3);
+    expect(P4.level).toBeLessThanOrEqual(21);
+    const b = tambahLantai(kaya(s), 'ruangTunggu');
+    const cukup = 500_000_000 + P4.biaya + cadanganKas(b, EKONOMI, 1);
+    const ada = (kas: number): boolean => jenis(daftarTujuan({ ...s, kas }, null)).includes('lantai');
+    expect(ada(cukup + 1)).toBe(true);
+    expect(ada(cukup - 1)).toBe(false);
+    // Kas di bawah harga: tidak pernah disarankan.
+    expect(ada(500_000_000 - 1)).toBe(false);
+  });
+});
+
 describe('penutup tutorial & saran Manajer Operasional (AC-GP-13)', () => {
   it('penutup tidak lagi menyarankan Manajer Operasional; baris tujuan menyarankannya hanya saat gajinya aman', () => {
     expect(TEKS.tutorialSelesai).toBe('Baris di bawah kas selalu menunjukkan langkah berikutnya. Ketuk untuk menuju ke sana. Tips: ketuk bus untuk klakson telolet!');
@@ -350,6 +453,10 @@ describe('baris tujuan: teks, warna, sasaran', () => {
     ...(['kebersihan', 'petugasToilet', 'satpam'] as const).map((p): TujuanDinilai => ({ ...d, tingkat: 3, jenis: 'kepuasan', komponen: 'kebersihan', nilai: 0.3, perbaikan: { jenis: 'rekrut', petugas: p } })),
     ...(['kursi', 'toilet', 'kios', 'lahanParkir'] as const).map((b): TujuanDinilai => ({ ...d, tingkat: 3, jenis: 'kepuasan', komponen: 'fasilitas', nilai: 0.3, perbaikan: { jenis: 'bangun', bangunan: b, biaya: besar } })),
     { ...d, tingkat: 3, jenis: 'manajer' },
+    // Lantai (documents/18): nama gedung terpanjang & komponen 100 %.
+    ...(['parkir', 'ruangTunggu', 'sayapBarat', 'aula'] as const).flatMap((gedung) =>
+      (['kenyamanan', 'fasilitas'] as const).map((komponen): TujuanDinilai => ({ ...d, tingkat: 3, jenis: 'lantai', komponen, nilai: 1, gedung, lantai: 3, biaya: besar })),
+    ),
     { ...d, tingkat: 4, siap: false, jenis: 'proyek', tahap: 5, sisaDetik: EKONOMI.mitra.detikProyek },
     { ...d, tingkat: 4, siap: false, jenis: 'menabung', tahap: 5, kekurangan: besar, hanyaCadangan: false },
     { ...d, tingkat: 4, siap: false, jenis: 'menabung', tahap: 5, kekurangan: besar, hanyaCadangan: true },
@@ -395,6 +502,7 @@ describe('baris tujuan: teks, warna, sasaran', () => {
     expect(tab(cari(semua, 'manajer')!)).toBe('petugas');
     expect(tab(cari(semua, 'kelasBerikut')!)).toBe('terminal');
     for (const x of semua) if (x.jenis === 'area' && x.perbaikan.jenis !== 'rekrut') expect(tab(x)).toBe('bangun');
+    for (const x of semua) if (x.jenis === 'lantai') expect(sasaranTujuan(x)).toEqual({ tab: 'bangun', selektor: `.item-lantai[data-gedung="${x.gedung}"] .tombol-beli`, cadangan: `.item-lantai[data-gedung="${x.gedung}"]` });
   });
 
   it('kas menipis "kurangi petugas": tombol − petugas yang terakhir direkrut, cadangannya ringkasan gaji (playtest P-11)', () => {

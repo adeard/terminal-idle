@@ -35,6 +35,7 @@ import {
   POS_CUCI,
   POS_RETRIBUSI,
   RUANG_TUNGGU,
+  TANGGA,
   TIANG_BENDERA,
   TINGGI_PERON,
   X_JALUR_KAKI,
@@ -510,8 +511,10 @@ const LAMPU_TAMAN: readonly Titik2[] = [
   [SAYAP_BARAT.x0 - 0.45, 11.0],
   [20.45, 16.95],
   [28.6, 10.3],
-  [RUANG_TUNGGU.x1 + 0.6, 9.6],
-  [12.9, 17.2],
+  // Di timur lajur akses gedung parkir (paving x 50,14–51,6), di semua tahap: lajurnya bebas tanpa saklar.
+  [RUANG_TUNGGU.x1 + 1.35, 9.6],
+  // Lampu plaza di kaki tangga A3 (TANGGA, digeser bersama tiang bendera supaya kaki tangga lapang).
+  TANGGA.lampuPlaza,
   [25.6, 16.9],
   // Taman kedatangan, di tepi setapak.
   [-22.5, 9.0],

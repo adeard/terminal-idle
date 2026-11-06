@@ -9,13 +9,43 @@ import type { Aksi } from '../sim/aksi';
 import { hadiahSetelahIklan } from '../app/iklan';
 import { EKONOMI } from '../config/economy.config';
 import { LIVERY_PO, type Livery } from '../config/livery.config';
-import { KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
+import {
+  KELAS_BUS_IDS,
+  PENCAPAIAN_IDS,
+  PETUGAS_IDS,
+  TARIF_IDS,
+  TEKNOLOGI_IDS,
+  type BangunanId,
+  type GedungLantaiId,
+  type KelasBusId,
+  type PencapaianId,
+  type PetugasId,
+  type PoId,
+  type TarifId,
+  type TeknologiId,
+} from '../sim/fitur';
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import type { AreaId } from '../sim/operasi';
 import { keHexCss, WARNA_AREA as WARNA_AREA_ANGKA, WARNA_TAHAP } from '../config/tema';
 import { sasaranTugas, type SasaranTujuan } from './baris-tujuan';
 import { formatAngka, formatDurasi, formatUang, formatUangBertanda } from './format';
-import { urutanKartuTarget, type KartuTarget, type ModelBangunan, type ModelBuku, type ModelMingguan, type ModelMitra, type ModelMusim, type ModelPoTerdaftar, type ModelPoTersedia, type ModelTampilan, type ModelTantangan, type ModelTarif, type ModelTugas } from './model';
+import {
+  urutanKartuTarget,
+  type KartuTarget,
+  type ModelBangunan,
+  type ModelBuku,
+  type ModelLantai,
+  type ModelMingguan,
+  type ModelMitra,
+  type ModelMusim,
+  type ModelPoTerdaftar,
+  type ModelPoTersedia,
+  type ModelTampilan,
+  type ModelTantangan,
+  type ModelTarif,
+  type ModelTugas,
+} from './model';
+import { konfirmasiSesudahAksi, ketukBeliLantai, menungguKonfirmasi, type KonfirmasiLantai } from './konfirmasi-lantai';
 import { tampilkanPopupSuratArmada } from './popup-musim';
 import {
   angkaTugas,
@@ -30,6 +60,7 @@ import {
   NAMA_BANGUNAN,
   NAMA_BIAYA,
   NAMA_EVENT,
+  NAMA_GEDUNG_LANTAI,
   NAMA_KELAS_BUS,
   NAMA_PENCAPAIAN,
   NAMA_PENDAPATAN,
@@ -45,6 +76,9 @@ import {
   teksIzin,
   teksJendelaPenuh,
   teksPaket,
+  teksIsiLantai,
+  teksSlotPenuh,
+  teksStatusLantai,
 } from './teks';
 
 export interface IsiTab {
@@ -184,13 +218,84 @@ const arus = (x: number): string => formatAngka(Math.round(x));
 // ---------------------------------------------------------------------------
 // Bangun
 
-/** Kelompok bangunan di tab Bangun (per area), urut alur penumpang. `area`: label peta yang membuka kelompok ini. */
-const GRUP_BANGUN: readonly { readonly judul: string; readonly warna: string; readonly bangunan: readonly BangunanId[]; readonly area?: readonly AreaId[] }[] = [
+/**
+ * Kelompok bangunan di tab Bangun (per area), urut alur penumpang. `area`: label peta yang membuka kelompok ini.
+ * `lantai`: kartu Tambah lantai gedung yang isinya ada di kelompok ini, tepat sesudah unit-unitnya (documents/18).
+ */
+const GRUP_BANGUN: readonly {
+  readonly judul: string;
+  readonly warna: string;
+  readonly bangunan: readonly BangunanId[];
+  readonly area?: readonly AreaId[];
+  readonly lantai?: readonly GedungLantaiId[];
+}[] = [
   { judul: TEKS.grupPeron, warna: WARNA_AREA.peron, bangunan: ['jalur'], area: ['peron', 'keberangkatan'] },
   { judul: TEKS.grupLoket, warna: WARNA_AREA.loket, bangunan: ['jendela'], area: ['loket'] },
-  { judul: TEKS.grupRuangTunggu, warna: WARNA_AREA.keberangkatan, bangunan: ['kursi', 'kios', 'toko'] },
-  { judul: TEKS.grupFasilitas, warna: '#14b8a6', bangunan: ['toilet', 'lahanParkir', 'posRetribusi'] },
+  { judul: TEKS.grupRuangTunggu, warna: WARNA_AREA.keberangkatan, bangunan: ['kursi', 'kios', 'toko'], lantai: ['ruangTunggu', 'aula'] },
+  { judul: TEKS.grupFasilitas, warna: '#14b8a6', bangunan: ['toilet', 'lahanParkir', 'posRetribusi'], lantai: ['sayapBarat', 'parkir'] },
 ];
+
+const IKON_LANTAI =
+  '<path d="M4 21V9l8-5 8 5v12z" fill="currentColor" opacity="0.35"/><path d="M4 21V9l8-5 8 5v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 14.5h16" stroke="currentColor" stroke-width="1.8"/><rect x="7" y="10" width="3" height="2.6" fill="currentColor"/><rect x="14" y="10" width="3" height="2.6" fill="currentColor"/><rect x="7" y="16.5" width="3" height="2.6" fill="currentColor"/><rect x="14" y="16.5" width="3" height="2.6" fill="currentColor"/>';
+
+/** Tombol beli kartu lantai (konfirmasi-lantai.ts): ketukan dengan/tanpa perlu yakin, dan gedung yang menunggu ketukan kedua. */
+interface BeliLantai {
+  ketuk(gedung: GedungLantaiId, perluYakin: boolean): void;
+  menunggu(gedung: GedungLantaiId): boolean;
+}
+
+/** Kartu Tambah lantai satu gedung (documents/18): tersembunyi sebelum Perluasan 3, lalu tujuh keadaan rancangan 4.4. */
+function buatBarisLantai(gedung: GedungLantaiId, warna: string, beli: BeliLantai, lihat: ((g: GedungLantaiId) => void) | undefined): BarisBangunan {
+  const nama = NAMA_GEDUNG_LANTAI[gedung].nama;
+  const r = baris3(IKON_LANTAI, nama, 'lantai');
+  r.elemen.dataset['gedung'] = gedung;
+  r.elemen.style.setProperty('--warna', warna);
+  r.level.hidden = true;
+  const status = el('div', 'item-keterangan bangun-status');
+  r.keterangan.after(status);
+  // "👁 Lihat" di kolom kanan (sasaran ketuk 44 px), di bawah tombol beli bila keduanya ada, supaya judul &
+  // isi kartu tetap selebar kartu unit di panel landscape yang sempit.
+  const tombolLihat = el('button', 'tombol tombol-lihat-lantai', TEKS.lihatLantai);
+  tombolLihat.type = 'button';
+  tombolLihat.setAttribute('aria-label', TEKS.lihatLantaiLabel(nama));
+  tombolLihat.addEventListener('click', () => lihat?.(gedung));
+  const kolom = el('div', 'lantai-tombol');
+  kolom.append(r.tombol, tombolLihat);
+  r.elemen.append(kolom);
+  // Kas sesudah membeli di bawah cadangan B: ketukan pertama meminta konfirmasi (temuan playtest T-1).
+  let terakhir: ModelLantai | null = null;
+  r.tombol.addEventListener('click', () => beli.ketuk(gedung, terakhir?.peringatanKas ?? false));
+  return {
+    elemen: r.elemen,
+    perbarui(m) {
+      const x = m.bangun.lantai[gedung];
+      terakhir = x;
+      setHidden(r.elemen, x === null);
+      if (!x) return;
+      const yakin = x.keadaan === 'terjangkau' && beli.menunggu(gedung);
+      setTeks(r.nama, x.berikut && x.keadaan !== 'selesai' ? TEKS.judulLantai(x.berikut.lantai, nama) : nama);
+      setTeks(r.keterangan, teksIsiLantai(x));
+      setTeks(status, yakin ? TEKS.lantaiKonfirmasi(formatUang(x.sisaKas)) : teksStatusLantai(x));
+      status.classList.toggle('penuh', x.keadaan === 'terkunci');
+      const bisaBeli = x.keadaan === 'terjangkau' || x.keadaan === 'kurang';
+      setHidden(r.tombol, !bisaBeli);
+      if (bisaBeli && x.berikut) {
+        // "Tambah lantai / Rp 500 jt", atau redup "Kurang / Rp 120 jt" (dua baris, muat di tombol 118 px).
+        const kurang = x.keadaan === 'kurang';
+        setTeks(r.tombolKecil, kurang ? TEKS.lantaiKurang : yakin ? TEKS.lantaiKetukLagi : TEKS.tombolLantai);
+        setTeks(r.tombolBesar, formatUang(kurang ? x.kurang : x.berikut.biaya));
+        setDisabled(r.tombol, kurang);
+      }
+      const tanpaLihat = x.lantai === 0 || lihat === undefined;
+      setHidden(tombolLihat, tanpaLihat);
+      setHidden(kolom, !bisaBeli && tanpaLihat);
+      r.elemen.classList.toggle('belum', x.lantai === 0);
+      r.elemen.classList.toggle('terkunci', x.keadaan === 'terkunci');
+      r.tombol.classList.toggle('yakin', yakin);
+      r.elemen.classList.toggle('peringatan', x.peringatanKas);
+    },
+  };
+}
 
 interface BarisBangunan {
   readonly elemen: HTMLElement;
@@ -215,9 +320,7 @@ function buatBarisBangunan(id: BangunanId, warna: string, kirim: Kirim): BarisBa
       const b = m.bangun.bangunan[id];
       setTeks(r.level, TEKS.bangunanJumlah(b.jumlah, b.slot));
       const kosong = id === 'jendela' && m.bangun.jendelaKosong > 0 ? ` · ${TEKS.jendelaKosong(m.bangun.jendelaKosong)}` : '';
-      const s = b.slotBerikut;
-      const penuh = s === null ? TEKS.slotPenuh : s.jenis === 'level' ? TEKS.slotPenuhLevel(s.level) : TEKS.slotPenuhPerluasan(s.tahap);
-      const teksStatus = b.biaya === null ? penuh : `${TEKS.perawatanPerHari(formatUang(b.perawatan))}${kosong}`;
+      const teksStatus = b.biaya === null ? teksSlotPenuh(b.slotBerikut) : `${TEKS.perawatanPerHari(formatUang(b.perawatan))}${kosong}`;
       setTeks(status, teksStatus);
       status.classList.toggle('penuh', b.biaya === null);
       setHidden(r.tombol, b.biaya === null);
@@ -232,7 +335,8 @@ function buatBarisBangunan(id: BangunanId, warna: string, kirim: Kirim): BarisBa
   };
 }
 
-export function buatTabBangun(kirim: Kirim): IsiTab {
+/** @param lihatLantai "👁 Lihat" di kartu lantai: masuk mode lihat per lantai gedung itu (tanpa ini tombolnya tidak ada). */
+export function buatTabBangun(kirim: Kirim, lihatLantai?: (gedung: GedungLantaiId) => void): IsiTab {
   const elemen = el('div', 'isi-tab daftar-item');
   // Kapasitas jam sibuk tiap area: yang paling lambat ditandai.
   const kartu = el('div', 'kapasitas-kartu');
@@ -251,6 +355,32 @@ export function buatTabBangun(kirim: Kirim): IsiTab {
   kartu.append(judul, daftarArea, ringkas);
   elemen.append(kartu);
 
+  // Konfirmasi ketuk kedua kartu lantai (konfirmasi-lantai.ts): aksi lain di tab ini dan batas waktu tombol Bongkar
+  // (MS_YAKIN) membatalkannya.
+  let konfirmasi: KonfirmasiLantai | null = null;
+  let timerKonfirmasi = 0;
+  let modelTerakhir: ModelTampilan | null = null;
+  const barisLantai: BarisBangunan[] = [];
+  const aturKonfirmasi = (k: KonfirmasiLantai | null): void => {
+    if (k === konfirmasi) return;
+    konfirmasi = k;
+    window.clearTimeout(timerKonfirmasi);
+    if (k) timerKonfirmasi = window.setTimeout(() => aturKonfirmasi(null), MS_YAKIN);
+    if (modelTerakhir) for (const b of barisLantai) b.perbarui(modelTerakhir);
+  };
+  const kirimTab: Kirim = (aksi) => {
+    aturKonfirmasi(konfirmasiSesudahAksi(konfirmasi, aksi));
+    kirim(aksi);
+  };
+  const beliLantai: BeliLantai = {
+    ketuk(gedung, perluYakin) {
+      const h = ketukBeliLantai(konfirmasi, gedung, perluYakin, performance.now(), MS_YAKIN);
+      aturKonfirmasi(h.konfirmasi);
+      if (h.beli) kirimTab({ jenis: 'tambahLantai', gedung });
+    },
+    menunggu: (gedung) => menungguKonfirmasi(konfirmasi, gedung, performance.now()),
+  };
+
   const baris: BarisBangunan[] = [];
   /** Judul kelompok & baris pertamanya untuk tiap area (lihat sorot). */
   const sasaran = {} as Record<AreaId, { readonly judul: HTMLElement; readonly baris: HTMLElement }>;
@@ -258,10 +388,16 @@ export function buatTabBangun(kirim: Kirim): IsiTab {
     const judulGrup = el('div', 'judul-bagian', g.judul);
     elemen.append(judulGrup);
     for (const id of g.bangunan) {
-      const b = buatBarisBangunan(id, g.warna, kirim);
+      const b = buatBarisBangunan(id, g.warna, kirimTab);
       baris.push(b);
       elemen.append(b.elemen);
       for (const a of g.area ?? []) sasaran[a] ??= { judul: judulGrup, baris: b.elemen };
+    }
+    for (const gedung of g.lantai ?? []) {
+      const b = buatBarisLantai(gedung, g.warna, beliLantai, lihatLantai);
+      baris.push(b);
+      barisLantai.push(b);
+      elemen.append(b.elemen);
     }
   }
   // Pangkalan bus: petak dari perluasan (tidak dibeli satu-satu).
@@ -280,7 +416,7 @@ export function buatTabBangun(kirim: Kirim): IsiTab {
     const r = baris3(IKON_MODERN, NAMA_TEKNOLOGI[id], 'modern');
     r.elemen.dataset['teknologi'] = id;
     r.tombolKecil.textContent = TEKS.pasang;
-    r.tombol.addEventListener('click', () => kirim({ jenis: 'beliTeknologi', teknologi: id }));
+    r.tombol.addEventListener('click', () => kirimTab({ jenis: 'beliTeknologi', teknologi: id }));
     elemen.append(r.elemen);
     return { id, ...r };
   });
@@ -289,6 +425,7 @@ export function buatTabBangun(kirim: Kirim): IsiTab {
   return {
     elemen,
     perbarui(m) {
+      modelTerakhir = m;
       const bg = m.bangun;
       for (const a of area) {
         const x = bg.area.find((y) => y.id === a.id)!;

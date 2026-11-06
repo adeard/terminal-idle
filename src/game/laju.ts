@@ -17,6 +17,7 @@ import { dayaTarikTycoon } from '../sim/operasi';
 import { jurusanDilayani, loketTerisi, operasiState, pengaliEvent, type GameState } from '../sim/state';
 import type { TahapId } from '../sim/tahap';
 import { fasilitasAdegan, type FasilitasAdegan } from './fasilitas-adegan';
+import { bagiIsiLantai } from './lantai-adegan';
 import { loketBuka } from './kehidupan-malam';
 import { jendelaDipakai, kelompokParkirDibangun } from './perluasan-adegan';
 import { jurusanDiMask, maskJurusan, MUATAN_BUS, X_LOKET } from './tata-letak';
@@ -66,6 +67,8 @@ export interface LajuVisual {
    * lahan parkir; lihat fasilitas-adegan.ts); bawaan: semuanya ada.
    */
   readonly fasilitas?: FasilitasAdegan;
+  /** Gedung parkir berdiri (lantai parkir dibeli): calon penumpang dari parkir keluar dari kolongnya (x ≤ X_ORANG_GEDUNG_PARKIR); bawaan: tidak. */
+  readonly gedungParkir?: boolean;
   /** Bagian penumpang tiap jurusan (indeks TUJUAN_BUS) & kelas bus (lihat sim/operasi.ts); bawaan: sama rata. */
   readonly bagianJurusan?: readonly number[];
   readonly bagianKelas?: Readonly<Record<KelasBusId, number>>;
@@ -158,7 +161,8 @@ export function hitungLajuVisual(state: GameState): LajuVisual {
     kelompokParkir: kelompokParkirDibangun(perluasan),
     jendela,
     po,
-    fasilitas: fasilitasAdegan(state.terminal.bangunan),
+    // Lantai tambahan diisi lebih dulu: lantai dasar menampilkan sisanya (lantai-adegan.ts).
+    fasilitas: fasilitasAdegan(state.terminal.bangunan, bagiIsiLantai(state.terminal.bangunan, state.terminal.lantai, perluasan).dasar),
     ...(totalArus > 0 ? { bagianJurusan, bagianKelas } : {}),
   };
 }

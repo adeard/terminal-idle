@@ -13,16 +13,18 @@
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { WAKTU } from '../config/waktu.config';
-import { bangunanAwal, biayaBangun, pengembalianBongkar, slotBangunan, type JumlahBangunan } from './bangunan';
+import { bangunanAwal, biayaBangun, lantaiAwal, pengembalianBongkar, slotBangunan, type JumlahBangunan, type JumlahLantai } from './bangunan';
 import { benihCuacaDari } from './cuaca';
 import { eventPada, jadwalUji } from './event';
 import {
+  BANGUNAN_IDS,
   isEventId,
   PENCAPAIAN_IDS,
   PO_IDS,
   TEKNOLOGI_IDS,
   type BangunanId,
   type EventId,
+  type GedungLantaiId,
   type JenisTarget,
   type KelasBusId,
   type PencapaianId,
@@ -32,6 +34,7 @@ import {
   type TeknologiId,
 } from './fitur';
 import { keuanganPerJam, majukanKas, type KeuanganJam, type RincianBiaya, type RincianPendapatan } from './keuangan';
+import { biayaLantai, petugasIkutLantai, syaratLantai } from './lantai';
 import { kelasDariLevel, levelTerminalDariXp, slotPo } from './level-terminal';
 import {
   jurusanDilayaniPo,
@@ -67,6 +70,8 @@ export interface TerminalState {
   readonly id: string;
   /** Unit tiap jenis bangunan. Jendela = semua jendela loket, yang disewa PO maupun yang kosong. */
   readonly bangunan: JumlahBangunan;
+  /** Lantai tambahan tiap gedung (0 = hanya lantai dasar), tidak pernah turun (lihat sim/lantai.ts). */
+  readonly lantai: JumlahLantai;
   /** Petugas urut rekrut: yang terakhir direkrut berhenti lebih dulu (lihat sim/petugas.ts). */
   readonly petugas: readonly PetugasId[];
   readonly tarif: NilaiTarif;
@@ -298,6 +303,7 @@ export function buatTerminalAwal(cfg: KonfigEkonomi = EKONOMI): TerminalState {
   return {
     id: ID_TERMINAL_AWAL,
     bangunan: bangunanAwal(cfg),
+    lantai: lantaiAwal(),
     petugas: [],
     tarif: tarifBawaan(cfg),
     teknologi: petakan(TEKNOLOGI_IDS, () => false),
@@ -459,6 +465,7 @@ export function keadaanOperasi(state: GameState, cfg: KonfigEkonomi = EKONOMI, t
     po: state.mitra.terdaftar.map((p) => ({ id: p.id, level: levelPo(p, cfg), loket: p.loket, reputasi: p.reputasi })),
     kelasTerminal: kelasTerminal(state, cfg),
     perluasan: state.perkembangan.perluasan,
+    lantai: t.lantai,
   };
 }
 
@@ -581,7 +588,8 @@ function kunciAcuan(k: KeadaanOperasi): string {
   const p = hitungPetugas(k.petugas);
   const po = k.po.map((x) => `${x.id}:${x.level}:${x.loket}:${Math.round(x.reputasi)}`).join(',');
   const tek = TEKNOLOGI_IDS.map((id) => (k.teknologi[id] ? 1 : 0)).join('');
-  return `${b}|${Object.values(p).join(',')}|${Object.values(k.tarif).join(',')}|${tek}|${po}|${k.kelasTerminal}|${k.perluasan}`;
+  const lantai = k.lantai ? Object.values(k.lantai).join(',') : '';
+  return `${b}|${Object.values(p).join(',')}|${Object.values(k.tarif).join(',')}|${tek}|${po}|${k.kelasTerminal}|${k.perluasan}|${lantai}`;
 }
 
 /**
@@ -625,6 +633,14 @@ export function acuanHarian(state: GameState, cfg: KonfigEkonomi = EKONOMI, tari
     cacheAcuan.set(kunci, hasil);
   }
   return { ...hasil, kontrak };
+}
+
+/** Pendapatan parkir sehari biasa (Rp per hari, tarif pemain, tanpa event & boost): pratinjau lantai Gedung parkir. */
+export function parkirHarian(state: GameState, cfg: KonfigEkonomi = EKONOMI): number {
+  const k = keadaanOperasi(state, cfg);
+  let total = 0;
+  for (const j of PROFIL_HARI) total += keuanganPerJam(k, hitungOperasi(k, { ritme: ritmeDari(j.keramaian, cfg), event: 1 }, cfg), j.malam, cfg).pendapatan.parkir * j.jam;
+  return total;
 }
 
 /** Laba rata-rata per jam termasuk kontrak PO (dirata-rata): dasar hadiah & target tantangan. */
@@ -986,12 +1002,12 @@ export function klaimPencapaian(state: GameState, id: PencapaianId, cfg: KonfigE
 
 /** Slot jenis bangunan ini sekarang: tabel tahap perluasan + izin level terminal (sim/bangunan.ts). */
 export function slotBangunanState(state: GameState, id: BangunanId, cfg: KonfigEkonomi = EKONOMI): number {
-  return slotBangunan(id, state.perkembangan.perluasan, levelTerminal(state, cfg), cfg);
+  return slotBangunan(id, state.perkembangan.perluasan, levelTerminal(state, cfg), cfg, state.terminal.lantai);
 }
 
-/** Biaya membangun satu unit lagi (Rp), atau null bila slotnya penuh (tunggu perluasan atau izin level). */
+/** Biaya membangun satu unit lagi (Rp), atau null bila slotnya penuh (tunggu perluasan, izin level, atau lantai). */
 export function biayaBangunState(state: GameState, id: BangunanId, cfg: KonfigEkonomi = EKONOMI): number | null {
-  return biayaBangun(id, state.terminal.bangunan, state.perkembangan.perluasan, levelTerminal(state, cfg), cfg);
+  return biayaBangun(id, state.terminal.bangunan, state.perkembangan.perluasan, levelTerminal(state, cfg), cfg, state.terminal.lantai);
 }
 
 /** @param po jendela loket untuk PO ini (hanya jendela; PO harus terdaftar). */
@@ -1051,7 +1067,41 @@ export function bongkar(state: GameState, id: BangunanId, cfg: KonfigEkonomi = E
   return { ...state, kas: state.kas + kembali, terminal: { ...state.terminal, bangunan, petugas: rapikanPetugas(state.terminal.petugas, bangunan) } };
 }
 
-/** Membangun (unit atau modernisasi) menambah progres tantangan mingguan "bangun". */
+// ---------------------------------------------------------------------------
+// Tambah lantai (sim/lantai.ts; documents/18)
+
+/** Lantai berikutnya gedung ini terbuka (tahap & level) dan kasnya cukup. */
+export function bisaTambahLantai(state: GameState, gedung: GedungLantaiId, cfg: KonfigEkonomi = EKONOMI): boolean {
+  const n = state.terminal.lantai[gedung];
+  if (syaratLantai(gedung, n, state.perkembangan.perluasan, levelTerminal(state, cfg), cfg) !== null) return false;
+  const biaya = biayaLantai(gedung, n, cfg);
+  return biaya !== null && state.kas >= biaya;
+}
+
+/**
+ * Bangun satu lantai sekaligus: kas berkurang sebesar harganya, slot gedung itu bertambah, isinya langsung
+ * dibangun, dan petugas wajibnya ikut direkrut menurut aturan (petugasIkutLantai). Lantai tidak bisa dibongkar;
+ * unit di dalamnya bisa. Dihitung 1 pada tantangan "bangun".
+ */
+export function tambahLantai(state: GameState, gedung: GedungLantaiId, cfg: KonfigEkonomi = EKONOMI): GameState {
+  if (!bisaTambahLantai(state, gedung, cfg)) return state;
+  const biaya = biayaLantai(gedung, state.terminal.lantai[gedung], cfg)!;
+  return catatBangun({ ...state, kas: kurangiKas(state.kas, biaya), terminal: terminalDenganLantai(state.terminal, gedung, cfg) });
+}
+
+/**
+ * Terminal sesudah satu lantai gedung ini terpasang (tanpa memeriksa syarat & kas): lantai +1, isinya, dan
+ * petugas yang ikut direkrut. Dipakai tambahLantai dan pratinjau kartu lantai (ui/model.ts).
+ */
+export function terminalDenganLantai(t: TerminalState, gedung: GedungLantaiId, cfg: KonfigEkonomi = EKONOMI): TerminalState {
+  const isi = cfg.tycoon.lantai[gedung].isi;
+  const bangunan = { ...t.bangunan };
+  for (const id of BANGUNAN_IDS) bangunan[id] += isi[id] ?? 0;
+  const petugas = petugasIkutLantai(t, gedung, cfg).reduce<readonly PetugasId[]>((u, id) => rekrut(u, id), t.petugas);
+  return { ...t, lantai: { ...t.lantai, [gedung]: t.lantai[gedung] + 1 }, bangunan, petugas };
+}
+
+/** Membangun (unit, modernisasi, atau lantai) menambah progres tantangan mingguan "bangun". */
 function catatBangun(state: GameState): GameState {
   return { ...state, tantangan: tambahProgresTantangan(state.tantangan, 'bangun', 1) };
 }

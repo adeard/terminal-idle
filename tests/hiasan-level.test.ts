@@ -8,7 +8,7 @@ import { KembangApi, WARNA_KEMBANG_API } from '../src/game/kembang-api';
 import { PATROLI_SATPAM } from '../src/game/kehidupan-malam';
 import { KOTA } from '../src/game/lingkungan3d';
 import type { PustakaMaterial } from '../src/game/material3d';
-import { CADANGAN_SEBERANG, GEDUNG, GEDUNG_KOTA_NAIK, PANGKALAN, RUANG_TUNGGU, SAYAP_DUA, type Persegi } from '../src/game/tata-letak';
+import { CADANGAN_ANTARPULAU, CADANGAN_SEBERANG, GEDUNG, GEDUNG_KOTA_NAIK, PANGKALAN, RUANG_LANTAI, RUANG_TUNGGU, SAYAP_DUA, type Persegi } from '../src/game/tata-letak';
 import { PO_IDS } from '../src/sim/fitur';
 
 const iris = (a: Persegi, b: Persegi): boolean => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
@@ -134,6 +134,15 @@ describe('lahan seberang & gedung kota (ADR 008)', () => {
       [32.2, -4.2, 35.4, -1.5, 3.5],
       [36.2, -3.6, 39.0, -1.5, 2.9],
     ]);
+  });
+
+  it('baliho di depan muka lantai 2 ruang tunggu (y ≥ 13,05); tidak ada hiasan di cadangan Antarpulau', () => {
+    for (const id of ['baliho1', 'baliho2'] as const) {
+      const h = HIASAN_LEVEL.find((x) => x.id === id)!;
+      expect(h.kotak.y0, id).toBeGreaterThanOrEqual(13.05);
+      expect(h.kotak.y0, id).toBeGreaterThanOrEqual(RUANG_LANTAI.ruangTunggu.y1 + 0.08);
+    }
+    for (const h of HIASAN_LEVEL) expect(iris(h.kotak, CADANGAN_ANTARPULAU), h.id).toBe(false);
   });
 
   it('hiasan plaza tidak di atas pangkalan atau gedung, pohon plaza di luar rute patroli satpam', () => {

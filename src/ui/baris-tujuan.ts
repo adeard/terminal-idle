@@ -10,7 +10,7 @@ import type { TugasAktif } from '../sim/musim';
 import { formatDurasi, formatUang } from './format';
 import type { ModelTugas } from './model';
 import { wajahKepuasan } from './popup-kepuasan';
-import { angkaTugas, EFEK_PERLUASAN, hurufJudul, namaKelas, NAMA_AREA, NAMA_BANGUNAN, NAMA_PENDEK_TEKNOLOGI, NAMA_PO, TEKS, teksIzin, teksTugasPendek } from './teks';
+import { angkaTugas, EFEK_PERLUASAN, hurufJudul, namaKelas, NAMA_AREA, NAMA_BANGUNAN, NAMA_GEDUNG_LANTAI, NAMA_PENDEK_TEKNOLOGI, NAMA_PO, TEKS, teksIzin, teksTugasPendek } from './teks';
 
 /** Warna baris: tingkat 1 merah, 2–3 kuning (ada yang bisa dikerjakan), 4–5 netral (menunggu). */
 export type GayaTujuan = 'bahaya' | 'siap' | 'netral';
@@ -64,6 +64,11 @@ export function teksTujuan(t: TujuanDinilai): string {
       const p = t.perbaikan;
       if (p.jenis === 'rekrut') return p.petugas === 'kebersihan' ? TEKS.tujuanKebersihan(w) : p.petugas === 'petugasToilet' ? TEKS.tujuanToilet(w) : TEKS.tujuanKeamanan(w);
       return p.bangunan === 'kursi' ? TEKS.tujuanKursi(w, formatUang(p.biaya)) : TEKS.tujuanFasilitas(w, NAMA_BANGUNAN[p.bangunan].nama.toLowerCase(), formatUang(p.biaya));
+    }
+    case 'lantai': {
+      const nama = NAMA_GEDUNG_LANTAI[t.gedung].nama;
+      const persen = Math.round(t.nilai * 100);
+      return t.komponen === 'kenyamanan' ? TEKS.tujuanLantaiKenyamanan(persen, nama) : TEKS.tujuanLantaiFasilitas(persen, nama);
     }
     case 'manajer':
       return TEKS.tujuanManajer;
@@ -139,6 +144,8 @@ export function sasaranTujuan(t: TujuanDinilai): SasaranTujuan {
       const p = t.perbaikan;
       return p.jenis === 'rekrut' ? { tab: 'petugas', selektor: tombolPetugas(p.petugas) } : { tab: 'bangun', selektor: tombolBangun(p.bangunan) };
     }
+    case 'lantai':
+      return { tab: 'bangun', selektor: `.item-lantai[data-gedung="${t.gedung}"] .tombol-beli`, cadangan: `.item-lantai[data-gedung="${t.gedung}"]` };
     case 'manajer':
       return { tab: 'petugas', selektor: tombolPetugas('manajerOperasional') };
     case 'naikLevel':

@@ -9,7 +9,9 @@
  * atap terminal, jadi di bawah atap kaca tidak ada hujan.
  */
 import * as THREE from 'three';
+import { GEDUNG_LANTAI_IDS } from '../sim/fitur';
 import { acakBerbenih } from './dunia-visual';
+import type { AtapHujanLantai } from './lantai-adegan';
 import { ATAP, ATAP_SAYAP2, H_LANTAI_2, JALAN, JALAN_DALAM, PANGKALAN, SAYAP_DUA, Y_PAGAR, Y_TROTOAR_BELAKANG, type AtapLengkung, type Persegi } from './tata-letak';
 
 const MAKS_BUTIR = 7000;
@@ -41,9 +43,17 @@ const PERMUKAAN: readonly Persegi[] = [
  */
 const TERAS_SAYAP2: AtapLengkung = { x0: SAYAP_DUA.a2b.x0, x1: SAYAP_DUA.a2b.x1, y0: SAYAP_DUA.a2a.y0, y1: SAYAP_DUA.a2b.y1, hTepi: H_LANTAI_2 - 0.01, hPuncak: H_LANTAI_2 };
 
-const ATAP_DAFTAR: readonly AtapLengkung[] = [ATAP.gedung, ATAP.tunggu, ATAP.datang, ATAP.sayap, ATAP_SAYAP2, TERAS_SAYAP2];
-/** Dua kotak terakhir milik Sayap 2 Lantai: nol sampai gedungnya berdiri. */
-const I_SAYAP2 = ATAP_DAFTAR.length - 2;
+/** Atap datar (lantai tambahan): tepi 0,02 di bawah puncak, cukup untuk rumus lengkung. */
+const atapDatar = (p: { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number }, h: number): AtapLengkung => ({ x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1, hTepi: h - 0.02, hPuncak: h });
+const KOSONG: AtapLengkung = atapDatar({ x0: 0, y0: 0, x1: 0, y1: 1 }, 1);
+
+/**
+ * Atap tetap, dua kotak Sayap 2 Lantai (nol sampai gedungnya berdiri), lalu satu kotak per gedung berlantai
+ * (urut GEDUNG_LANTAI_IDS; nol sampai lantainya dibeli, tingginya mengikuti mode lantai).
+ */
+const ATAP_DAFTAR: readonly AtapLengkung[] = [ATAP.gedung, ATAP.tunggu, ATAP.datang, ATAP.sayap, ATAP_SAYAP2, TERAS_SAYAP2, ...GEDUNG_LANTAI_IDS.map(() => KOSONG)];
+const I_SAYAP2 = 4;
+const I_LANTAI = 6;
 
 /**
  * Parameter lengkung atap untuk shader: pusat, jari-jari, tinggi pusat lingkaran.
@@ -267,11 +277,23 @@ export class Hujan3D {
   /** Sayap 2 Lantai berdiri: butiran berhenti di atap & terasnya. */
   aturSayap2(berdiri: boolean): void {
     const kotak = this.bahanButir.uniforms['uAtapKotak']!.value as THREE.Vector4[];
-    for (let i = I_SAYAP2; i < ATAP_DAFTAR.length; i++) {
+    for (let i = I_SAYAP2; i < I_LANTAI; i++) {
       const a = ATAP_DAFTAR[i]!;
       if (berdiri) kotak[i]!.set(a.x0, a.y0, a.x1, a.y1);
       else kotak[i]!.set(0, 0, 0, 0);
     }
+  }
+
+  /** Atap lantai tambahan gedung ke-i (urut GEDUNG_LANTAI_IDS); null = tanpa atap (belum dibeli, atau Lantai 1 di mode lantai). */
+  aturAtapLantai(i: number, atap: AtapHujanLantai | null): void {
+    const u = this.bahanButir.uniforms;
+    const kotak = (u['uAtapKotak']!.value as THREE.Vector4[])[I_LANTAI + i]!;
+    if (!atap) {
+      kotak.set(0, 0, 0, 0);
+      return;
+    }
+    kotak.set(atap.x0, atap.y0, atap.x1, atap.y1);
+    (u['uAtapLengkung']!.value as THREE.Vector3[])[I_LANTAI + i]!.copy(lengkung(atapDatar(atap, atap.h)));
   }
 
   /**

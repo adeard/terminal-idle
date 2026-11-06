@@ -29,10 +29,11 @@ import {
   MEJA_L2,
   MEJA_TERAS,
   PAPAN_L2,
+  SAYAP_BARAT,
   SAYAP_DUA,
-  TANGGA_L2,
+  TANGGA,
   TINGGI_LANTAI_GEDUNG,
-  tinggiTanggaL2,
+  type BagianTangga,
   type BlokKursiL2,
   type JendelaL2,
   type KiosTeras,
@@ -56,8 +57,6 @@ const H_PLESTER_TERAS = 0.3;
 const H_DINDING_DALAM_L2 = 2.05;
 /** Pintu dari lantai 2 ke teras (di muka timur A1). */
 const PINTU_TERAS = { y0: 15.8, y1: 16.6, h: H_LANTAI_2 + 0.7 } as const;
-/** Bukaan pagar teras ke arah tangga. */
-const Y_UJUNG_BUKAAN_TANGGA = 16.4;
 /** Warna payung meja teras (vertex color di bahan daun: sudah ada di mesh utama dan melempar bayangan). */
 const WARNA_PAYUNG_TERAS: readonly number[] = [0xd62828, 0x1d4ed8, 0xf2b705, 0x2f7d4f, 0xe76f51, 0x0e8f8a, 0xd62828];
 
@@ -70,6 +69,7 @@ export function bangunSayap2(k: Kumpulan, m: PustakaMaterial): void {
   blokA1(k, m);
   terasA2(k, m);
   tanggaA3(k, m);
+  celahSayapBarat(k, m);
   papanLantai2(k, m);
   k.bagian = 'dasar';
 }
@@ -174,10 +174,13 @@ function terasA2(k: Kumpulan, m: PustakaMaterial): void {
   k.tambah(m.panel, kotak(A.x1, A.y0, A.x1 + 0.03, B.y1 + 0.02, H_BADAN_TERAS, H_LANTAI_2));
   // Pagar kaca di selatan, timur (dengan bukaan ke tangga), dan barat teras selatan.
   k.tambah(m.kacaDinding, persegiTegak([B.x0, B.y1], [B.x1, B.y1], H_LANTAI_2, H_PAGAR_TERAS, PENUH, 0), KACA);
-  k.tambah(m.kacaDinding, persegiTegak([A.x1, B.y1], [A.x1, Y_UJUNG_BUKAAN_TANGGA], H_LANTAI_2, H_PAGAR_TERAS, PENUH, 0), KACA);
+  const [yb0, yb1] = TANGGA.bukaanTeras;
+  k.tambah(m.kacaDinding, persegiTegak([A.x1, B.y1], [A.x1, yb1], H_LANTAI_2, H_PAGAR_TERAS, PENUH, 0), KACA);
+  k.tambah(m.kacaDinding, persegiTegak([A.x1, yb0], [A.x1, A.y0], H_LANTAI_2, H_PAGAR_TERAS, PENUH, 0), KACA);
   k.tambah(m.kacaDinding, persegiTegak([B.x0, B.y0], [B.x0, B.y1], H_LANTAI_2, H_PAGAR_TERAS, PENUH, 0), KACA);
   k.tambah(m.panel, kotak(B.x0, B.y1 - 0.015, B.x1, B.y1 + 0.015, H_PAGAR_TERAS - 0.02, H_PAGAR_TERAS + 0.01));
-  k.tambah(m.panel, kotak(A.x1 - 0.015, Y_UJUNG_BUKAAN_TANGGA, A.x1 + 0.015, B.y1, H_PAGAR_TERAS - 0.02, H_PAGAR_TERAS + 0.01));
+  k.tambah(m.panel, kotak(A.x1 - 0.015, yb1, A.x1 + 0.015, B.y1, H_PAGAR_TERAS - 0.02, H_PAGAR_TERAS + 0.01));
+  k.tambah(m.panel, kotak(A.x1 - 0.015, A.y0, A.x1 + 0.015, yb0, H_PAGAR_TERAS - 0.02, H_PAGAR_TERAS + 0.01));
   k.tambah(m.panel, kotak(B.x0 - 0.015, B.y0, B.x0 + 0.015, B.y1, H_PAGAR_TERAS - 0.02, H_PAGAR_TERAS + 0.01));
   // Badan kios teras (pintu gulung & papannya ikut IsiSayap2).
   KIOS_TERAS.forEach((f, i) => {
@@ -194,33 +197,125 @@ function terasA2(k: Kumpulan, m: PustakaMaterial): void {
   });
 }
 
-/** Baji padat: alas di tanah, tepi atas miring dari hS di selatan (y1) ke hN di utara (y0). */
-function baji(x0: number, y0: number, x1: number, y1: number, hS: number, hN: number): THREE.BufferGeometry {
-  const g = kotak(x0, y0, x1, y1, 0, 1);
+/** Tebal pijakan, tiang & pegangan pagar tangga (tipis: tangga terbuka, bukan dinding masif). */
+const TANGGA_TIPIS = { pijakan: 0.035, pagar: 0.3, tiang: 0.018, pegangan: 0.022, tinggiAnak: 0.12, jarakTiang: 0.42 } as const;
+
+/** Tangga terbuka A3 (TANGGA di tata-letak.ts): pijakan tipis tanpa tegakan, balok sisi baja, pagar tiang tipis. */
+function tanggaA3(k: Kumpulan, m: PustakaMaterial): void {
+  const bagian = TANGGA.bagian;
+  bagian.forEach((b, i) => {
+    if (b.h0 === b.h1) bordesTangga(k, m, b, bagian[i - 1], bagian[i + 1]);
+    else bentangTangga(k, m, b);
+  });
+}
+
+/** Sepanjang arah naik: panjang, titik di pecahan u (0 = awal), dan dua sisi (kiri & kanan) sebagai rentang tegak lurus. */
+function sumbuBagian(b: BagianTangga): { readonly panjang: number; readonly titik: (u: number) => number; readonly melintang: readonly [number, number]; readonly sepanjangX: boolean } {
+  const sepanjangX = b.arah === '+x' || b.arah === '-x';
+  const [a0, a1] = sepanjangX ? [b.x0, b.x1] : [b.y0, b.y1];
+  const maju = b.arah === '+x' || b.arah === '+y';
+  return { panjang: a1 - a0, titik: (u) => (maju ? a0 + (a1 - a0) * u : a1 - (a1 - a0) * u), melintang: sepanjangX ? [b.y0, b.y1] : [b.x0, b.x1], sepanjangX };
+}
+
+/** Kotak sejajar sumbu dari rentang sepanjang (s0, s1) & melintang (c0, c1) bagian ini. */
+const kotakBagian = (sepanjangX: boolean, s0: number, s1: number, c0: number, c1: number, h0: number, h1: number): THREE.BufferGeometry =>
+  sepanjangX ? kotak(Math.min(s0, s1), c0, Math.max(s0, s1), c1, h0, h1) : kotak(c0, Math.min(s0, s1), c1, Math.max(s0, s1), h0, h1);
+
+/** Balok miring sepanjang sumbu bagian: sisi atasnya dari hA di s0 ke hB di s1, setebal `tebal` ke bawah. */
+function balokMiring(sepanjangX: boolean, s0: number, s1: number, c0: number, c1: number, hA: number, hB: number, tebal: number): THREE.BufferGeometry {
+  const g = kotakBagian(sepanjangX, s0, s1, c0, c1, 0, 1);
   const p = g.getAttribute('position');
-  const tengah = (y0 + y1) / 2;
-  for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) > 0.5 ? (p.getZ(i) > tengah ? hS : hN) : 0);
+  for (let i = 0; i < p.count; i++) {
+    const s = sepanjangX ? p.getX(i) : p.getZ(i);
+    const atas = hA + ((hB - hA) * (s - s0)) / (s1 - s0);
+    p.setY(i, p.getY(i) > 0.5 ? atas : atas - tebal);
+  }
   g.computeVertexNormals();
   return g;
 }
 
-/** Tangga & eskalator dua lajur, naik ke utara, dengan bordes setinggi lantai 2 di ujung atas. */
-function tanggaA3(k: Kumpulan, m: PustakaMaterial): void {
-  const T = TANGGA_L2;
-  const ANAK_TANGGA = 12;
-  for (const [xa, xb] of [T.naik, T.turun]) {
-    for (let i = 0; i < ANAK_TANGGA; i++) {
-      const ya = T.yBordes + ((T.y1 - T.yBordes) * i) / ANAK_TANGGA;
-      const yb = T.yBordes + ((T.y1 - T.yBordes) * (i + 1)) / ANAK_TANGGA;
-      k.tambah(m.besiGelap, kotak(xa + 0.05, ya, xb - 0.05, yb, 0, tinggiTanggaL2(ya)));
-    }
-    for (const [xs0, xs1] of [[xa, xa + 0.05], [xb - 0.05, xb]] as const) {
-      k.tambah(m.biruPos, baji(xs0, T.yBordes, xs1, T.y1, T.hBawah + 0.16, H_LANTAI_2 + 0.16));
-    }
+/** Bentang miring: pijakan tiap ±0,12 naik, dua balok sisi miring, pagar & pegangan di kedua sisi. */
+function bentangTangga(k: Kumpulan, m: PustakaMaterial, b: BagianTangga): void {
+  const T = TANGGA_TIPIS;
+  const a = sumbuBagian(b);
+  const n = Math.max(2, Math.round((b.h1 - b.h0) / T.tinggiAnak));
+  const [c0, c1] = a.melintang;
+  for (let i = 1; i <= n; i++) {
+    // Pijakan ke-i setinggi h0 + i·naik, menempati 1/n panjang sebelum titik itu.
+    const h = b.h0 + ((b.h1 - b.h0) * i) / n;
+    k.tambah(m.batu, kotakBagian(a.sepanjangX, a.titik((i - 1) / n), a.titik(i / n), c0 + 0.03, c1 - 0.03, h - T.pijakan, h));
   }
-  // Bordes menyambung ke bukaan pagar teras.
-  k.tambah(m.batu, uvDunia(kotak(SAYAP_DUA.a2a.x1, T.y0, T.turun[1], T.yBordes, H_BADAN_TERAS, H_LANTAI_2), SKALA_UV.beton));
-  k.tambah(m.paving, uvDunia(bidang(SAYAP_DUA.a2a.x1, T.y0, T.turun[1], T.yBordes, H_LANTAI_2 + 0.002), SKALA_UV.paving), POLOS);
+  // Balok sisi baja & pegangan: satu balok miring per sisi, sejajar garis ujung pijakan.
+  for (const [d0, d1] of [
+    [c0, c0 + 0.03],
+    [c1 - 0.03, c1],
+  ] as const) {
+    k.tambah(m.besiGelap, balokMiring(a.sepanjangX, a.titik(0), a.titik(1), d0, d1, b.h0, b.h1, 0.12));
+    k.tambah(m.besi, balokMiring(a.sepanjangX, a.titik(0), a.titik(1), d0 + 0.004, d1 - 0.004, b.h0 + T.pagar, b.h1 + T.pagar, T.pegangan));
+  }
+  // Tiang pagar tipis.
+  const jumlah = Math.max(2, Math.round(a.panjang / T.jarakTiang) + 1);
+  for (let j = 0; j < jumlah; j++) {
+    const u = j / (jumlah - 1);
+    const s = a.titik(u);
+    const h = b.h0 + (b.h1 - b.h0) * u;
+    for (const c of [c0 + 0.015, c1 - 0.015]) k.tambah(m.besi, kotakBagian(a.sepanjangX, s - T.tiang / 2, s + T.tiang / 2, c - T.tiang / 2, c + T.tiang / 2, h, h + T.pagar));
+  }
+}
+
+/**
+ * Bordes: pelat tipis bertepi panel di atas dua/empat tiang baja, pagar di sisi yang tidak menyambung ke bentang
+ * sebelum/sesudahnya atau ke teras (sisi barat di x a2a.x1).
+ */
+function bordesTangga(k: Kumpulan, m: PustakaMaterial, b: BagianTangga, sebelum: BagianTangga | undefined, sesudah: BagianTangga | undefined): void {
+  const T = TANGGA_TIPIS;
+  const h = b.h0;
+  k.tambah(m.batu, uvDunia(kotak(b.x0, b.y0, b.x1, b.y1, h - 0.07, h), SKALA_UV.beton));
+  k.tambah(m.paving, uvDunia(bidang(b.x0, b.y0, b.x1, b.y1, h + 0.002), SKALA_UV.paving), POLOS);
+  for (const [x, y] of [
+    [b.x0 + 0.06, b.y0 + 0.06],
+    [b.x1 - 0.06, b.y0 + 0.06],
+    [b.x0 + 0.06, b.y1 - 0.06],
+    [b.x1 - 0.06, b.y1 - 0.06],
+  ] as const) {
+    if (x < SAYAP_DUA.a2a.x1 + 0.1) continue; // sisi teras ditopang tepi pelat teras
+    k.tambah(m.besiGelap, kotak(x - 0.03, y - 0.03, x + 0.03, y + 0.03, 0, h - 0.07));
+  }
+  // Sisi yang menempel bagian lain atau teras dibiarkan terbuka.
+  const menempel = (sisi: 'x0' | 'x1' | 'y0' | 'y1'): boolean => {
+    if (sisi === 'x0' && b.x0 <= SAYAP_DUA.a2a.x1 + 1e-6) return true;
+    return [sebelum, sesudah].some((o) => {
+      if (!o) return false;
+      if (sisi === 'x0') return Math.abs(o.x1 - b.x0) < 1e-6;
+      if (sisi === 'x1') return Math.abs(o.x0 - b.x1) < 1e-6;
+      if (sisi === 'y0') return Math.abs(o.y1 - b.y0) < 1e-6;
+      return Math.abs(o.y0 - b.y1) < 1e-6;
+    });
+  };
+  const pagar = (x0: number, y0: number, x1: number, y1: number): void => {
+    k.tambah(m.besi, kotak(x0, y0, x1, y1, h + T.pagar - T.pegangan, h + T.pagar));
+    const panjang = Math.hypot(x1 - x0, y1 - y0);
+    const jumlah = Math.max(2, Math.round(panjang / T.jarakTiang) + 1);
+    for (let j = 0; j < jumlah; j++) {
+      const u = j / (jumlah - 1);
+      const [x, y] = [x0 + (x1 - x0) * u, y0 + (y1 - y0) * u];
+      k.tambah(m.besi, kotak(x - T.tiang / 2, y - T.tiang / 2, x + T.tiang / 2, y + T.tiang / 2, h, h + T.pagar));
+    }
+  };
+  if (!menempel('y0')) pagar(b.x0, b.y0, b.x1, b.y0 + 0.03);
+  if (!menempel('y1')) pagar(b.x0, b.y1 - 0.03, b.x1, b.y1);
+  if (!menempel('x0')) pagar(b.x0, b.y0, b.x0 + 0.03, b.y1);
+  if (!menempel('x1')) pagar(b.x1 - 0.03, b.y0, b.x1, b.y1);
+}
+
+/**
+ * Celah 0,2 antara A1 (x1 6,4) dan sayap barat (x0 6,6) ditutup (owner, pesan 257): dinding pengisi setinggi
+ * tepi atap sayap barat dengan lis atas, supaya keduanya terbaca satu gedung. Ikut bagian 'sayap'.
+ */
+function celahSayapBarat(k: Kumpulan, m: PustakaMaterial): void {
+  const [x0, x1] = [SAYAP_DUA.a1.x1, SAYAP_BARAT.x0];
+  k.tambah(m.plester, uvDunia(kotak(x0, SAYAP_BARAT.y0, x1, SAYAP_BARAT.y1, 0, 1.0), SKALA_UV.plester));
+  k.tambah(m.panel, kotak(x0 - 0.02, SAYAP_BARAT.y0, x1 + 0.02, SAYAP_BARAT.y1 + 0.03, 1.0, 1.08));
 }
 
 /** Badan & kaki papan LANTAI 2 di atas talang timur A1, menghadap timur (tulisannya di IsiSayap2). */

@@ -4,14 +4,14 @@ import type { TingkatPo } from '../config/economy.config';
 import { BINGKAI_EMAS, type SlotHiasan, type TemaMusimId } from '../config/musim.config';
 import type { Izin } from '../sim/bangunan';
 import { slotHiasan, temaHiasan, type HadiahMusim, type JenisLencana, type NilaiRapor } from '../sim/musim';
-import type { BangunanId, EventId, KelasBusId, PencapaianId, PetugasId, PoId, TarifId, TeknologiId } from '../sim/fitur';
+import type { BangunanId, EventId, GedungLantaiId, KelasBusId, PencapaianId, PetugasId, PoId, TarifId, TeknologiId } from '../sim/fitur';
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import type { AreaId } from '../sim/operasi';
 import type { TahapId } from '../sim/tahap';
 import type { PaketHadiah } from '../sim/state';
 import type { TingkatKeramaian } from '../sim/waktu';
-import { formatAngka, formatUang } from './format';
-import type { ModelBangunan, ModelTugas } from './model';
+import { formatAngka, formatUang, formatUangBertanda } from './format';
+import type { ModelBangunan, ModelLantai, ModelTugas } from './model';
 
 export const NAMA_TAHAP: Readonly<Record<TahapId, string>> = {
   peron: 'Peron',
@@ -116,10 +116,25 @@ export const NAMA_TINGKAT_PO: Readonly<Record<TingkatPo, string>> = {
 export const NAMA_PERLUASAN: readonly { readonly nama: string; readonly deskripsi: string }[] = [
   { nama: 'Aula loket diperluas', deskripsi: 'Slot jendela loket +2' },
   { nama: 'Pangkalan diperluas', deskripsi: 'Petak bus +10, jendela loket +2, lahan parkir kedua' },
-  { nama: 'Sayap\u00a02\u00a0lantai', deskripsi: 'Loket, ruang tunggu & food court: jendela +4, petak bus +10, kursi, toko, toilet; sesudahnya naik level menambah slot jendela & jalur' },
+  {
+    nama: 'Sayap\u00a02\u00a0lantai',
+    deskripsi: 'Loket, ruang tunggu & food court: jendela +4, petak bus +10, kursi, toko, toilet; sesudahnya naik level menambah slot jendela & jalur, dan membuka Tambah lantai',
+  },
   { nama: 'Gedung parkir bus', deskripsi: 'Gedung Antarpulau: jalur +1, petak bus +10, aula loket kedua' },
   { nama: 'Terminal Terpadu', deskripsi: 'Dek parkir ketiga & lantai 3: jalur +1, petak bus +20, jendela +4' },
 ];
+
+/**
+ * Gedung yang bisa ditambah lantai (documents/18): nama (spasi tak terputus supaya tidak terpotong di toast 360 px),
+ * isi satu lantai di kartu, dan isi pendek untuk toast (tanpa keterangan dalam kurung).
+ */
+export const NAMA_GEDUNG_LANTAI: Readonly<Record<GedungLantaiId, { readonly nama: string; readonly isi: string; readonly isiPendek: string }>> = {
+  parkir: { nama: 'Gedung parkir', isi: '+2 lahan parkir (120 kendaraan/jam)', isiPendek: '+2 lahan parkir' },
+  ruangTunggu: { nama: 'Ruang tunggu', isi: '+4 blok kursi (240 kursi) & 1 kios', isiPendek: '+4 blok kursi & 1 kios' },
+  // documents/18 bagian 7: lantai 2 = selasar penghubung tanpa toilet; +1 toilet ada di lantai dasar (owner, Telegram 274).
+  sayapBarat: { nama: 'Gedung toilet', isi: 'Selasar penghubung, +1 toilet di lantai dasar', isiPendek: 'selasar & +1 toilet' },
+  aula: { nama: 'Aula loket', isi: 'Mezanin: +2 blok kursi & 2 toko', isiPendek: '+2 blok kursi & 2 toko' },
+};
 
 /** Efek singkat tiap tahap perluasan (baris tujuan & notifikasi perluasan terbuka), urut NAMA_PERLUASAN. */
 export const EFEK_PERLUASAN: readonly string[] = ['slot jendela loket +2', 'petak bus +10, jendela +2', 'lantai 2, jendela +4, izin level', 'jalur +1, petak bus +10', 'jalur +1, jendela +4'];
@@ -205,16 +220,64 @@ export function labelGandaTarget(p: PaketHadiah): string {
   return p.armada !== null || p.percepatDetik > 0 ? TEKS.klaimGandaPaket : TEKS.klaimGanda;
 }
 
-/** Status PO yang terhalang slot jendela (playtest P-4): dari mana slot jendela berikutnya datang. */
+/** Status PO yang terhalang slot jendela (playtest P-4): dari mana slot jendela berikutnya datang (lantai tidak menambah jendela). */
 export function teksJendelaPenuh(s: ModelBangunan['slotBerikut']): string {
-  if (s === null) return TEKS.poJendelaPenuh;
+  if (s === null || s.jenis === 'lantai') return TEKS.poJendelaPenuh;
   return s.jenis === 'level' ? TEKS.poJendelaPenuhLevel(s.level) : TEKS.poJendelaPenuhPerluasan(s.tahap);
 }
 
 /** Toast slot PO baru saat slot jendela penuh (playtest P-4): penuh sampai level izin atau perluasan berikutnya. */
 export function teksSlotTanpaJendela(slot: number, s: ModelBangunan['slotBerikut']): string {
-  if (s === null) return TEKS.notifSlotTanpaJendela(slot);
+  if (s === null || s.jenis === 'lantai') return TEKS.notifSlotTanpaJendela(slot);
   return TEKS.notifSlotTanpaJendelaSampai(slot, s.jenis === 'level' ? `Lv ${s.level}` : `Perluasan ${s.tahap}`);
+}
+
+/** Isi & efek kartu lantai: isi satu lantai, lalu pratinjau (paling banyak 2 bagian). */
+export function teksIsiLantai(x: ModelLantai): string {
+  const efek = x.pratinjau.map((p) =>
+    p.jenis === 'parkir'
+      ? TEKS.pratinjauParkir(formatUangBertanda(p.selisih))
+      : TEKS.pratinjauKomponen(p.komponen === 'kenyamanan' ? TEKS.kepuasanKenyamanan : p.komponen === 'fasilitas' ? TEKS.kepuasanFasilitas : TEKS.kepuasanKebersihan, p.dari, p.ke),
+  );
+  return [NAMA_GEDUNG_LANTAI[x.gedung].isi, ...efek].join(' · ');
+}
+
+/** Baris status kartu lantai menurut keadaannya (rancangan 4.4). */
+export function teksStatusLantai(x: ModelLantai): string {
+  switch (x.keadaan) {
+    case 'terkunci':
+      return TEKS.lantaiTerkunci(x.berikut?.level ?? 0);
+    case 'selesai':
+      return TEKS.lantaiSelesaiBerikut(1 + x.lantai, x.berikut?.lantai ?? 0, x.berikut?.level ?? 0);
+    case 'maks':
+      return TEKS.lantaiSelesai(1 + x.lantai);
+    case 'terjangkau':
+    case 'kurang': {
+      const p = x.petugas;
+      return [
+        TEKS.biayaLantai(formatUang(x.operasional)),
+        p ? TEKS.petugasLantai(p.jumlah, NAMA_PETUGAS[p.id].nama.toLowerCase(), formatUang(p.gaji)) : '',
+        x.peringatanKas ? TEKS.lantaiPeringatanKas(formatUang(x.sisaKas)) : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    }
+  }
+}
+
+/** Status unit yang slotnya penuh (tab Bangun): sumber slot berikutnya, termasuk lantai (documents/18, AC-GP-05). */
+export function teksSlotPenuh(s: ModelBangunan['slotBerikut']): string {
+  if (s === null) return TEKS.slotPenuh;
+  switch (s.jenis) {
+    case 'level':
+      return TEKS.slotPenuhLevel(s.level);
+    case 'perluasan':
+      return TEKS.slotPenuhPerluasan(s.tahap);
+    case 'lantai': {
+      const nama = NAMA_GEDUNG_LANTAI[s.gedung].nama;
+      return s.terbuka ? TEKS.slotPenuhLantai(nama) : TEKS.slotPenuhLantaiLevel(s.lantai, nama, s.level);
+    }
+  }
 }
 
 export const NAMA_TEKNOLOGI: Readonly<Record<TeknologiId, string>> = {
@@ -308,6 +371,8 @@ export const TEKS = {
   tujuanKeamanan: (wajah: string) => `${wajah} Keamanan kurang: rekrut satpam`,
   tujuanKursi: (wajah: string, biaya: string) => `${wajah} Kursi kurang: bangun blok kursi · ${biaya}`,
   tujuanFasilitas: (wajah: string, nama: string, biaya: string) => `${wajah} Belum ada ${nama}: bangun · ${biaya}`,
+  tujuanLantaiKenyamanan: (persen: number, nama: string) => `🪑 Kenyamanan ${persen}%: tambah lantai ${nama}`,
+  tujuanLantaiFasilitas: (persen: number, nama: string) => `🚻 Fasilitas ${persen}%: tambah lantai ${nama}`,
   tujuanManajer: '🌙 Rekrut Manajer Operasional: terminal jalan saat kamu pergi',
   tujuanProyek: (tahap: number, durasi: string) => `🏗️ Perluasan ${tahap} jadi dalam ${durasi}, walau game ditutup`,
   tujuanMenabung: (tahap: number, uang: string) => `🏗️ Perluasan ${tahap}: kumpulkan ${uang} lagi`,
@@ -453,6 +518,32 @@ export const TEKS = {
   petakBus: (petak: number, kapasitas: string) => `${petak} petak parkir bus · ${kapasitas} pnp/jam`,
   petakBusKet: 'Bus parkir, dicuci, & menunggu jadwal. Bertambah lewat perluasan terminal.',
   perawatanTotal: (rp: string) => `Perawatan semua unit ${rp}/hari`,
+  // Tambah lantai (documents/18; rancangan docs/design/20261105-tambah-lantai bagian 4.5). Persen tanpa spasi seperti teks game lain.
+  judulLantai: (n: number, nama: string) => `Lantai ${n} · ${nama}`,
+  petugasLantai: (n: number, peran: string, gaji: string) => `Ikut direkrut: ${n} ${peran} (${gaji}/hari)`,
+  pratinjauKomponen: (komponen: string, dari: number, ke: number) => `${komponen} ${dari} → ${ke}%`,
+  pratinjauParkir: (rp: string) => `Parkir ${rp}/hari`,
+  biayaLantai: (rp: string) => `Operasional ${rp}/hari`,
+  tombolLantai: 'Tambah lantai',
+  /** Tombol lantai redup: baris kecil di atas kekurangan kas ("Kurang / Rp 120 jt"). */
+  lantaiKurang: 'Kurang',
+  lantaiTerkunci: (level: number) => `🔒 Terbuka di Lv ${level}`,
+  lantaiSelesai: (n: number) => `✓ ${n} lantai`,
+  lantaiSelesaiBerikut: (n: number, berikut: number, level: number) => `✓ ${n} lantai · lantai ${berikut} di Lv ${level}`,
+  /** Seperti kartu perluasan: sisa kas sesudah membeli kurang dari biaya operasi sehari. */
+  /** Kas sesudah membeli di bawah cadangan B (aturan aman baris tujuan; temuan playtest T-1). */
+  lantaiPeringatanKas: (rp: string) => `⚠️ Kas tinggal ${rp} sesudahnya`,
+  /** Ketukan pertama saat kas tidak aman: tombol menunggu ketukan kedua (pola tombol Bongkar). */
+  lantaiKonfirmasi: (rp: string) => `⚠️ Kas tinggal ${rp}: gaji bisa tak terbayar, petugas berhenti. Ketuk lagi untuk membeli.`,
+  lantaiKetukLagi: 'Ketuk lagi',
+  slotPenuhLantai: (nama: string) => `Slot penuh: tambah lantai ${nama}`,
+  slotPenuhLantaiLevel: (n: number, nama: string, level: number) => `Slot penuh: lantai ${n} ${nama} di Lv ${level}`,
+  lihatLantai: '👁 Lihat',
+  lihatLantaiLabel: (nama: string) => `Lihat lantai ${nama}`,
+  chipLantai: (n: number, nama: string) => `Lantai ${n} · ${nama}`,
+  chipLantaiTurun: 'Lantai di bawahnya',
+  chipLantaiNaik: 'Lantai di atasnya',
+  chipLantaiKeluar: 'Keluar dari tampilan lantai',
   // Tab Petugas.
   petugasRingkas: (n: number, gaji: string) => `${n} petugas · gaji ${gaji}/hari`,
   petugasGaji: (rp: string) => `Gaji ${rp}/hari`,
@@ -587,6 +678,11 @@ export const TEKS = {
   notifNaikKelas: (kelas: string) => `⭐ Selamat! Terminal naik ke ${kelas}`,
   notifLevelTerminal: (level: number) => `🏢 Terminal naik ke Lv ${level}`,
   notifLevelTerminalIzin: (level: number, izin: string) => `🏢 Terminal naik ke Lv ${level}: ${izin}`,
+  /** Lantai terbuka saat naik level: satu toast gabungan dengan naik level (rancangan 4.4). */
+  notifLantaiTerbukaLevel: (level: number, n: number, nama: string) => `🏢 Lv ${level}: lantai ${n} ${nama} bisa dibangun`,
+  /** Lantai terbuka tetapi kas belum aman untuk membelinya (aturan aman baris tujuan; temuan playtest T-1): tanpa ajakan. */
+  notifLantaiTerbukaTabung: (level: number, n: number, nama: string) => `🏢 Lv ${level}: lantai ${n} ${nama} terbuka · kumpulkan kas dulu`,
+  notifLantaiDibeli: (nama: string, n: number, isi: string) => `🏢 ${nama} kini ${n} lantai: ${isi}`,
   notifSlotBaru: (slot: number) => `🅿️ Slot PO ke-${slot} terbuka! Daftarkan PO di tab PO`,
   /** Slot jendela penuh (playtest P-4, teksSlotTanpaJendela); `sampai`: "Lv 18" atau "Perluasan 3". */
   notifSlotTanpaJendela: (slot: number) => `🅿️ Slot PO ke-${slot} terbuka: jendela loket penuh`,

@@ -9,19 +9,20 @@
  * lencana yang sudah dilihat, antrean notifikasi, riwayat kepuasan) tidak disimpan.
  */
 import type { Analitik } from '../app/analitik';
-import { peristiwaTujuanKetuk } from '../app/analitik';
+import { peristiwaLantaiLihat, peristiwaTujuanKetuk } from '../app/analitik';
 import { KEPUASAN_TURUN, kepuasanTurunBerlaku, periksaKepuasanTurun, type KepuasanTurun, type SampelKepuasan } from '../app/kepuasan-turun';
 import type { PengendaliGame } from '../app/pengendali';
 import { butirLencana, daftarTujuan, jumlahLencana, pilihTujuan, type ButirLencana, type TujuanDinilai } from '../app/tujuan';
 import { PILIHAN_KECEPATAN } from '../config/waktu.config';
 import type { Aksi } from '../sim/aksi';
 import type { AreaId } from '../sim/operasi';
-import type { PoId } from '../sim/fitur';
+import type { GedungLantaiId, LantaiDilihat, PoId } from '../sim/fitur';
 import { gayaTujuan, sasaranTujuan, teksTujuan, type GayaTujuan, type SasaranTujuan } from './baris-tujuan';
 import { formatAngka, formatUang, formatUangBertanda } from './format';
 import { buatTabBangun, buatTabPetugas, buatTabPo, buatTabTarget, buatTabTerminal, type IklanMenu, type IsiTab } from './menu';
 import { buatModel, type ModelEvent, type ModelHud, type ModelTampilan } from './model';
-import { ambilNotif, antreNotif, notifArmada, notifBahaya, notifikasiPerubahan, perluasanBaruTerbuka, teksKepuasanTurun, urutanPesan, type PesanNotif } from './notifikasi';
+import { pasangModeLantai, type ModeLantai } from './mode-lantai';
+import { ambilNotif, antreNotif, notifArmada, notifBahaya, notifikasiPerubahan, perluasanBaruTerbuka, teksKepuasanTurun, teksLantaiDibeli, urutanPesan, type PesanNotif } from './notifikasi';
 import { tanyaNamaTerminal } from './popup-nama';
 import { tampilkanPopupKepuasan, tingkatPilKepuasan, wajahKepuasan } from './popup-kepuasan';
 import { buatKartuPeringkat, type OpsiPeringkatUi } from './peringkat';
@@ -41,6 +42,8 @@ export interface Overlay {
   bukaArea(area: AreaId): void;
   /** Panel sedang layar penuh (menutupi adegan): adegan 3D tidak perlu digambar. */
   panelPenuh(): boolean;
+  /** Keluar dari mode lihat per lantai (mis. kamera digeser jauh dari gedungnya). */
+  keluarLantai(): void;
   lepas(): void;
 }
 
@@ -57,8 +60,10 @@ export interface OpsiOverlay {
   readonly iklan?: IklanMenu;
   /** Papan peringkat (hanya web; tanpa ini kartunya tidak ada). Model & popup nama disiapkan overlay. */
   readonly peringkat?: Omit<OpsiPeringkatUi, 'ambilModel' | 'mintaNama'>;
-  /** Analitik untuk ketukan baris tujuan (`tujuan_ketuk`). */
+  /** Analitik untuk ketukan baris tujuan (`tujuan_ketuk`) dan mode lantai (`lantai_lihat`). */
   readonly analitik?: Analitik;
+  /** Mode lihat per lantai berubah (documents/18): diteruskan ke adegan (main.ts). */
+  readonly saatLantaiDilihat?: (v: LantaiDilihat | null) => void;
 }
 
 /** Baris tujuan & lencana dihitung ulang paling sering sekali per detik nyata (dan langsung setelah aksi pemain). */
@@ -121,8 +126,15 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     }
     return nama || null;
   };
+  // Mode lihat per lantai: dipasang di area adegan di bawah; "👁 Lihat" di kartu lantai memanggilnya
+  // (panel layar penuh dikecilkan dulu supaya adegannya terlihat).
+  let modeLantai: ModeLantai | null = null;
+  const lihatLantai = (g: GedungLantaiId): void => {
+    if (penuh) aturPenuh(false);
+    modeLantai?.lihat(g);
+  };
   const tab: Record<IdTab, IsiTab> = {
-    bangun: buatTabBangun(kirim),
+    bangun: buatTabBangun(kirim, lihatLantai),
     petugas: buatTabPetugas(kirim),
     po: buatTabPo(kirim),
     terminal: buatTabTerminal(kirim, { ubahNama: () => void mintaNama(), ...(opsi.iklan ? { iklan: opsi.iklan } : {}) }),
@@ -155,6 +167,8 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   }
   let tabAktif: IdTab = 'bangun';
   const pilihTab = (id: IdTab): void => {
+    // Membuka tab mana pun (juga lewat baris tujuan atau label area) menutup mode lantai (rancangan 6.4).
+    modeLantai?.keluar();
     tabAktif = id;
     for (const t of ID_TAB) {
       tombolTab[t].classList.toggle('aktif', t === id);
@@ -254,6 +268,19 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   const bilah = el('div', 'bilah');
   bilah.append(hud.elemen, daftar);
   akar.replaceChildren(area, bilah);
+  const mode = pasangModeLantai(akar, area, pengendali, {
+    saatUbah: (v) => opsi.saatLantaiDilihat?.(v),
+    saatMasuk: (v) => {
+      const p = peristiwaLantaiLihat(v);
+      opsi.analitik?.catat(p.nama, p.data);
+    },
+  });
+  modeLantai = mode;
+  // Popup apa pun menutup mode lantai (rancangan 6.4).
+  const pengamatPopup = new MutationObserver(() => {
+    if (mode.dilihat && akar.querySelector(':scope > .popup-latar')) mode.keluar();
+  });
+  pengamatPopup.observe(akar, { childList: true });
 
   // Notifikasi singkat di atas adegan, bergantian lewat antrean (paling banyak 3 tertunda, 3,5 dtk
   // masing-masing; pesan bahaya melompati antrean). Menunggu selama popup terbuka.
@@ -287,9 +314,11 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     if (!p) return;
     notifTampil = p;
     notif.textContent = p.teks;
+    // Toast lantai dibeli: "👁 Lihat" membuka mode lantai gedung itu.
+    if (p.lantai) notif.append(' ', el('span', 'notif-lihat', TEKS.lihatLantai));
     notif.classList.add('tampil');
-    // Hanya toast kepuasan yang bisa diketuk; selama tampil pil kepuasan berdenyut.
-    notif.classList.toggle('bisa-ketuk', p.kepuasan !== undefined);
+    // Toast kepuasan & lantai bisa diketuk; selama toast kepuasan tampil pil kepuasan berdenyut.
+    notif.classList.toggle('bisa-ketuk', p.kepuasan !== undefined || p.lantai !== undefined);
     hud.denyutKepuasan(p.kepuasan !== undefined);
     window.clearTimeout(timerNotif);
     timerNotif = window.setTimeout(sembunyikanNotif, MS_NOTIF);
@@ -304,10 +333,18 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     const teks = notifArmada(buatModel(lama), buatModel(baru));
     if (teks) tampilkanNotif(teks);
   });
+  // Lantai dibeli (aksi pemain, bukan memuat save): toast dengan "👁 Lihat" (documents/18, rancangan 4.4).
+  const lepasPantauLantai = pengendali.pantauAksi((aksi, _lama, baru) => {
+    if (aksi.jenis !== 'tambahLantai') return;
+    antrean = antreNotif(antrean, { teks: teksLantaiDibeli(aksi.gedung, baru.terminal.lantai[aksi.gedung]), lantai: aksi.gedung }, notifTampil?.teks ?? null);
+    tampilkanBerikut();
+  });
   notif.addEventListener('click', () => {
-    if (!notifTampil?.kepuasan) return;
+    const p = notifTampil;
+    if (!p?.kepuasan && !p?.lantai) return;
     sembunyikanNotif();
-    tampilkanPopupKepuasan(akar, buatModel(pengendali.state).hud.kepuasan);
+    if (p.lantai) mode.lihat(p.lantai);
+    else tampilkanPopupKepuasan(akar, buatModel(pengendali.state).hud.kepuasan);
   });
 
   // Toast kepuasan turun: satu sampel per detik nyata (documents/14 bagian 4.2).
@@ -353,6 +390,7 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
     const model = buatModel(state);
     const sekarang = performance.now();
     kepuasanKini = model.hud.kepuasan.nilai;
+    mode.periksa();
     hud.perbarui(model.hud, model.event, akar.classList.contains('tutorial-aktif'));
     // Hanya tab yang terlihat yang diperbarui (dan semuanya sekali di awal) supaya hemat DOM.
     for (const t of ID_TAB) if (!modelLalu || (t === tabAktif && !ringkas)) tab[t].perbarui(model);
@@ -435,12 +473,24 @@ export function pasangOverlay(akar: HTMLElement, pengendali: PengendaliGame, ops
   const lepas = (): void => {
     lepasLangganan();
     lepasPantauArmada();
+    lepasPantauLantai();
     pengamatTutorial.disconnect();
+    pengamatPopup.disconnect();
     window.removeEventListener('keydown', saatTombol);
     window.clearTimeout(timerNotif);
     lepasSorot();
   };
-  return { area, kontrol, aturKecepatan: hud.aturKecepatan, notif: tampilkanNotif, notifSepi: () => notifTampil === null && antrean.length === 0, bukaArea, panelPenuh: () => penuh, lepas };
+  return {
+    area,
+    kontrol,
+    aturKecepatan: hud.aturKecepatan,
+    notif: tampilkanNotif,
+    notifSepi: () => notifTampil === null && antrean.length === 0,
+    bukaArea,
+    panelPenuh: () => penuh,
+    keluarLantai: () => mode.keluar(),
+    lepas,
+  };
 }
 
 // ---------------------------------------------------------------------------

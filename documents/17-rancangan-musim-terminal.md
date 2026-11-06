@@ -1,6 +1,6 @@
 # 17 · Rancangan Musim Terminal: tugas harian, Rapor Musim, hiasan terminal
 
-> **Status: disetujui owner 5 November 2026, dibangun 5 November 2026. Gameplay lulus QA dengan catatan; grafis Musim AC-GFX-01..06 PASS menurut Panji. Belum di-commit dan belum dirilis (rilis 0.5.0).**
+> **Status: disetujui owner 5 November 2026, dibangun 5 November 2026, dirilis di 0.5.0 (5 November 2026). Gameplay lulus QA dengan catatan; grafis Musim AC-GFX-01..06 lulus QA dengan catatan.** *Diselaraskan 6 November 2026:* warna `papan-mudik` di bagian 4.2 diganti (palet A pilihan owner, dipasang Panji di 0.6.0 lewat brief `docs/tasks/20261105-tambah-lantai.md`, AC-GFX-11).
 >
 > - QA dan playtest: `docs/reviews/20261104-musim-terminal-gameplay.md` dan `-gameplay-r2.md` (PASS WITH NOTES), playtest Citra `docs/design/20261104-musim-terminal-playtest.md`. Ronde perbaikan 1 menambah AC-GP-16..22 (bagian 11).
 > - **Diselaraskan dengan kode pada 5 November 2026 (fase 5).** Bagian yang berubah dan alasannya:
@@ -265,6 +265,7 @@ Logika kapan hiasan tampil ada di modul murni `src/game/musim-adegan.ts`; datany
 - **Teks spanduk ≤ 38 karakter**, tidak lebih panjang dari spanduk Hujan (38) atau spanduk event terpanjang (40). Tes `tests/hiasan-musim.test.ts` membatasi 41.
 - **Papan dan spanduk satu tema harus berbeda warna**, karena di layar HP keduanya terbaca sebagai satu blok di bawah tilt-shift.
 - **Papan musim tidak boleh sewarna dengan spanduk event yang jatuh di musimnya.** Spanduk event menang atas spanduk musim, tapi papan musim tetap terpasang di atasnya.
+- **Papan musim harus terbedakan dari tutup emas balok gapura dan dari papan kelas bawaan** (ditambahkan 6 November 2026). Balok gapura di semua kelas bertutup `m.emas` (`#d4a017`, `gedung3d.ts` fungsi `gapura`), dan di layar tutup itu lebih luas dari muka papan. Diperiksa pada gambar adegan, bukan pada nilai hex: cahaya adegan membuat coklat tua dan kuning muda sama-sama terbaca emas.
 - **Warna tulisan cukup kontras: ≥ 4 : 1.** Papan dan spanduk adalah teks besar; patokan WCAG untuk teks besar 3 : 1. Papan Hujan, putih di atas biru langit, berada di 4,1 : 1.
 
 | Id | Nilai Panji | Keputusan | Nilai yang berlaku | Alasan |
@@ -274,7 +275,7 @@ Logika kapan hiasan tampil ada di modul murni `src/game/musim-adegan.ts`; datany
 | `spanduk-mudik` | "MUDIK AMAN · SELAMAT SAMPAI TUJUAN" (34), `#0f766e` / `#fef3c7` | **tetap** | sama | Teks pas untuk minggu sebelum dan sesudah Lebaran (arus balik). Hijau toska beda dari spanduk event Mudik Lebaran (`#166534`), yang menang selama 28 Februari–17 Maret |
 | `papan-hujan` | `#0284c7` / `#ffffff` | **tetap** | sama | Biru langit, beda dari papan Tipe B (`#1e3a8a`) dan dari spanduk event Nataru (`#1e1b4b`) yang jatuh di Musim Hujan |
 | `papan-imlek` | `#b91c1c` / `#fde047` | **tetap** | sama | Merah dan emas: tanda Imlek yang paling dikenal. Spanduknya yang diganti |
-| `papan-mudik` | `#166534` / `#fde68a` | **ganti** | latar `#eab308`, tulisan `#14532d` | `#166534` sama persis dengan latar spanduk event Mudik Lebaran. Selama event, papan dan spanduk di gapura menjadi satu blok hijau tua, dan di luar event hijau toska spanduk musim juga menyatu dengannya. Kuning ketupat dengan tulisan hijau tua tetap palet Lebaran, terbedakan dari kedua spanduk dan dari papan Terpadu bawaan (`#7a5410`), kontras 4,8 : 1 |
+| `papan-mudik` | `#166534` / `#fde68a` | **ganti dua kali** | latar **`#ffffff`**, tulisan **`#14532d`** (6 November 2026, palet A pilihan owner). Nilai 5 November 2026: latar `#eab308`, tulisan `#14532d` | **Pertama (5 November):** `#166534` sama persis dengan latar spanduk event Mudik Lebaran, jadi selama event papan dan spanduk menjadi satu blok hijau tua; diganti kuning `#eab308`. **Kedua (6 November):** di build, kuning itu hampir sewarna papan Terpadu bawaan di siang hari (temuan Panji), karena muka papan kuning menyatu dengan tutup emas balok: di gambar adegan jarak warnanya ke tutup emas hanya ΔE 28 (minggu event 21), ke papan Terpadu 47. **Putih dengan tulisan hijau tua** adalah palet kartu Lebaran (putih Idulfitri, hijau, emas dari tutup balok), dan satu-satunya calon yang jauh dari semua tetangganya: ΔE 76 ke tutup emas, 65 ke papan Terpadu, 52 ke spanduk musim hijau toska, 64 ke spanduk event hijau tua. Di malam hari papan menyala sebagai kotak lampu putih, tulisan tetap terbaca. Kontras 9,1 : 1. Calon lain yang dicoba: hijau janur `#84cc16` (menyatu dengan spanduk event hijau tua) dan hijau mint `#86efac` (menyatu dengan spanduk toska, ΔE 44) |
 | `seragam-hujan` | baju `0xfacc15` | **tetap** | sama | Jas hujan kuning (bagian 4.1) |
 | `seragam-imlek` | baju `0xdc2626` | **tetap** | sama | Beda dari baju bawaan petugas peron dan gerbang (`0x1e3a8a`) |
 | `seragam-mudik` | baju `0x15803d` | **tetap** | sama | Hijau Lebaran. Mirip baju petugas toilet (`0x16a34a`), tapi petugas toilet ada di dalam gedung, bukan di peron atau gerbang |
@@ -283,9 +284,11 @@ Perubahan nilainya dikerjakan Panji di `src/config/hiasan-musim.ts` sebelum comm
 
 - **Hujan:** papan biru langit + spanduk kuning.
 - **Imlek:** papan merah + spanduk emas tua.
-- **Mudik:** papan kuning + spanduk hijau toska; selama event, spanduk hijau tua.
+- **Mudik:** papan putih + spanduk hijau toska; selama event, spanduk hijau tua dengan ketupat.
 
-Ketiganya terbedakan dari warna saja, tanpa membaca tulisan, sesuai keputusan owner soal tilt-shift. Imlek dan Mudik pertama kali tampil 11 Januari dan 22 Februari 2027, jadi masih bisa diubah sebelum itu tanpa memengaruhi save (hiasan disimpan sebagai id, bukan warna). **Belum dilihat di build** dengan nilai baru: Panji mengambil screenshot gapura Imlek dan Mudik (siang, malam, minggu event Mudik Lebaran) sesudah mengganti nilai.
+Ketiganya terbedakan dari warna saja, tanpa membaca tulisan, sesuai keputusan owner soal tilt-shift. Imlek dan Mudik pertama kali tampil 11 Januari dan 22 Februari 2027, jadi masih bisa diubah sebelum itu tanpa memengaruhi save (hiasan disimpan sebagai id, bukan warna). Panji mengambil screenshot gapura Imlek dan Mudik dengan nilai 5 November (siang, malam, minggu event Mudik Lebaran); dari situ datang temuan papan Mudik kuning.
+
+**Bukti nilai 6 November.** Citra merender lima calon (papan Terpadu bawaan, kuning `#eab308`, putih `#ffffff`, janur `#84cc16`, mint `#86efac`, semuanya bertulisan `#14532d`) di salinan 3712ef2 di scratchpad, dengan save dan kamera yang sama dengan gambar Panji: tahap 3 Lv 35, Terpadu, Selasa jam 12 dan jam 21, minggu event Mudik Lebaran, jendela 900×420 dengan zoom ke gapura, dan 412×915 kamera awal. Gambar, skrip, dan angka ΔE ada di `docs/design/20261105-tambah-lantai/papan-mudik/` (`banding-*.png`, urutan panel: bawaan, kuning, putih, janur, mint; `ukur-papan.txt`). ΔE adalah jarak CIELAB antara median warna piksel muka papan dan tetangganya di gambar yang dirender, jadi angkanya kasar (topeng piksel otomatis). Di 412 kamera awal, muka papan hanya pita tipis di bawah tutup emas untuk semua calon; putih tetap paling jauh dari papan bawaan (ΔE 41, kuning 26). **Belum dilihat di build:** Panji memasang nilai ini di `src/config/hiasan-musim.ts` dan mengambil gambar siang dan malam (brief `docs/tasks/20261105-tambah-lantai.md`, AC-GFX-11).
 
 ### 4.3 Tanpa kelangkaan palsu
 

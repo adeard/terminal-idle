@@ -36,6 +36,9 @@ export interface OpsiLaluLintas {
   readonly benih?: number;
 }
 
+/** Kendaraan per lajur jalan belakang terminal (dua lajur; terminal3d.ts). */
+export const KENDARAAN_PER_LAJUR_BELAKANG = 25;
+
 const PANJANG: Readonly<Record<JenisKendaraanKecil, number>> = { mobil: 0.9, angkot: 0.8, motor: 0.4 };
 const JARAK_AMAN = 0.5;
 

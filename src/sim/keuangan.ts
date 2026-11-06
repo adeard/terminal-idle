@@ -72,7 +72,7 @@ export function keuanganPerJam(k: KeadaanOperasi, op: HasilOperasi, malam: boole
     gaji: (gajiHarian(k.petugas, cfg) * pengali) / JAM_PER_HARI,
     perawatan: (perawatanHarian(b, k.teknologi, cfg) * pengali) / JAM_PER_HARI,
     listrik: (b.jalur * t.listrik.perJalur * (malam ? t.listrik.pengaliMalam : 1) * pengali) / JAM_PER_HARI,
-    gedung: operasionalGedung(k.perluasan, cfg) / JAM_PER_HARI,
+    gedung: operasionalGedung(k.perluasan, cfg, k.lantai) / JAM_PER_HARI,
     kompensasi: 0,
   };
   const pendapatan: RincianPendapatan = { kontrak: 0, sewaLoket, retribusi, parkir, sewaKios };

@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { teksturKolong } from './kendaraan3d';
 import type { JenisKendaraanKecil, LaluLintas } from './lalu-lintas';
+import { mobilParkirTerlihat, type LaluLintasParkir } from './mobil-parkir';
 
 const PUTIH = new THREE.Color(1, 1, 1);
 const KACA = new THREE.Color(0.1, 0.14, 0.2);
@@ -94,7 +95,10 @@ export function geometriMotor(): THREE.BufferGeometry {
   return gabung(bagian);
 }
 
-/** Lalu lintas jalan lingkungan: satu InstancedMesh per jenis kendaraan. */
+/**
+ * Lalu lintas jalan lingkungan dan mobil gedung parkir: satu InstancedMesh per jenis kendaraan. Mobil gedung parkir
+ * memakai mesh mobil yang sama (tanpa draw call baru), dengan tinggi, arah, dan kemiringan di ramp.
+ */
 export class LaluLintas3D {
   readonly objek = new THREE.Group();
   private readonly mesh: Record<JenisKendaraanKecil, THREE.InstancedMesh>;
@@ -106,6 +110,8 @@ export class LaluLintas3D {
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3(1, 1, 1);
   private readonly sumbuY = new THREE.Vector3(0, 1, 0);
+  private readonly sumbuZ = new THREE.Vector3(0, 0, 1);
+  private readonly qAngguk = new THREE.Quaternion();
 
   constructor(kapasitas: number) {
     const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.25 });
@@ -127,9 +133,29 @@ export class LaluLintas3D {
     this.objek.add(this.kolong);
   }
 
-  perbarui(model: LaluLintas): void {
+  /**
+   * @param parkir mobil gedung parkir (opsional)
+   * @param lihat mode lantai: mobil parkir yang tersembunyi tetap berjalan, hanya tidak digambar (mobilParkirTerlihat)
+   */
+  perbarui(model: LaluLintas, parkir?: LaluLintasParkir, lihat: { readonly gedung: string; readonly lantai: number } | null = null): void {
     const n: Record<JenisKendaraanKecil, number> = { mobil: 0, angkot: 0, motor: 0 };
     let nKolong = 0;
+    if (parkir) {
+      const mesh = this.mesh.mobil;
+      for (const k of parkir.mobil) {
+        if (!mobilParkirTerlihat(k, lihat)) continue;
+        const i = n.mobil++;
+        // Hadap di denah (y ke selatan) = putaran −hadap di sekitar Y three.js; angguk = hidung naik di sekitar Z mobil.
+        this.q.setFromAxisAngle(this.sumbuY, -k.hadap).multiply(this.qAngguk.setFromAxisAngle(this.sumbuZ, k.angguk));
+        this.m.compose(this.p.set(k.x, k.h, k.y), this.q, this.s);
+        mesh.setMatrixAt(i, this.m);
+        mesh.setColorAt(i, WARNA_MOBIL[k.warna % WARNA_MOBIL.length]!);
+        this.q.multiply(this.qDatar);
+        this.ukuranKolong.set(1.17, 0.62, 1);
+        this.m.compose(this.p.set(k.x, k.h + 0.004, k.y), this.q, this.ukuranKolong);
+        this.kolong.setMatrixAt(nKolong++, this.m);
+      }
+    }
     for (const k of model.kendaraan) {
       if (!k.aktif) continue;
       const mesh = this.mesh[k.jenis];

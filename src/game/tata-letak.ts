@@ -867,12 +867,88 @@ export const H_LANTAI_2 = 1.35;
 export const H_DINDING_L2 = 2.55;
 export const H_PUNCAK_L2 = 3.55;
 
-/** A1 blok dua lantai, A2a teras timur & A2b teras selatan (satu lantai, melewati pagar kompleks), A3 tangga & eskalator. */
+/** Lantai plaza tempat orang berjalan di luar bangunan. */
+export const H_PLAZA = 0.012;
+
+/** Arah naik satu bagian tangga A3 (sepanjang sumbu denah). */
+export type ArahNaik = '+x' | '-x' | '+y' | '-y';
+
+/** Bagian tangga A3: persegi denah, tinggi pijakan di sisi awal (h0) dan akhir (h1) searah naik; h0 = h1 = bordes. */
+export interface BagianTangga extends Persegi {
+  readonly arah: ArahNaik;
+  readonly h0: number;
+  readonly h1: number;
+}
+
+type Titik3 = readonly [number, number, number];
+
+/**
+ * Tangga terbuka A3 dari plaza ke teras Sayap 2 Lantai (owner, Telegram 2026-11-06 pesan 261; APPROVE pilihan A,
+ * pesan 270): satu bentang landai (±33°) sejajar pagar kompleks, naik ke barat sampai bordes di tepi teras; kaki di
+ * timur, dekat jalan dari gerbang MASUK. Tiang bendera dan lampu plaza digeser supaya kaki tangga lapang.
+ */
+export interface TanggaA3 {
+  readonly bagian: readonly BagianTangga[];
+  /** Jalan pengunjung (x, y, tinggi): naik dari kaki di plaza sampai di teras, dan turun kembali. */
+  readonly naik: readonly Titik3[];
+  readonly turun: readonly Titik3[];
+  /** Bukaan pagar timur teras (rentang y) ke bordes atas. */
+  readonly bukaanTeras: readonly [number, number];
+  /** Titik plaza terakhir jalan dari gerbang MASUK sebelum kaki tangga. */
+  readonly dariGang: Titik;
+  readonly tiangBendera: Titik;
+  readonly lampuPlaza: Titik;
+}
+
+const H_KAKI_TANGGA = 0.02;
+
+export const TANGGA: TanggaA3 = {
+  bagian: [
+    { x0: 11.1, y0: 16.75, x1: 13.15, y1: 17.45, arah: '-x', h0: H_KAKI_TANGGA, h1: H_LANTAI_2 },
+    { x0: 10.4, y0: 16.75, x1: 11.1, y1: 17.45, arah: '-x', h0: H_LANTAI_2, h1: H_LANTAI_2 },
+  ],
+  // Lajur kiri: naik (ke barat) di sisi selatan, turun (ke timur) di sisi utara.
+  naik: [
+    [13.45, 17.25, H_PLAZA],
+    [13.15, 17.25, H_KAKI_TANGGA],
+    [11.1, 17.25, H_LANTAI_2],
+    [10.3, 17.25, H_LANTAI_2],
+  ],
+  turun: [
+    [10.3, 16.95, H_LANTAI_2],
+    [11.1, 16.95, H_LANTAI_2],
+    [13.15, 16.95, H_KAKI_TANGGA],
+    [13.45, 16.95, H_PLAZA],
+  ],
+  bukaanTeras: [16.75, 17.45],
+  dariGang: [14.2, 17.4],
+  tiangBendera: [14.6, 16.6],
+  lampuPlaza: [13.75, 16.45],
+};
+
+/** Tinggi pijakan tangga A3 di (x, y): landai searah naik di bentang, datar di bordes; null di luar tangga. */
+export function tinggiTangga(x: number, y: number): number | null {
+  for (const b of TANGGA.bagian) {
+    if (x < b.x0 - 1e-9 || x > b.x1 + 1e-9 || y < b.y0 - 1e-9 || y > b.y1 + 1e-9) continue;
+    const u = b.arah === '+x' ? (x - b.x0) / (b.x1 - b.x0) : b.arah === '-x' ? (b.x1 - x) / (b.x1 - b.x0) : b.arah === '+y' ? (y - b.y0) / (b.y1 - b.y0) : (b.y1 - y) / (b.y1 - b.y0);
+    return b.h0 + (b.h1 - b.h0) * u;
+  }
+  return null;
+}
+
+const kotakTangga = (): Persegi => ({
+  x0: Math.min(...TANGGA.bagian.map((b) => b.x0)),
+  y0: Math.min(...TANGGA.bagian.map((b) => b.y0)),
+  x1: Math.max(...TANGGA.bagian.map((b) => b.x1)),
+  y1: Math.max(...TANGGA.bagian.map((b) => b.y1)),
+});
+
+/** A1 blok dua lantai, A2a teras timur & A2b teras selatan (satu lantai, melewati pagar kompleks), A3 tangga (kotak batas TANGGA). */
 export const SAYAP_DUA: { readonly a1: Persegi; readonly a2a: Persegi; readonly a2b: Persegi; readonly a3: Persegi } = {
   a1: { x0: -2.0, y0: 11.2, x1: 6.4, y1: 17.2 },
   a2a: { x0: 6.4, y0: 15.6, x1: 10.4, y1: 17.2 },
   a2b: { x0: 2.0, y0: 17.2, x1: 10.4, y1: 19.9 },
-  a3: { x0: 10.45, y0: 15.7, x1: 11.55, y1: 17.46 },
+  a3: kotakTangga(),
 };
 
 /**
@@ -881,16 +957,6 @@ export const SAYAP_DUA: { readonly a1: Persegi; readonly a2a: Persegi; readonly 
  * Sengaja di luar ATAP: sebelum tahap 3 sayapnya belum ada (lihat hujan3d.ts).
  */
 export const ATAP_SAYAP2: AtapLengkung = { x0: -2.35, x1: 6.75, y0: 10.85, y1: 17.55, hTepi: H_DINDING_L2, hPuncak: H_PUNCAK_L2 };
-
-/** Tangga & eskalator dari plaza: lajur naik & turun (rentang x), naik ke utara. Bordes setinggi lantai 2 di y0…yBordes. */
-export const TANGGA_L2 = { naik: [10.45, 10.97], turun: [11.03, 11.55], y0: 15.7, yBordes: 15.86, y1: 17.46, hBawah: 0.02 } as const;
-
-/** Tinggi pijakan tangga di y: landai dari kaki (selatan) ke lantai 2 (utara). */
-export function tinggiTanggaL2(y: number): number {
-  const { yBordes, y1, hBawah } = TANGGA_L2;
-  const u = Math.max(0, Math.min(1, (y1 - y) / (y1 - yBordes)));
-  return hBawah + (H_LANTAI_2 - hBawah) * u;
-}
 
 /** Titik ini di dalam blok A1 (beratap). Teras terbuka: pengunjungnya kehujanan. */
 export function diSayapDua(x: number, y: number): boolean {
@@ -978,7 +1044,7 @@ export const KIOS_TERAS: readonly KiosTeras[] = [
 export const PAPAN_L2 = { x0: 6.75, x1: 6.8, y0: 13.1, y1: 17.1, h0: 2.62, h1: 3.72, kakiY: [13.6, 15.1, 16.6], hKaki: H_DINDING_L2 } as const;
 
 /** Tiang bendera di plaza (lihat bendera() di lingkungan3d.ts). */
-export const TIANG_BENDERA: Titik = [12.2, 16.8];
+export const TIANG_BENDERA: Titik = TANGGA.tiangBendera;
 
 // ---------------------------------------------------------------------------
 // Kota di seberang jalan yang ikut tumbuh (rancangan bentuk terminal ronde 2, ADR 008)
@@ -1005,6 +1071,120 @@ export const GEDUNG_KOTA_NAIK: readonly GedungKotaNaik[] = [
  * tanpa hiasan level dan tanpa gedung yang dinaikkan sampai bentuk penyeberangannya diputuskan (ADR 008).
  */
 export const CADANGAN_SEBERANG: Persegi = { x0: 24.8, y0: -5.0, x1: 39.0, y1: -1.2 };
+
+/**
+ * Lahan Gedung Antarpulau di belakang ruang tunggu (ADR 007, bentuk U): tanpa benda berdiri.
+ * Aspal rata akses gedung parkir boleh lewat, karena kolong gedung itu kelak tetap parkir;
+ * kolomnya kelak menghindari lorong parkir (y 15,45–16,25) dan lengkung S ke kaki ramp.
+ */
+export const CADANGAN_ANTARPULAU: Persegi = { x0: 36.0, y0: 13.2, x1: RUANG_TUNGGU.x1, y1: 18.1 };
+
+// ---------------------------------------------------------------------------
+// Tambah lantai (documents/18; rancangan docs/design/20261105-tambah-lantai bagian 6.2)
+
+/** Lantai tambahan berbentuk kotak di atas gedung yang ada: hL = bawah pelat, hA = atap. */
+export interface RuangLantai extends Persegi {
+  readonly hL: number;
+  readonly hA: number;
+}
+
+/**
+ * Lantai 2 aula loket: mezanin di belakang dinding utara, supaya papan LOKET, PO, dan jadwal di
+ * dinding itu tetap terlihat. Ruang tunggu: mezanin selatan, mulai x 29,6 supaya papan jadwal aula
+ * bebas. Sayap barat: SELASAR penghubung di separuh utara, dari muka timur A1 Sayap 2 Lantai (x 6,4) sampai
+ * tepi tritisan atap aula (11,25), lalu leher beratap rendah sampai dinding barat aula (SELASAR).
+ */
+/**
+ * Selasar lantai 2 Sayap barat (owner, Telegram 2026-11-06 pesan 257 & 260): lantainya setinggi lantai 2 Sayap 2
+ * Lantai (pelat dipertebal dari 1,08 sampai 1,35, bukan diangkat, supaya tetap duduk di atap kaca sayap barat);
+ * leher x 11,25–11,6 di bawah tritisan atap aula beratap lebih rendah, berakhir di pintu dinding barat aula.
+ */
+export const SELASAR = { hLantai: H_LANTAI_2, xAula: GEDUNG.x0, hAtapLeher: 2.2, pintu: { y0: 11.75, y1: 12.55, h1: H_LANTAI_2 + 0.78 } } as const;
+
+export const RUANG_LANTAI: { readonly aula: RuangLantai; readonly ruangTunggu: RuangLantai; readonly sayapBarat: RuangLantai } = {
+  aula: { x0: GEDUNG.x0, y0: 10.0, x1: GEDUNG.x1, y1: GEDUNG.y0, hL: 1.9, hA: 3.2 },
+  ruangTunggu: { x0: 29.6, y0: 12.0, x1: RUANG_TUNGGU.x1, y1: RUANG_TUNGGU.y1, hL: 1.35, hA: 2.6 },
+  sayapBarat: { x0: SAYAP_DUA.a1.x1, y0: SAYAP_BARAT.y0, x1: 11.25, y1: 13.1, hL: 1.08, hA: 2.45 },
+};
+
+/**
+ * Gedung parkir bentuk A di bagian barat lahan parkir (di luar CADANGAN_ANTARPULAU): dek di
+ * y0…yDek, lajur ramp lurus di yDek…y1 (lebar 0,75, bersih 0,65), dua ramp bertumpuk naik ke barat.
+ * Ramp 1 dari kaki x1 (tanah) ke xBarat (dek 2), ramp 2 dari xKaki2 (dek 2) ke xBarat (dek 3).
+ */
+export const GEDUNG_PARKIR = {
+  x0: 30.8,
+  x1: 35.96,
+  y0: 13.6,
+  yDek: 16.5,
+  y1: 17.25,
+  hDek: [1.05, 2.1],
+  hTembok: 0.28,
+  /** Ujung atas kedua ramp (masuk landasan barat dek) dan kaki ramp 2 di landasan timur dek 2. */
+  xBarat: 31.2,
+  xKaki2: 35.6,
+  /** Tinggi kaki ramp 1 (di atas aspal tanah). */
+  hKaki: 0.03,
+  /** Lorong mobil di dek (berwarna) dan baris petak di kedua sisinya. */
+  lorongDek: { y0: 14.65, y1: 15.45 },
+  barisDek: [14.17, 15.93],
+} as const;
+
+/** Selama gedung parkir ada, calon penumpang dari parkir muncul di lorong x LORONG_PARKIR.x0 … ini: di kolong, barat kaki ramp. */
+export const X_ORANG_GEDUNG_PARKIR = 36;
+
+/** Mobil parkir tanah baris 2 (pusat x di rentang ini) yang tertimpa ramp & lengkung S: tersembunyi selama gedung parkir ada. */
+export const X_MOBIL_TERTIMPA: readonly [number, number] = [30.5, 37.75];
+
+/** Kemiringan ramp 1 (tanah → dek 2) dan ramp 2 (dek 2 → dek 3): naik per satuan panjang. */
+export const KEMIRINGAN_RAMP = {
+  ramp1: (GEDUNG_PARKIR.hDek[0] - GEDUNG_PARKIR.hKaki) / (GEDUNG_PARKIR.x1 - GEDUNG_PARKIR.xBarat),
+  ramp2: (GEDUNG_PARKIR.hDek[1] - GEDUNG_PARKIR.hDek[0]) / (GEDUNG_PARKIR.xKaki2 - GEDUNG_PARKIR.xBarat),
+} as const;
+
+/** Tinggi permukaan ramp 1 / ramp 2 di x (dijepit ke ujung-ujungnya). */
+export function tinggiRamp(ramp: 1 | 2, x: number): number {
+  const P = GEDUNG_PARKIR;
+  if (ramp === 1) return Math.min(P.hDek[0], Math.max(P.hKaki, P.hKaki + (P.x1 - x) * KEMIRINGAN_RAMP.ramp1));
+  return Math.min(P.hDek[1], Math.max(P.hDek[0], P.hDek[0] + (P.xKaki2 - x) * KEMIRINGAN_RAMP.ramp2));
+}
+
+/**
+ * Jalur aspal ke gedung parkir: lajur di paving timur ruang tunggu (x 50,14–51,6) dari jalan
+ * samping ke lorong parkir, lorong parkir ke barat sampai lengkung S, lengkung S ke kaki ramp 1.
+ * Lajur kiri: tiap lajur punya sisi masuk dan sisi keluar (±0,2 dari tengah).
+ */
+export const AKSES_PARKIR = {
+  /** Tengah & lebar lajur timur (searah y). */
+  xTimur: 50.85,
+  lebarTimur: 0.95,
+  /** Lajur timur mulai di tepi jalan dalam, berbelok ke lorong parkir dengan jari-jari ini. */
+  yTimur0: JALAN_DALAM.y1,
+  jariBelok: 0.95,
+  /** Tengah & lebar lorong parkir (searah x), sampai xLorongBarat. */
+  yLorong: LORONG_PARKIR.y,
+  lebarLorong: 0.8,
+  xLorongBarat: 38.4,
+  /** Lengkung S dari ujung barat lorong ke tengah lajur ramp di kaki ramp 1. */
+  lengkungDari: [38.4, LORONG_PARKIR.y],
+  lengkungKe: [35.8, (GEDUNG_PARKIR.yDek + GEDUNG_PARKIR.y1) / 2],
+  lebarLengkung: 0.78,
+  /** Gapura "P MASUK PARKIR" melintang lajur timur. */
+  yGapura: 13.35,
+} as const;
+
+/** Titik lengkung S (tengah lajur), u 0 → 1 dari lorong ke kaki ramp: belokan halus (smoothstep). */
+export function titikLengkungS(u: number): Titik {
+  const [a, b] = [AKSES_PARKIR.lengkungDari, AKSES_PARKIR.lengkungKe];
+  const v = u * u * (3 - 2 * u);
+  return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * v];
+}
+
+/**
+ * Jalan samping dari ujung timur jalan dalam ke pelataran SPBU (beton mulai x 57,8): asal mobil
+ * gedung parkir, di luar bingkai kamera awal. Bus di kurva KELUAR paling jauh y 4,28.
+ */
+export const JALAN_SAMPING: Persegi = { x0: JALAN_DALAM.x1, y0: 4.5, x1: 57.8, y1: 5.3 };
 
 /** Orang di titik ini berdiri di lantai setinggi peron (peron kedatangan, peron keberangkatan, ruang tunggu). */
 export function diPeron(x: number, y: number): boolean {

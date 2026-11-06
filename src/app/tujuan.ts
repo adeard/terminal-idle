@@ -14,7 +14,8 @@
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { terapkanAksi, type Aksi } from '../sim/aksi';
 import { izinBerikut, type Izin } from '../sim/bangunan';
-import { PO_IDS, TEKNOLOGI_IDS, type BangunanId, type PetugasId, type PoId, type TeknologiId } from '../sim/fitur';
+import { PO_IDS, TEKNOLOGI_IDS, type BangunanId, type GedungLantaiId, type PetugasId, type PoId, type TeknologiId } from '../sim/fitur';
+import { biayaLantai, lantaiUntukUnit } from '../sim/lantai';
 import { levelMinimalKelas } from '../sim/level-terminal';
 import { urutanPo } from '../sim/mitra';
 import type { TugasAktif } from '../sim/musim';
@@ -75,7 +76,9 @@ export type PerbaikanArea =
 
 export type PerbaikanKepuasan =
   | { readonly jenis: 'rekrut'; readonly petugas: 'kebersihan' | 'petugasToilet' | 'satpam' }
-  | { readonly jenis: 'bangun'; readonly bangunan: BangunanId; readonly biaya: number };
+  | { readonly jenis: 'bangun'; readonly bangunan: BangunanId; readonly biaya: number }
+  /** Tambah lantai (documents/18): slot kursi, toilet, atau lahan parkir sudah penuh. `lantai` = nomor lantainya. */
+  | { readonly jenis: 'lantai'; readonly gedung: GedungLantaiId; readonly lantai: number; readonly biaya: number };
 
 export type TujuanDinilai = DasarTujuan &
   (
@@ -87,7 +90,9 @@ export type TujuanDinilai = DasarTujuan &
     | { readonly jenis: 'daftarPo'; readonly po: PoId; readonly nilai: number }
     | { readonly jenis: 'perluasan'; readonly tahap: number; readonly biaya: number }
     | { readonly jenis: 'area'; readonly area: AreaId; readonly perbaikan: PerbaikanArea }
-    | { readonly jenis: 'kepuasan'; readonly komponen: KomponenKepuasan; readonly nilai: number; readonly perbaikan: PerbaikanKepuasan }
+    | { readonly jenis: 'kepuasan'; readonly komponen: KomponenKepuasan; readonly nilai: number; readonly perbaikan: Exclude<PerbaikanKepuasan, { readonly jenis: 'lantai' }> }
+    /** Perbaikan kepuasan lewat lantai (documents/18): `nilai` = komponen itu sekarang (0–1), `lantai` = nomor lantainya. */
+    | { readonly jenis: 'lantai'; readonly komponen: 'kenyamanan' | 'fasilitas'; readonly nilai: number; readonly gedung: GedungLantaiId; readonly lantai: number; readonly biaya: number }
     | { readonly jenis: 'manajer' }
     | { readonly jenis: 'proyek'; readonly tahap: number; readonly sisaDetik: number }
     /** hanyaCadangan: kas sudah ≥ biaya perluasan, kekurangannya hanya untuk cadangan kas. */
@@ -119,6 +124,26 @@ function sesudah(state: GameState, aksi: Aksi, cfg: KonfigEkonomi): GameState | 
   const kaya = { ...state, kas: KAS_KAYA };
   const b = terapkanAksi(kaya, aksi, cfg);
   return b === kaya ? null : b;
+}
+
+/** Kas sesudah aksi berbiaya dan cadangan B sesudahnya; null = aksi tidak berlaku. */
+export interface KasSesudahAksi {
+  /** Keadaan sesudah aksi (kasnya khayalan, lihat `sisa`). */
+  readonly sesudah: GameState;
+  /** Kas yang tersisa sesudah aksi (Rp; boleh negatif bila kas kurang). */
+  readonly sisa: number;
+  /** Cadangan B sesudah aksi: rugi operasi sampai tawaran kontrak berikutnya + sehari (`cadanganKas(…, 1)`). */
+  readonly cadangan: number;
+}
+
+/**
+ * Aturan "aman" saran berbiaya (documents/14 bagian 3.2), juga dipakai kartu lantai (konfirmasi ketuk kedua dan
+ * toast lantai terbuka, temuan playtest T-1): aman bila `sisa` ≥ `cadangan` (baris tujuan menambah biaya perluasan
+ * yang didahulukan).
+ */
+export function kasSesudahAksi(state: GameState, aksi: Aksi, cfg: KonfigEkonomi = EKONOMI): KasSesudahAksi | null {
+  const b = sesudah(state, aksi, cfg);
+  return b && { sesudah: b, sisa: state.kas + (b.kas - KAS_KAYA), cadangan: cadanganKas(b, cfg, 1) };
 }
 
 interface PerluasanBerikut {
@@ -249,15 +274,14 @@ export function daftarTujuan(state: GameState, kunciTampil: string | null, cfg: 
   // selama perluasan berikut terbuka, kasnya juga cukup untuk perluasan itu).
   const dahulukan = berikut?.levelCukup ? berikut.biaya : 0;
   const aman = (kunci: string, aksi: Aksi, gaji: boolean): boolean => {
-    const b = sesudah(state, aksi, cfg);
-    if (!b) return false;
+    const k = kasSesudahAksi(state, aksi, cfg);
+    if (!k) return false;
     if (gaji) {
-      const a = acuanHarian(b, cfg, b.terminal.tarif);
+      const a = acuanHarian(k.sesudah, cfg, k.sesudah.terminal.tarif);
       if (a.laba + a.kontrak < 0) return false;
     }
-    const kasSesudah = state.kas + (b.kas - KAS_KAYA);
-    if (kunci === kunciTampil) return kasSesudah >= 0;
-    return kasSesudah - dahulukan >= cadanganKas(b, cfg, 1);
+    if (kunci === kunciTampil) return k.sisa >= 0;
+    return k.sisa - dahulukan >= k.cadangan;
   };
   const area = operasiState(state, cfg).bottleneck;
   if (area) {
@@ -278,9 +302,16 @@ export function daftarTujuan(state: GameState, kunciTampil: string | null, cfg: 
   }
   const kp = perbaikanKepuasan(state, cfg);
   if (kp) {
-    const kunci = `kepuasan:${kp.komponen}:${kp.perbaikan.jenis === 'rekrut' ? kp.perbaikan.petugas : `${kp.perbaikan.bangunan}:${kp.perbaikan.biaya}`}`;
-    if (aman(kunci, kp.aksi, kp.perbaikan.jenis === 'rekrut'))
-      hasil.push({ jenis: 'kepuasan', tingkat: 3, kunci, siap: true, aksi: kp.aksi, komponen: kp.komponen, nilai: kp.nilai, perbaikan: kp.perbaikan });
+    const p = kp.perbaikan;
+    if (p.jenis === 'lantai') {
+      // Kunci memuat gedung & nomor lantai (pola U-2): lantai berikutnya jadi tujuan baru.
+      const kunci = `lantai:${kp.komponen}:${p.gedung}:${p.lantai}`;
+      if ((kp.komponen === 'kenyamanan' || kp.komponen === 'fasilitas') && aman(kunci, kp.aksi, false))
+        hasil.push({ jenis: 'lantai', tingkat: 3, kunci, siap: true, aksi: kp.aksi, komponen: kp.komponen, nilai: operasiState(state, cfg).kepuasan[kp.komponen], gedung: p.gedung, lantai: p.lantai, biaya: p.biaya });
+    } else {
+      const kunci = `kepuasan:${kp.komponen}:${p.jenis === 'rekrut' ? p.petugas : `${p.bangunan}:${p.biaya}`}`;
+      if (aman(kunci, kp.aksi, p.jenis === 'rekrut')) hasil.push({ jenis: 'kepuasan', tingkat: 3, kunci, siap: true, aksi: kp.aksi, komponen: kp.komponen, nilai: kp.nilai, perbaikan: p });
+    }
   }
   // Manajer Operasional terakhir di tingkat 3, dan hanya bila untung (juga saat pemain pergi) dan kasnya aman.
   if (manajerUntung(state, cfg)) {
@@ -335,6 +366,13 @@ function perbaikanKepuasan(state: GameState, cfg: KonfigEkonomi): { komponen: Ko
   };
   const rekrut = (petugas: 'kebersihan' | 'petugasToilet' | 'satpam'): { perbaikan: PerbaikanKepuasan; aksi: Aksi } | null =>
     bisaRekrutPetugas(state, petugas) ? { perbaikan: { jenis: 'rekrut', petugas }, aksi: { jenis: 'rekrut', petugas } } : null;
+  // Lantai (documents/18) hanya bila slot unit itu penuh dan lantai berikutnya yang menambahnya sudah terbuka.
+  const lantai = (id: BangunanId): { perbaikan: PerbaikanKepuasan; aksi: Aksi } | null => {
+    if (biayaBangunState(state, id, cfg) !== null) return null;
+    const l = lantaiUntukUnit(id, state.terminal.lantai, state.perkembangan.perluasan, levelTerminal(state, cfg), cfg);
+    const biaya = l?.terbuka ? biayaLantai(l.gedung, state.terminal.lantai[l.gedung], cfg) : null;
+    return l && biaya !== null ? { perbaikan: { jenis: 'lantai', gedung: l.gedung, lantai: l.lantai, biaya }, aksi: { jenis: 'tambahLantai', gedung: l.gedung } } : null;
+  };
   const perbaikan = (c: KomponenKepuasan): { perbaikan: PerbaikanKepuasan; aksi: Aksi } | null => {
     switch (c) {
       case 'kebersihan':
@@ -342,11 +380,24 @@ function perbaikanKepuasan(state: GameState, cfg: KonfigEkonomi): { komponen: Ko
       case 'keamanan':
         return n.satpam < b.jalur ? rekrut('satpam') : null;
       case 'kenyamanan':
-        return b.kursi < perluKursi ? bangun('kursi') : null;
+        return b.kursi < perluKursi ? (bangun('kursi') ?? lantai('kursi')) : null;
       case 'fasilitas': {
         const belum = (['toilet', 'kios', 'lahanParkir'] as const).filter((id) => (id === 'kios' ? b.kios + b.toko : b[id]) === 0);
         for (const id of belum) {
           const x = bangun(id);
+          if (x) return x;
+        }
+        // Toilet atau lahan parkir yang kurang (rasio terendah dulu, seperti hitungKepuasan): lantai Gedung toilet (sayapBarat) / Gedung parkir.
+        const arus = Math.max(0, op.arusPuncak);
+        const t = cfg.tycoon;
+        const kurang = [
+          { id: 'toilet' as const, rasio: (b.toilet * t.pemakaiToilet.perUnit) / Math.max(1, arus * t.pemakaiToilet.bagian) },
+          { id: 'lahanParkir' as const, rasio: (b.lahanParkir * t.pengantar.perUnit) / Math.max(1, arus * t.pengantar.bagian) },
+        ]
+          .filter((x) => x.rasio < 1)
+          .sort((x, y) => x.rasio - y.rasio);
+        for (const { id } of kurang) {
+          const x = lantai(id);
           if (x) return x;
         }
         return null;

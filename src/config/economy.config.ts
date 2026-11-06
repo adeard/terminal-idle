@@ -1,4 +1,4 @@
-import type { BangunanId, EventId, KelasBusId, PetugasId, PoId, TarifId, TeknologiId } from '../sim/fitur';
+import type { BangunanId, EventId, GedungLantaiId, KelasBusId, PetugasId, PoId, TarifId, TeknologiId } from '../sim/fitur';
 import type { TahapId } from '../sim/tahap';
 
 /**
@@ -282,6 +282,20 @@ export interface KonfigTarif {
   readonly langkah: number;
 }
 
+/** Lantai tambahan satu gedung (documents/18): dibeli sekali ketuk, isinya langsung terpasang. */
+export interface KonfigLantaiGedung {
+  /** Level terminal untuk lantai tambahan ke-1, ke-2, … (panjangnya = lantai tambahan maksimal). */
+  readonly level: readonly number[];
+  /** Tahap perluasan minimal. */
+  readonly tahap: number;
+  /** Harga lantai tambahan ke-1, ke-2, … (Rp). */
+  readonly biaya: readonly number[];
+  /** Operasional per lantai per hari (Rp), tanpa pengali kelas, pos "Operasional gedung". */
+  readonly operasional: number;
+  /** Slot unit yang ditambah tiap lantai, dan unitnya langsung dibangun. */
+  readonly isi: Readonly<Partial<Record<BangunanId, number>>>;
+}
+
 /** Skor 0–1 dari tarif: `skorBawaan` pada tarif bawaan, turun `turunPerRasio` tiap kelipatan bawaan di atasnya. */
 export interface KonfigSkorTarif {
   readonly skorBawaan: number;
@@ -315,6 +329,8 @@ export interface KonfigTycoon {
    * `jendela` / `jalur` menambah satu slot jenis itu di atas slot tahapnya.
    */
   readonly izinLevel: { readonly tahapMinimal: number; readonly jendela: readonly number[]; readonly jalur: readonly number[] };
+  /** Lantai tambahan per gedung (documents/18). */
+  readonly lantai: Readonly<Record<GedungLantaiId, KonfigLantaiGedung>>;
   /** Gaji satu posisi per hari terminal (Rp): terminal buka 24 jam, jadi satu posisi = tiga shift. */
   readonly gaji: Readonly<Record<PetugasId, number>>;
   readonly tarif: Readonly<Record<TarifId, KonfigTarif>>;
@@ -599,6 +615,13 @@ export const EKONOMI: KonfigEkonomi = {
     },
     // Izin level sejak Perluasan 3: jendela tiap level Lv 11–30 lalu tiap level genap s.d. Lv 140; jalur Lv 16 & 26.
     izinLevel: { tahapMinimal: 3, jendela: [...rentangLevel(11, 30, 1), ...rentangLevel(32, 140, 2)], jalur: [16, 26] },
+    // Lantai tambahan sejak Perluasan 3: `isi` sekaligus tambahan slot, karena satu lantai berisi penuh.
+    lantai: {
+      parkir: { level: [15, 38], tahap: 3, biaya: [300_000_000, 2_000_000_000], operasional: 1_000_000, isi: { lahanParkir: 2 } },
+      ruangTunggu: { level: [21], tahap: 3, biaya: [500_000_000], operasional: 2_000_000, isi: { kursi: 4, kios: 1 } },
+      sayapBarat: { level: [26], tahap: 3, biaya: [300_000_000], operasional: 1_000_000, isi: { toilet: 1 } },
+      aula: { level: [33], tahap: 3, biaya: [1_000_000_000], operasional: 1_000_000, isi: { kursi: 2, toko: 2 } },
+    },
     gaji: {
       peron: 450_000,
       gerbang: 450_000,

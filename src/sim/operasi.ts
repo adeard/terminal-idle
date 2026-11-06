@@ -10,7 +10,7 @@
  * Rancangan: bagian 4 & 7 documents/13-rancangan-tycoon.md.
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
-import { petakBus, type JumlahBangunan } from './bangunan';
+import { petakBus, type JumlahBangunan, type JumlahLantai } from './bangunan';
 import { TEKNOLOGI_IDS, type KelasBusId, type PetugasId, type PoId, type TeknologiId } from './fitur';
 import { faktorReputasi, jurusanAktif, kelasAktif } from './mitra';
 import { hitungPetugas } from './petugas';
@@ -37,6 +37,8 @@ export interface KeadaanOperasi {
   readonly po: readonly PoOperasi[];
   readonly kelasTerminal: number;
   readonly perluasan: number;
+  /** Lantai tambahan tiap gedung (operasional gedung); tanpa ini: tanpa lantai. */
+  readonly lantai?: JumlahLantai;
 }
 
 /** Saat ini: ritme jam (0–1, sudah dilandaikan), pengali pasar dari event musiman. */

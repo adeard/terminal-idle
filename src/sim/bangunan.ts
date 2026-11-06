@@ -5,11 +5,18 @@
  * documents/13-rancangan-tycoon.md; angka di EKONOMI.tycoon.
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
-import { BANGUNAN_IDS, TEKNOLOGI_IDS, type BangunanId, type TeknologiId } from './fitur';
+import { BANGUNAN_IDS, GEDUNG_LANTAI_IDS, TEKNOLOGI_IDS, type BangunanId, type GedungLantaiId, type TeknologiId } from './fitur';
 import { slotPo } from './level-terminal';
 
 /** Jumlah unit tiap jenis bangunan. */
 export type JumlahBangunan = Readonly<Record<BangunanId, number>>;
+
+/** Lantai tambahan tiap gedung (0 = hanya lantai dasar). */
+export type JumlahLantai = Readonly<Record<GedungLantaiId, number>>;
+
+export function lantaiAwal(): JumlahLantai {
+  return Object.fromEntries(GEDUNG_LANTAI_IDS.map((id) => [id, 0])) as Record<GedungLantaiId, number>;
+}
 
 /** Nilai tabel per tahap perluasan (indeks 0 = terminal awal); tahap di luar daftar memakai nilai terakhir. */
 export function menurutTahap(tabel: readonly number[], perluasan: number): number {
@@ -40,9 +47,15 @@ export function levelIzinBerikut(id: BangunanId, level: number, perluasan: numbe
   return iz[id].find((l) => l > level) ?? null;
 }
 
-/** Slot jenis bangunan ini setelah sekian tahap perluasan selesai, di level terminal ini (tabel tahap + izin level). */
-export function slotBangunan(id: BangunanId, perluasan: number, level: number, cfg: KonfigEkonomi = EKONOMI): number {
-  return menurutTahap(cfg.tycoon.bangunan[id].slot, perluasan) + bonusIzin(id, level, perluasan, cfg);
+/** Slot tambahan dari lantai yang sudah dibangun: tiap lantai menambah `isi` gedungnya. */
+export function bonusLantai(id: BangunanId, lantai: JumlahLantai | undefined, cfg: KonfigEkonomi = EKONOMI): number {
+  if (!lantai) return 0;
+  return GEDUNG_LANTAI_IDS.reduce((a, g) => a + Math.max(0, lantai[g]) * (cfg.tycoon.lantai[g].isi[id] ?? 0), 0);
+}
+
+/** Slot jenis bangunan ini setelah sekian tahap perluasan selesai, di level terminal ini (tabel tahap + izin level + lantai). */
+export function slotBangunan(id: BangunanId, perluasan: number, level: number, cfg: KonfigEkonomi = EKONOMI, lantai?: JumlahLantai): number {
+  return menurutTahap(cfg.tycoon.bangunan[id].slot, perluasan) + bonusIzin(id, level, perluasan, cfg) + bonusLantai(id, lantai, cfg);
 }
 
 /** Slot yang terbuka dari naik level: jendela loket & jalur (izin level), dan slot PO ke-n (0 = tidak ada). */
@@ -95,8 +108,8 @@ export function biayaUnitBerikutnya(id: BangunanId, jumlah: number, cfg: KonfigE
 }
 
 /** Biaya membangun satu unit lagi, atau null bila slotnya sudah penuh. */
-export function biayaBangun(id: BangunanId, bangunan: JumlahBangunan, perluasan: number, level: number, cfg: KonfigEkonomi = EKONOMI): number | null {
-  return bangunan[id] < slotBangunan(id, perluasan, level, cfg) ? biayaUnitBerikutnya(id, bangunan[id], cfg) : null;
+export function biayaBangun(id: BangunanId, bangunan: JumlahBangunan, perluasan: number, level: number, cfg: KonfigEkonomi = EKONOMI, lantai?: JumlahLantai): number | null {
+  return bangunan[id] < slotBangunan(id, perluasan, level, cfg, lantai) ? biayaUnitBerikutnya(id, bangunan[id], cfg) : null;
 }
 
 /** Paling sedikit setelah dibongkar: jendela loket satu, supaya tiket tetap terjual. */
@@ -127,11 +140,12 @@ export function perawatanHarian(bangunan: JumlahBangunan, teknologi: Readonly<Re
 }
 
 /**
- * Biaya operasional gedung perluasan per hari (Rp) setelah sekian tahap selesai.
+ * Biaya operasional gedung perluasan per hari (Rp) setelah sekian tahap selesai, ditambah operasional lantai.
  * Tidak ikut pengali kelas terminal: angkanya sudah menurut ukuran gedungnya.
  */
-export function operasionalGedung(perluasan: number, cfg: KonfigEkonomi = EKONOMI): number {
-  return cfg.mitra.perluasan.slice(0, Math.max(0, Math.floor(perluasan))).reduce((a, p) => a + p.operasional, 0);
+export function operasionalGedung(perluasan: number, cfg: KonfigEkonomi = EKONOMI, lantai?: JumlahLantai): number {
+  const gedung = cfg.mitra.perluasan.slice(0, Math.max(0, Math.floor(perluasan))).reduce((a, p) => a + p.operasional, 0);
+  return lantai ? GEDUNG_LANTAI_IDS.reduce((a, g) => a + Math.max(0, lantai[g]) * cfg.tycoon.lantai[g].operasional, gedung) : gedung;
 }
 
 /** Pengali gaji, perawatan & listrik menurut kelas terminal. */

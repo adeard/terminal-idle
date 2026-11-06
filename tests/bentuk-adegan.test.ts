@@ -18,9 +18,9 @@ import {
   PANGKALAN,
   SAYAP_BARAT,
   SAYAP_DUA,
-  TANGGA_L2,
+  TANGGA,
   TIANG_BENDERA,
-  tinggiTanggaL2,
+  tinggiTangga,
   X_JALUR_KAKI,
   Y_PAGAR,
   type Persegi,
@@ -149,7 +149,29 @@ describe('denah Sayap 2 Lantai (dokumen 16 bagian 3.1)', () => {
     expect(SAYAP_DUA.a1).toEqual({ x0: -2.0, y0: 11.2, x1: 6.4, y1: 17.2 });
     expect(SAYAP_DUA.a2a).toEqual({ x0: 6.4, y0: 15.6, x1: 10.4, y1: 17.2 });
     expect(SAYAP_DUA.a2b).toEqual({ x0: 2.0, y0: 17.2, x1: 10.4, y1: 19.9 });
-    expect(SAYAP_DUA.a3).toEqual({ x0: 10.45, y0: 15.7, x1: 11.55, y1: 17.46 });
+    // A3 = kotak batas tangga terbuka yang dipilih.
+    const b = TANGGA.bagian;
+    expect(SAYAP_DUA.a3).toEqual({ x0: Math.min(...b.map((x) => x.x0)), y0: Math.min(...b.map((x) => x.y0)), x1: Math.max(...b.map((x) => x.x1)), y1: Math.max(...b.map((x) => x.y1)) });
+  });
+
+  it('tangga A3: bentang ≤ 34°, bagian bersambung tanpa loncatan tinggi, kaki di plaza, ujung atas di tepi teras', () => {
+    for (const [nama, t] of [['tangga A3', TANGGA]] as const) {
+      t.bagian.forEach((b, i) => {
+        const panjang = b.arah === '+x' || b.arah === '-x' ? b.x1 - b.x0 : b.y1 - b.y0;
+        expect(Math.atan2(Math.abs(b.h1 - b.h0), panjang), `${nama} bagian ${i}`).toBeLessThanOrEqual((34.5 * Math.PI) / 180);
+        if (i > 0) expect(b.h0, `${nama} bagian ${i}`).toBeCloseTo(t.bagian[i - 1]!.h1, 9);
+      });
+      expect(t.bagian[0]!.h0).toBeLessThan(0.05);
+      const atas = t.bagian[t.bagian.length - 1]!;
+      expect(atas.h1).toBe(H_LANTAI_2);
+      expect(atas.x0).toBe(SAYAP_DUA.a2a.x1);
+      // Bukaan pagar teras di sisi bordes atas.
+      expect(t.bukaanTeras[0]).toBeGreaterThanOrEqual(atas.y0 - 1e-9);
+      expect(t.bukaanTeras[1]).toBeLessThanOrEqual(atas.y1 + 1e-9);
+      // Kaki tangga lapang: tiang bendera dan lampu plaza ≥ 0,6 dari semua bagian.
+      for (const [x, y] of [t.tiangBendera, t.lampuPlaza])
+        for (const b of t.bagian) expect(Math.hypot(Math.max(b.x0 - x, 0, x - b.x1), Math.max(b.y0 - y, 0, y - b.y1)), nama).toBeGreaterThanOrEqual(0.6);
+    }
   });
 
   it('tidak beririsan dengan jalur kaki, pangkalan, sayap barat, tiang bendera, dan slot luapan terakhir', () => {
@@ -324,20 +346,21 @@ describe('pengunjung lantai 2', () => {
     }
   });
 
-  it('terlihat naik & turun lewat lajurnya, dan tingginya mengikuti tangga', () => {
-    const { naik, turun, yBordes, y1 } = TANGGA_L2;
+  it('terlihat naik & turun tangga A3, dan tingginya mengikuti pijakan di bentang & bordes', () => {
     for (const i of SEMUA) {
       let naikTerlihat = false;
       let turunTerlihat = false;
-      for (let t = 0; t < DURASI; t += LANGKAH) {
-        const p = posisiPengunjung(i, t);
-        if (p.y <= yBordes || p.y >= y1) continue;
-        const diNaik = p.x >= naik[0] && p.x <= naik[1];
-        const diTurun = p.x >= turun[0] && p.x <= turun[1];
-        if (!diNaik && !diTurun) continue;
-        expect(p.h).toBeCloseTo(tinggiTanggaL2(p.y), 5);
-        naikTerlihat ||= diNaik;
-        turunTerlihat ||= diTurun;
+      let lalu = posisiPengunjung(i, 0);
+      lalu = { ...lalu };
+      for (let t = LANGKAH; t < DURASI; t += LANGKAH) {
+        const p = { ...posisiPengunjung(i, t) };
+        const h = tinggiTangga(p.x, p.y);
+        if (h !== null && !p.duduk) {
+          expect(p.h, `orang ${i} detik ${t} di (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`).toBeCloseTo(h, 5);
+          if (p.h > lalu.h + 1e-6) naikTerlihat = true;
+          if (p.h < lalu.h - 1e-6) turunTerlihat = true;
+        }
+        lalu = p;
       }
       expect(naikTerlihat, `orang ${i} naik`).toBe(true);
       expect(turunTerlihat, `orang ${i} turun`).toBe(true);

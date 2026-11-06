@@ -3,7 +3,7 @@
  * Bentuk data ini memudahkan replay/analitik nanti tanpa mengubah UI.
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
-import type { BangunanId, PencapaianId, PetugasId, PoId, TarifId, TeknologiId } from './fitur';
+import type { BangunanId, GedungLantaiId, PencapaianId, PetugasId, PoId, TarifId, TeknologiId } from './fitur';
 import { gantiTugas, nilaiTugasKelola, pakaiHiasan, pakaiSuratArmada, tutupRapor, tutupSambutanMusim, type SlotHiasan } from './musim';
 import {
   aktifkanBoost,
@@ -30,6 +30,7 @@ import {
   putusPo,
   rekrutPetugas,
   tahanBusEmas,
+  tambahLantai,
   type GameState,
 } from './state';
 
@@ -46,6 +47,8 @@ export type Aksi =
   /** Pakai saran untuk satu tarif (yang paling menguntungkan sehari, mitra PO tetap puas). */
   | { readonly jenis: 'saranTarif'; readonly tarif: TarifId }
   | { readonly jenis: 'beliTeknologi'; readonly teknologi: TeknologiId }
+  /** Bangun lantai berikutnya gedung ini (sekali ketuk, isinya langsung terpasang; tidak bisa dibongkar). */
+  | { readonly jenis: 'tambahLantai'; readonly gedung: GedungLantaiId }
   /** Sewakan jendela kosong (gratis): satu ke `po`, atau semuanya ke PO yang antreannya paling panjang. */
   | { readonly jenis: 'isiJendelaKosong'; readonly po?: PoId }
   /** Daftarkan mitra PO ke slot terminal. */
@@ -111,6 +114,8 @@ function terapkan(state: GameState, aksi: Aksi, cfg: KonfigEkonomi): GameState {
       return pakaiSaranTarif(state, aksi.tarif, cfg);
     case 'beliTeknologi':
       return beliTeknologi(state, aksi.teknologi, cfg);
+    case 'tambahLantai':
+      return tambahLantai(state, aksi.gedung, cfg);
     case 'isiJendelaKosong':
       return isiJendelaKosong(state, aksi.po ?? null, cfg);
     case 'daftarPo':

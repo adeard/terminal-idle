@@ -4,13 +4,15 @@
  * mitra PO, penghargaan, rekor, …). Murni, tanpa DOM; ditampilkan oleh overlay.ts.
  */
 import { kepuasanTurunBerlaku, type KepuasanTurun } from '../app/kepuasan-turun';
-import { izinAntara } from '../sim/bangunan';
-import type { PoId } from '../sim/fitur';
+import { EKONOMI } from '../config/economy.config';
+import { izinAntara, type JumlahLantai } from '../sim/bangunan';
+import { GEDUNG_LANTAI_IDS, type GedungLantaiId, type PoId } from '../sim/fitur';
+import { lantaiTerbukaAntara } from '../sim/lantai';
 import { hadiahTingkat, musimDariId, tingkatRapor, type MusimState } from '../sim/musim';
 import { formatAngka } from './format';
 import type { ModelPoTerdaftar, ModelTampilan } from './model';
 import { wajahKepuasan } from './popup-kepuasan';
-import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_EVENT, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, NAMA_TEMA_MUSIM, TEKS, teksHadiahNaik, teksIzin, teksSlotTanpaJendela } from './teks';
+import { EFEK_PERLUASAN, namaKelas, NAMA_AREA, NAMA_EVENT, NAMA_GEDUNG_LANTAI, NAMA_KELAS_BUS, NAMA_PENCAPAIAN, NAMA_PERLUASAN, NAMA_PO, NAMA_TEMA_MUSIM, TEKS, teksHadiahNaik, teksIzin, teksSlotTanpaJendela } from './teks';
 
 /**
  * @param diputus PO yang diputus pemain sendiri: keluarnya bukan karena kontrak habis.
@@ -46,6 +48,14 @@ export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diput
   // kapan slot jendela berikutnya datang (level izin atau perluasan; playtest P-4).
   if (t.slot > tl.slot) return m.mitra.tersedia.some((p) => p.bisa) ? TEKS.notifSlotBaru(t.slot) : teksSlotTanpaJendela(t.slot, m.bangun.bangunan.jendela.slotBerikut);
   if (t.level > tl.level) {
+    // Lantai yang terbuka di level ini: satu toast gabungan dengan naik level (documents/18, rancangan 4.4).
+    const lantai = lantaiTerbukaAntara(tl.level, t.level, t.perluasan.selesai, EKONOMI, jumlahLantaiModel(m))[0];
+    if (lantai) {
+      // Hanya mengajak membeli bila kas aman sesudahnya (aturan baris tujuan, kartu lantai; temuan playtest T-1).
+      const kartu = m.bangun.lantai[lantai.gedung];
+      const aman = kartu?.keadaan === 'terjangkau' && !kartu.peringatanKas;
+      return (aman ? TEKS.notifLantaiTerbukaLevel : TEKS.notifLantaiTerbukaTabung)(t.level, lantai.lantai, NAMA_GEDUNG_LANTAI[lantai.gedung].nama);
+    }
     // Izin level jendela & jalur ditempel ke toast naik level (slot PO punya toast sendiri di atas).
     const iz = izinAntara(tl.level, t.level, t.perluasan.selesai);
     const izin = teksIzin({ ...iz, slotPo: 0 });
@@ -74,6 +84,17 @@ export function notifikasiPerubahan(lalu: ModelTampilan, m: ModelTampilan, diput
   if (poNaik) return TEKS.notifPoLevel(NAMA_PO[poNaik.id].nama, poNaik.level, barangBaruPo(sebelum.get(poNaik.id)!, poNaik));
   if (m.target.selesai && !lalu.target.selesai && !m.target.diklaim) return TEKS.notifTarget;
   return null;
+}
+
+/** Lantai tambahan tiap gedung menurut kartu lantai (gedung yang kartunya tersembunyi: 0). */
+function jumlahLantaiModel(m: ModelTampilan): JumlahLantai {
+  return Object.fromEntries(GEDUNG_LANTAI_IDS.map((g) => [g, m.bangun.lantai[g]?.lantai ?? 0])) as Record<GedungLantaiId, number>;
+}
+
+/** Toast sesudah lantai dibeli (rancangan 4.5): nama gedung, jumlah lantainya kini, isi pendek. Diketuk: mode lantai. */
+export function teksLantaiDibeli(gedung: GedungLantaiId, lantai: number): string {
+  const g = NAMA_GEDUNG_LANTAI[gedung];
+  return TEKS.notifLantaiDibeli(g.nama, 1 + lantai, g.isiPendek);
 }
 
 /** Kelas bus & jurusan yang baru terbuka di PO ini di antara dua pembaruan (teks; kosong bila tidak ada). */
@@ -178,8 +199,10 @@ export interface PesanNotif {
   readonly teks: string;
   /** Kas menipis, petugas berhenti, peresmian susulan (lihat notifBahaya): melompati antrean. */
   readonly bahaya?: boolean;
-  /** Toast kepuasan turun (angkanya): satu-satunya yang bisa diketuk (membuka popup kepuasan). */
+  /** Toast kepuasan turun (angkanya): bisa diketuk, membuka popup kepuasan. */
   readonly kepuasan?: KepuasanTurun;
+  /** Toast lantai dibeli: bisa diketuk ("👁 Lihat"), masuk mode lantai gedung ini. */
+  readonly lantai?: GedungLantaiId;
 }
 
 /** Pesan yang tertunda paling banyak sekian (yang sedang tampil tidak dihitung). */

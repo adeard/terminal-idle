@@ -8,7 +8,7 @@ import { acakBerbenih } from './dunia-visual';
 import { atapLimas, bayanganKontak, bidang, kotak, persegiTegak, silinder, uvDunia, type Kumpulan } from './geometri';
 import { SKALA_UV, type PustakaMaterial } from './material3d';
 import { geometriMobil, geometriMotor, kendaraanDiwarnai, WARNA_BAJU, WARNA_MOBIL } from './mobil3d';
-import { GANG_RUKO, GERBANG_KELUAR_X, GERBANG_MASUK_X, JALAN_DALAM, LEBAR_GERBANG_PAGAR, RUANG_TUNGGU, SAYAP_DUA, Y_PAGAR } from './tata-letak';
+import { GANG_RUKO, GERBANG_KELUAR_X, GERBANG_MASUK_X, JALAN_DALAM, LEBAR_GERBANG_PAGAR, RUANG_TUNGGU, SAYAP_DUA, X_MOBIL_TERTIMPA, Y_PAGAR } from './tata-letak';
 
 /** Jalan lingkungan di belakang terminal (y) dan lajurnya (dipakai lalu lintas dekoratif). */
 export const JALAN_BELAKANG = { y0: 20.4, y1: 21.8, lajurTimur: 20.75, lajurBarat: 21.45, x0: -60, x1: 100 } as const;
@@ -21,6 +21,7 @@ const LAHAN_TERAS = { x0: SAYAP_DUA.a2b.x0, x1: SAYAP_DUA.a2b.x1 } as const;
  * @param parkirMobil tempat mobil pengunjung baris pertama (beserta deret motor)
  *   & baris kedua parkir: pemanggil menampilkannya sesuai lahan parkir yang
  *   dibangun (lihat fasilitasAdegan). Marka petak tetap di kumpulan utama.
+ *   Mobil baris kedua di bawah gedung parkir ada di bagian 'lahan' kumpulannya.
  */
 export function bangunSekitar(k: Kumpulan, m: PustakaMaterial, garisListrik: THREE.Object3D, parkirMobil: readonly [Kumpulan, Kumpulan] = [k, k]): void {
   jalanBelakang(k, m);
@@ -112,8 +113,11 @@ function parkir(k: Kumpulan, m: PustakaMaterial, [baris1, baris2]: readonly [Kum
       if (x > RUANG_TUNGGU.x1 - 0.2) break;
       k.tambah(m.marka, bidang(x - 0.26, yBaris - 0.5, x - 0.235, yBaris + 0.5, 0.026), { bayangan: false });
       if (acak() < 0.72) {
+        // Baris 2 di bawah ramp & lengkung S gedung parkir: bagian 'lahan' kumpulannya, hilang selama gedungnya ada.
+        if (kMobil === baris2 && kMobil !== k) kMobil.bagian = x >= X_MOBIL_TERTIMPA[0] && x <= X_MOBIL_TERTIMPA[1] ? 'lahan' : 'dasar';
         kMobil.tambah(m.kendaraan, kendaraanDiwarnai(mobil, WARNA_MOBIL[Math.floor(acak() * WARNA_MOBIL.length)]!, x, yBaris, sudut));
         kMobil.tambah(m.kontak, bayanganKontak(x - 0.17, yBaris - 0.44, x + 0.17, yBaris + 0.44, 0.12, 0.4, 0.03), { bayangan: false, terimaBayangan: false });
+        kMobil.bagian = 'dasar';
       }
     }
   }

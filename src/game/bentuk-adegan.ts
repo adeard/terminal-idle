@@ -8,7 +8,7 @@
  */
 import type { JumlahBangunan } from '../sim/bangunan';
 import { dalamRentang, JAM_LOKET_MALAM, tokoBuka } from './kehidupan-malam';
-import { BLOK_KURSI, H_LANTAI_2, KECEPATAN_JALAN, LOKET_L2, MEJA_L2, MEJA_TERAS, BLOK_KURSI_L2, KIOS_TERAS, TANGGA_L2, tinggiTanggaL2, TOKO_AULA, X_LOKET } from './tata-letak';
+import { BLOK_KURSI, H_LANTAI_2, H_PLAZA, KECEPATAN_JALAN, LOKET_L2, MEJA_L2, MEJA_TERAS, BLOK_KURSI_L2, KIOS_TERAS, TANGGA, TOKO_AULA, X_LOKET } from './tata-letak';
 
 /** Tahap perluasan yang membangun Sayap 2 Lantai (1-based). */
 export const TAHAP_SAYAP = 3;
@@ -116,21 +116,15 @@ export function jumlahPengunjung(isi: IsiLantai2, keramaian: number): number {
 
 type Titik3 = readonly [number, number, number];
 
-/** Gang gerbang MASUK → plaza → kaki tangga. */
-const H_PLAZA = 0.012;
+/** Gang gerbang MASUK → plaza → dekat kaki tangga. */
 const RUTE_DARI_GANG: readonly Titik3[] = [
   [18.3, 18.6, 0.016],
   [18.3, 17.5, H_PLAZA],
-  [12.8, 17.55, H_PLAZA],
+  [TANGGA.dariGang[0], TANGGA.dariGang[1], H_PLAZA],
 ];
-const X_NAIK = (TANGGA_L2.naik[0] + TANGGA_L2.naik[1]) / 2;
-const X_TURUN = (TANGGA_L2.turun[0] + TANGGA_L2.turun[1]) / 2;
-/** Garis y di bordes atas tangga, tempat lajur naik & turun bertemu jalan ke teras. */
-const Y_BORDES = (TANGGA_L2.y0 + TANGGA_L2.yBordes) / 2;
-const titikTangga = (x: number, y: number): Titik3 => [x, y, tinggiTanggaL2(y)];
-/** Lajur naik: kaki tangga → bordes → jalan di timur kios teras. */
-const RUTE_NAIK: readonly Titik3[] = [titikTangga(X_NAIK, TANGGA_L2.y1), titikTangga(X_NAIK, TANGGA_L2.yBordes), [X_NAIK, Y_BORDES, H_LANTAI_2], [10.1, Y_BORDES, H_LANTAI_2]];
-const RUTE_TURUN: readonly Titik3[] = [[10.1, Y_BORDES, H_LANTAI_2], [X_TURUN, Y_BORDES, H_LANTAI_2], titikTangga(X_TURUN, TANGGA_L2.yBordes), titikTangga(X_TURUN, TANGGA_L2.y1)];
+/** Naik dan turun tangga A3 (lajur & bordes di TANGGA, tata-letak.ts), dari dan ke plaza; ujung atasnya di teras. */
+const RUTE_NAIK: readonly Titik3[] = TANGGA.naik;
+const RUTE_TURUN: readonly Titik3[] = TANGGA.turun;
 /** Selasar teras di selatan deret kios. */
 const Y_SELASAR = 16.7;
 /** Lorong barat–timur teras, di utara baris meja pertama. */

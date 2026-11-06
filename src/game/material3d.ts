@@ -83,6 +83,12 @@ export interface PustakaMaterial {
   readonly besi: THREE.Material;
   readonly besiGelap: THREE.Material;
   readonly kaca: THREE.Material;
+  /**
+   * Pita jendela lantai tambahan (documents/18, keputusan owner 6): rupa siangnya sama dengan
+   * kaca, tetapi menyala terang di malam hari supaya lantai yang dibeli tetap terlihat. Bahan
+   * sendiri, supaya kaca kios, rumah, ruko, dan SPBU (m.kaca) tidak ikut berubah.
+   */
+  readonly kacaLantai: THREE.Material;
   readonly emas: THREE.Material;
   readonly semak: THREE.Material;
   readonly daun: THREE.Material;
@@ -253,6 +259,8 @@ export function buatMaterial(renderer: THREE.WebGLRenderer, teksturAtlas: THREE.
     besi: standar({ color: 0x9aa3ad, roughness: 0.35, metalness: 0.7 }),
     besiGelap: standar({ color: 0x3b4149, roughness: 0.45, metalness: 0.6 }),
     kaca: standar({ color: 0x5f7f96, roughness: 0.06, metalness: 0.3 }),
+    // Parameter sama dengan kaca: program shader-nya dipakai bersama, jadi tidak ada kompilasi baru.
+    kacaLantai: standar({ color: 0x5f7f96, roughness: 0.06, metalness: 0.3 }),
     emas: standar({ color: 0xd4a017, roughness: 0.3, metalness: 0.9 }),
     semak: standar({ color: 0x3f7f3a, roughness: 0.95 }),
     daun: standar({ vertexColors: true, roughness: 0.95 }),
@@ -337,6 +345,7 @@ export function buatMaterial(renderer: THREE.WebGLRenderer, teksturAtlas: THREE.
   daftar(m.kacaAtap, 0xffdcaa, 0.5);
   daftar(m.kacaDinding, 0xffdcaa, 0.55);
   daftar(m.kaca, 0xffd9a0, 0.35);
+  daftar(m.kacaLantai, 0xffd9a0, 1.0);
   daftar(m.jadwal, null, 1.3, 0.55);
   daftar(m.layar, null, 0.9, 0.35);
   daftar(m.jam, null, 0.9);

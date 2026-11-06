@@ -65,7 +65,8 @@ describe('bentuk save', () => {
     expect(VERSI_SKEMA).toBe(3);
     expect(kunci).toEqual({
       '': ['benihCuaca', 'event', 'hadiah', 'harian', 'kas', 'keuangan', 'mitra', 'musim', 'pencapaian', 'perkembangan', 'profil', 'rekor', 'schemaVersion', 'statistik', 'tantangan', 'terminal', 'waktuTerakhirMs'],
-      terminal: ['bangunan', 'id', 'petugas', 'tarif', 'teknologi'],
+      // Lantai tambahan (0.6.0, documents/18): field opsional, skema tetap 3.
+      terminal: ['bangunan', 'id', 'lantai', 'petugas', 'tarif', 'teknologi'],
       mitra: ['hadiahEvent', 'jedaSampai', 'riwayat', 'terdaftar'],
       perkembangan: ['perluasan', 'proyekDetik', 'xpTerminal'],
       keuangan: ['hariIni', 'hariTanpaRugi', 'kemarin', 'petugasBerhenti', 'tunggakanJam'],

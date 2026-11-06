@@ -177,7 +177,8 @@ export class HiasanLevel3D {
     const hAtap = new Busur(a.y0, a.y1, a.hTepi, a.hPuncak).tinggi(y);
     const [h0, h1] = [2.2, p.h1];
     for (const x of [p.x0 + 0.6, p.x1 - 0.6]) k.tambah(u, this.bahan, balok(x - 0.05, y - 0.05, x + 0.05, y + 0.05, hAtap - 0.05, h0, HEX.besiGelap));
-    k.tambah(u, this.bahan, balok(p.x0, y, p.x1, y + 0.3, h0 - 0.08, h0 - 0.04, HEX.besi));
+    // Titian sempit: tetap di dalam kotak bendanya (y1), di luar cadangan Antarpulau.
+    k.tambah(u, this.bahan, balok(p.x0, y, p.x1, p.y1, h0 - 0.08, h0 - 0.04, HEX.besi));
     k.tambah(u, this.bahan, balok(p.x0, y - 0.05, p.x1, y + 0.05, h0, h1, HEX.besiGelap));
     const yMuka = y + 0.05;
     const [xa, xb] = [p.x0 + 0.06, p.x1 - 0.06];

@@ -12,6 +12,7 @@
  * sebagai peristiwa `exception` GA4. Tidak ada data pribadi yang dikirim.
  */
 import type { Aksi } from '../sim/aksi';
+import { GEDUNG_LANTAI_IDS, type LantaiDilihat } from '../sim/fitur';
 import { tingkatRapor, type TugasAktif } from '../sim/musim';
 import { jurusanDilayani, kelasTerminal, kepuasanTerminal, levelTerminal, type GameState } from '../sim/state';
 import type { JenisTujuan } from './tujuan';
@@ -98,7 +99,14 @@ export function ringkasanSesi(awal: GameState, akhir: GameState, bangun: number,
     kepuasan: Math.round(kepuasanTerminal(akhir).nilai * 100),
     // Tingkat Rapor Musim di akhir sesi (−1 = musim belum terbuka; documents/17 bagian 9.2).
     musim_tingkat: akhir.musim.id === null ? -1 : tingkatRapor(akhir.musim.poin),
+    // Jumlah lantai tambahan semua gedung (documents/18).
+    lantai: GEDUNG_LANTAI_IDS.reduce((a, g) => a + akhir.terminal.lantai[g], 0),
   };
+}
+
+/** Pemain masuk mode lihat per lantai ("👁 Lihat" di kartu atau toast): gedung & nomor lantai yang dibuka. */
+export function peristiwaLantaiLihat(v: LantaiDilihat): PeristiwaAnalitik {
+  return { nama: 'lantai_lihat', data: { gedung: v.gedung, lantai: v.lantai } };
 }
 
 const kunciTugas = (t: TugasAktif): string => `${t.hari}|${t.templat}`;
@@ -140,6 +148,9 @@ export function peristiwaAksi(aksi: Aksi, lama: GameState, baru: GameState): Per
       return [{ nama: 'saran_tarif', data: { tarif: aksi.tarif } }];
     case 'beliTeknologi':
       return [{ nama: 'beli_teknologi', data: { teknologi: aksi.teknologi } }];
+    case 'tambahLantai':
+      // lantai = nomor lantai yang baru dibangun (2 = lantai tambahan pertama), seperti chip mode lantai.
+      return [{ nama: 'lantai_beli', data: { gedung: aksi.gedung, lantai: 1 + baru.terminal.lantai[aksi.gedung], level: levelTerminal(baru) } }];
     case 'isiJendelaKosong':
       return [];
     case 'daftarPo':
@@ -209,7 +220,7 @@ export class PencatatAnalitik implements Analitik {
   }
 
   catatAksi(aksi: Aksi, lama: GameState, baru: GameState): void {
-    if ((aksi.jenis === 'bangun' || aksi.jenis === 'beliTeknologi') && baru !== lama) this.jumlahBangun++;
+    if ((aksi.jenis === 'bangun' || aksi.jenis === 'beliTeknologi' || aksi.jenis === 'tambahLantai') && baru !== lama) this.jumlahBangun++;
     for (const p of peristiwaAksi(aksi, lama, baru)) this.catat(p.nama, p.data);
   }
 

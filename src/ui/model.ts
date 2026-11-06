@@ -2,18 +2,40 @@
  * View model: semua angka yang ditampilkan UI, diturunkan dari GameState
  * lewat fungsi sim. UI tidak menghitung ekonomi sendiri. Murni, tanpa DOM.
  */
-import { kasMenipis } from '../app/tujuan';
+import { kasMenipis, kasSesudahAksi } from '../app/tujuan';
 import { EKONOMI, type KonfigEkonomi, type TingkatPo } from '../config/economy.config';
 import { WAKTU } from '../config/waktu.config';
 import { izinBerikut, levelIzinBerikut, menurutTahap, petakBus, pengaliBiayaKelas, perawatanHarian, type Izin } from '../sim/bangunan';
 import { cuacaTerminalState } from '../sim/cuaca';
 import { MUSIM, SLOT_HIASAN, type KonfigMusim, type SlotHiasan, type TemaMusimId, type TemplatTugas } from '../config/musim.config';
-import { BANGUNAN_IDS, EVENT_IDS, isPoId, KELAS_BUS_IDS, PENCAPAIAN_IDS, PETUGAS_IDS, PO_IDS, TARIF_IDS, TEKNOLOGI_IDS, type BangunanId, type EventId, type JenisTarget, type KelasBusId, type PencapaianId, type PetugasId, type PoId, type TarifId, type TeknologiId } from '../sim/fitur';
+import {
+  BANGUNAN_IDS,
+  EVENT_IDS,
+  GEDUNG_LANTAI_IDS,
+  isPoId,
+  KELAS_BUS_IDS,
+  PENCAPAIAN_IDS,
+  PETUGAS_IDS,
+  PO_IDS,
+  TARIF_IDS,
+  TEKNOLOGI_IDS,
+  type BangunanId,
+  type EventId,
+  type GedungLantaiId,
+  type JenisTarget,
+  type KelasBusId,
+  type PencapaianId,
+  type PetugasId,
+  type PoId,
+  type TarifId,
+  type TeknologiId,
+} from '../sim/fitur';
+import { biayaLantai, lantaiUntukUnit, petugasIkutLantai, syaratLantai } from '../sim/lantai';
 import { caraGanti, hadiahBerikut, musimDariId, peringkatTuas, slotHiasan, tingkatRapor, tuasTugas, xpSuratArmada, type AksiTuas, type HadiahMusim, type TugasAktif, type TuasTugas } from '../sim/musim';
 import type { RincianBiaya, RincianPendapatan } from '../sim/keuangan';
 import { kelasDariLevel, levelMinimalKelas, xpKumulatifTerminal } from '../sim/level-terminal';
 import { jurusanAktif, kelasAktif, levelPoDariXp, nilaiJurusan, nilaiTiketPo, urutanPo, xpKumulatifPo, xpLevelPo, type TawaranKontrak } from '../sim/mitra';
-import { AREA_IDS, dayaTarikTycoon, penumpangMenunggu, type AreaId } from '../sim/operasi';
+import { AREA_IDS, dayaTarikTycoon, penumpangMenunggu, type AreaId, type KepuasanTycoon } from '../sim/operasi';
 import { maksPetugas } from '../sim/petugas';
 import {
   acuanHarian,
@@ -51,9 +73,11 @@ import {
   paketHadiah,
   pengaliBoost,
   pengaliEvent,
+  parkirHarian,
   pengembalianBongkarState,
   slotBangunanState,
   slotPoState,
+  terminalDenganLantai,
   pengembalianPutus,
   syaratDaftarPoKurang,
   tawaranKontrakPo,
@@ -167,10 +191,15 @@ export interface ModelBangunan {
   readonly jumlah: number;
   readonly slot: number;
   /**
-   * Yang menambah slot berikutnya: tahap perluasan (1 = pertama) atau level terminal (izin level, bila
-   * lebih dulu dari perluasan yang menambah slot); null = tidak ada lagi.
+   * Yang menambah slot berikutnya: tahap perluasan (1 = pertama), level terminal (izin level, bila
+   * lebih dulu dari perluasan yang menambah slot), atau lantai gedung (nomor lantai, levelnya, sudah terbuka);
+   * null = tidak ada lagi.
    */
-  readonly slotBerikut: { readonly jenis: 'perluasan'; readonly tahap: number } | { readonly jenis: 'level'; readonly level: number } | null;
+  readonly slotBerikut:
+    | { readonly jenis: 'perluasan'; readonly tahap: number }
+    | { readonly jenis: 'level'; readonly level: number }
+    | { readonly jenis: 'lantai'; readonly gedung: GedungLantaiId; readonly lantai: number; readonly level: number; readonly terbuka: boolean }
+    | null;
   /** Biaya unit berikutnya; null = slot penuh. */
   readonly biaya: number | null;
   readonly bisa: boolean;
@@ -193,6 +222,43 @@ export interface ModelTeknologi {
   readonly bisa: boolean;
 }
 
+/**
+ * Keadaan kartu lantai (rancangan 4.4): terkunci level (belum ada lantai tambahan), terjangkau, kas kurang (juga
+ * sesudah aksi yang gagal), selesai dengan lantai berikutnya terkunci level, dan maksimal. Tersembunyi = kartunya null.
+ */
+export type KeadaanLantai = 'terkunci' | 'terjangkau' | 'kurang' | 'selesai' | 'maks';
+
+/** Satu bagian pratinjau efek lantai di kartu: komponen kepuasan (persen bulat) atau pendapatan parkir per hari. */
+export type BagianPratinjau =
+  | { readonly jenis: 'komponen'; readonly komponen: 'kenyamanan' | 'fasilitas' | 'kebersihan'; readonly dari: number; readonly ke: number }
+  | { readonly jenis: 'parkir'; readonly selisih: number };
+
+/** Kartu lantai satu gedung (tab Bangun; documents/18). */
+export interface ModelLantai {
+  readonly gedung: GedungLantaiId;
+  /** Lantai tambahan yang sudah dibangun (0 = hanya lantai dasar). */
+  readonly lantai: number;
+  readonly keadaan: KeadaanLantai;
+  /** Lantai berikutnya: nomor lantai, level terminal, harga; null = sudah maksimal. */
+  readonly berikut: { readonly lantai: number; readonly level: number; readonly biaya: number } | null;
+  /** Kekurangan kas untuk lantai berikutnya (0 bila cukup). */
+  readonly kurang: number;
+  /** Operasional satu lantai per hari (Rp). */
+  readonly operasional: number;
+  /** Petugas yang ikut direkrut saat dibeli: peran, jumlah, gaji semuanya per hari (sudah × pengali kelas); null = tidak ada. */
+  readonly petugas: { readonly id: PetugasId; readonly jumlah: number; readonly gaji: number } | null;
+  /**
+   * Kas sesudah membeli di bawah cadangan B, aturan yang sama dengan baris tujuan (`kasSesudahAksi` di
+   * app/tujuan.ts; temuan playtest T-1): kartu meminta ketukan kedua dan toast lantai terbuka tidak mengajak membeli.
+   * Hanya saat terjangkau.
+   */
+  readonly peringatanKas: boolean;
+  /** Kas yang tersisa sesudah membeli lantai berikutnya (Rp; hanya berarti saat terjangkau). */
+  readonly sisaKas: number;
+  /** Paling banyak 2 efek yang berubah paling besar (dihitung saat dibaca, hanya untuk terjangkau & kurang). */
+  readonly pratinjau: readonly BagianPratinjau[];
+}
+
 /** Tab Bangun: kapasitas tiap area, bangunan di slot, modernisasi. */
 export interface ModelBangun {
   readonly area: readonly ModelArea[];
@@ -201,6 +267,8 @@ export interface ModelBangun {
   readonly arusPuncak: number;
   readonly petakBus: number;
   readonly bangunan: Readonly<Record<BangunanId, ModelBangunan>>;
+  /** Kartu lantai tiap gedung; null = tersembunyi (tahap perluasan belum membuka lantai). */
+  readonly lantai: Readonly<Record<GedungLantaiId, ModelLantai | null>>;
   readonly jendelaKosong: number;
   readonly teknologi: readonly ModelTeknologi[];
   /** Perawatan semua unit & modernisasi per hari (sudah × pengali kelas). */
@@ -745,8 +813,97 @@ function slotBerikut(id: BangunanId, state: GameState, cfg: KonfigEkonomi): Mode
   const tahap = tahapTambahSlot(cfg.tycoon.bangunan[id].slot, perluasan);
   const izin = levelIzinBerikut(id, level, perluasan, cfg);
   const levelTahap = tahap === null ? Number.POSITIVE_INFINITY : Math.max(level, cfg.mitra.perluasan[tahap - 1]?.level ?? 0);
+  // Lantai (documents/18) bila ia sumber slot berikutnya: tidak lebih lambat dari izin & perluasan.
+  const l = lantaiUntukUnit(id, state.terminal.lantai, perluasan, level, cfg);
+  if (l && l.level <= Math.min(izin ?? Number.POSITIVE_INFINITY, levelTahap)) return { jenis: 'lantai', ...l };
   if (izin !== null && izin < levelTahap) return { jenis: 'level', level: izin };
   return tahap === null ? null : { jenis: 'perluasan', tahap };
+}
+
+/** Kartu lantai tiap gedung (rancangan 4.4): null selama tahap perluasan belum membuka lantai gedung itu. */
+function modelLantai(state: GameState, cfg: KonfigEkonomi): Record<GedungLantaiId, ModelLantai | null> {
+  const level = levelTerminal(state, cfg);
+  const perluasan = state.perkembangan.perluasan;
+  const pengali = pengaliBiayaKelas(kelasTerminal(state, cfg), cfg);
+  const hasil = {} as Record<GedungLantaiId, ModelLantai | null>;
+  for (const g of GEDUNG_LANTAI_IDS) {
+    const k = cfg.tycoon.lantai[g];
+    if (perluasan < k.tahap) {
+      hasil[g] = null;
+      continue;
+    }
+    const n = state.terminal.lantai[g];
+    const syarat = syaratLantai(g, n, perluasan, level, cfg);
+    const biaya = biayaLantai(g, n, cfg);
+    const berikut = biaya !== null ? { lantai: n + 2, level: k.level[n]!, biaya } : null;
+    const keadaan: KeadaanLantai =
+      syarat?.jenis === 'maks' || !berikut ? 'maks' : syarat?.jenis === 'level' ? (n > 0 ? 'selesai' : 'terkunci') : state.kas >= berikut.biaya ? 'terjangkau' : 'kurang';
+    const ikut = petugasIkutLantai(state.terminal, g, cfg);
+    const peran = ikut[0];
+    // Aturan aman baris tujuan: sisa kas sesudah membeli ≥ cadangan B (temuan playtest T-1).
+    const sesudahBeli = keadaan === 'terjangkau' ? kasSesudahAksi(state, { jenis: 'tambahLantai', gedung: g }, cfg) : null;
+    hasil[g] = {
+      gedung: g,
+      lantai: n,
+      keadaan,
+      berikut,
+      kurang: berikut ? Math.max(0, berikut.biaya - state.kas) : 0,
+      operasional: k.operasional,
+      petugas: peran ? { id: peran, jumlah: ikut.length, gaji: cfg.tycoon.gaji[peran] * pengali * ikut.length } : null,
+      peringatanKas: sesudahBeli !== null && sesudahBeli.sisa < sesudahBeli.cadangan,
+      sisaKas: sesudahBeli?.sisa ?? state.kas - (berikut?.biaya ?? 0),
+      // Dihitung saat dibaca (kartu yang tampil), lihat pratinjauTersimpan.
+      get pratinjau() {
+        return keadaan === 'terjangkau' || keadaan === 'kurang' ? pratinjauTersimpan(state, g, cfg) : [];
+      },
+    };
+  }
+  return hasil;
+}
+
+/** Efek satu lantai bila dibeli sekarang (rancangan 8.3): kepuasan & komponennya, laba per hari, dan parkir per hari. */
+export interface PratinjauLantai {
+  readonly sebelum: KepuasanTycoon;
+  readonly sesudah: KepuasanTycoon;
+  /** Selisih laba operasi sehari (Rp, tarif pemain) dan pendapatan parkir sehari (Rp). */
+  readonly labaHarian: number;
+  readonly parkirHarian: number;
+}
+
+/** Pratinjau lantai: lantai dipasang pada salinan state tanpa memeriksa syarat & kas (pola `sesudah` di app/tujuan.ts). */
+export function pratinjauLantai(state: GameState, gedung: GedungLantaiId, cfg: KonfigEkonomi = EKONOMI): PratinjauLantai {
+  const sesudah: GameState = { ...state, terminal: terminalDenganLantai(state.terminal, gedung, cfg) };
+  const laba = (s: GameState): number => acuanHarian(s, cfg, s.terminal.tarif).laba * 24;
+  return {
+    sebelum: operasiState(state, cfg).kepuasan,
+    sesudah: operasiState(sesudah, cfg).kepuasan,
+    labaHarian: laba(sesudah) - laba(state),
+    parkirHarian: parkirHarian(sesudah, cfg) - parkirHarian(state, cfg),
+  };
+}
+
+/** Parkir lebih kecil dari ini per hari tidak disebut di pratinjau. */
+const MIN_PRATINJAU_PARKIR = 500_000;
+
+/** Paling banyak 2 bagian pratinjau: pendapatan parkir lebih dulu (bila naik), lalu komponen yang naik paling banyak (persen bulat). */
+export function bagianPratinjau(p: PratinjauLantai): BagianPratinjau[] {
+  const hasil: BagianPratinjau[] = [];
+  if (p.parkirHarian >= MIN_PRATINJAU_PARKIR) hasil.push({ jenis: 'parkir', selisih: p.parkirHarian });
+  const komponen = (['kenyamanan', 'fasilitas', 'kebersihan'] as const)
+    .map((c) => ({ jenis: 'komponen' as const, komponen: c, dari: Math.round(p.sebelum[c] * 100), ke: Math.round(p.sesudah[c] * 100) }))
+    .filter((x) => x.ke !== x.dari)
+    .sort((x, y) => Math.abs(y.ke - y.dari) - Math.abs(x.ke - x.dari));
+  return [...hasil, ...komponen].slice(0, 2);
+}
+
+/** Pratinjau per susunan terminal (seperti tuas tugas): dinilai ulang paling cepat tiap DETIK_TUAS detik main. */
+const simpananPratinjau = new WeakMap<object, Map<string, readonly BagianPratinjau[]>>();
+
+function pratinjauTersimpan(state: GameState, gedung: GedungLantaiId, cfg: KonfigEkonomi): readonly BagianPratinjau[] {
+  if (cfg !== EKONOMI) return bagianPratinjau(pratinjauLantai(state, gedung, cfg));
+  const po = state.mitra.terdaftar.map((p) => `${p.id}:${levelPo(p, cfg)}:${p.loket}`).join(',');
+  const kunci = `${gedung}|${Math.floor(state.statistik.waktuMainDetik / DETIK_TUAS)}|${levelTerminal(state, cfg)}|${state.perkembangan.perluasan}|${po}`;
+  return ambilSimpanan(simpananPratinjau, state.terminal, kunci, () => bagianPratinjau(pratinjauLantai(state, gedung, cfg)));
 }
 
 function modelBangun(state: GameState, cfg: KonfigEkonomi): ModelBangun {
@@ -774,6 +931,7 @@ function modelBangun(state: GameState, cfg: KonfigEkonomi): ModelBangun {
     arusPuncak: op.arusPuncak,
     petakBus: petakBus(perluasan, cfg),
     bangunan,
+    lantai: modelLantai(state, cfg),
     jendelaKosong: jendelaKosong(state),
     teknologi: TEKNOLOGI_IDS.map((id): ModelTeknologi => {
       const t = cfg.teknologi[id];

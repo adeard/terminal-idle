@@ -59,10 +59,11 @@ const kota = (lot: string): HiasanLevel => {
 export const HIASAN_LEVEL: readonly HiasanLevel[] = [
   hiasan('pohonPlaza', 5, { x0: 13.0, y0: 17.15, x1: 29.6, y1: 18.25, h0: 0, h1: 1.7 }),
   hiasan('kanopi', 8, { x0: 26.6, y0: 15.55, x1: 29.3, y1: 16.3, h0: 0, h1: 1.1 }),
-  hiasan('baliho1', 13, { x0: 32.0, y0: 12.85, x1: 36.0, y1: 13.15, h0: 1.3, h1: 3.2 }),
+  // Baliho di tepi selatan atap ruang tunggu, di depan muka lantai 2-nya (y ≥ 13,05) dan di luar CADANGAN_ANTARPULAU (y < 13,2).
+  hiasan('baliho1', 13, { x0: 32.0, y0: 13.08, x1: 36.0, y1: 13.2, h0: 1.3, h1: 3.2 }),
   kota('K13'),
   kota('K12'),
-  hiasan('baliho2', 22, { x0: 42.5, y0: 12.85, x1: 46.5, y1: 13.15, h0: 1.3, h1: 3.2 }),
+  hiasan('baliho2', 22, { x0: 42.5, y0: 13.08, x1: 46.5, y1: 13.2, h0: 1.3, h1: 3.2 }),
   kota('K07'),
   hiasan('pohonAtap', 24, { x0: 9.55, y0: 17.25, x1: 10.45, y1: 19.95, h0: H_TERAS, h1: 2.7 }, TAHAP_TERAS),
   hiasan('menaraJam', 25, { x0: 28.6, y0: 16.4, x1: 29.3, y1: 17.1, h0: 0, h1: 4.6 }),

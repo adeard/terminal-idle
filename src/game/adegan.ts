@@ -65,6 +65,12 @@ const POJOK_LAYAR: readonly (readonly [number, number])[] = [
 const KECERAHAN_ACUAN = 0.42;
 const BATAS_TARGET = { x0: -32, x1: 56, z0: -3, z1: 19 } as const;
 
+/** Pose kamera: titik pandang (X, 0, Z = denah) dan posisi kamera. */
+export interface PoseKamera {
+  readonly target: THREE.Vector3;
+  readonly posisi: THREE.Vector3;
+}
+
 interface TingkatKualitas {
   readonly rasioMaks: number;
   readonly sampel: number;
@@ -151,6 +157,8 @@ export class Adegan implements Proyektor {
   private readonly pelintir = new PelacakPelintir();
   /** Mode sinema: pose awal orbit, lama berjalan, dan pose kamera pemain yang dipulihkan saat keluar. */
   private sinema: { readonly awal: PoseSinema; readonly posisi: THREE.Vector3; readonly target: THREE.Vector3; waktu: number } | null = null;
+  /** Pose tujuan kamera yang sedang digeser halus (mode lantai); null = tidak ada. Batal begitu pemain menyentuh kamera. */
+  private geser: PoseKamera | null = null;
 
   constructor(wadah: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, stencil: false, powerPreference: 'high-performance' });
@@ -194,6 +202,7 @@ export class Adegan implements Proyektor {
     this.kontrol.maxPolarAngle = Math.PI / 2 - ELEVASI_MIN;
     this.kontrol.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
     this.kontrol.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    this.kontrol.addEventListener('start', () => (this.geser = null));
     this.pasangPelintir();
 
     // Pita fokus lebar & blur ringan: kesan foto maket tanpa mengaburkan area bermain.
@@ -388,6 +397,49 @@ export class Adegan implements Proyektor {
     this.kamera.lookAt(t);
   }
 
+  /** Pose kamera sekarang (salinan), untuk dipulihkan nanti lewat geserKe. */
+  pose(): PoseKamera {
+    return { target: this.kontrol.target.clone(), posisi: this.kamera.position.clone() };
+  }
+
+  /**
+   * Pose yang membingkai titik-titik ini dari arah awal, seperti bingkai(), tetapi tanpa mengubah arah
+   * kompas dan batas zoom; jarak dijepit ke batas zoom dan titik pandang ke batas geser.
+   */
+  poseBingkai(titik: readonly (readonly [number, number, number])[], azimut: { readonly lanskap?: number; readonly potret?: number } = {}): PoseKamera {
+    const b = bingkaiAwal(titik, TITIK_INTI, this.lebar, this.tinggi, undefined, azimut);
+    const target = new THREE.Vector3(THREE.MathUtils.clamp(b.x, BATAS_TARGET.x0, BATAS_TARGET.x1), 0, THREE.MathUtils.clamp(b.y, BATAS_TARGET.z0, BATAS_TARGET.z1));
+    const jarak = THREE.MathUtils.clamp(b.jarak, this.kontrol.minDistance, this.kontrol.maxDistance);
+    return { target, posisi: target.clone().addScaledVector(this.v.set(...arahKamera(b.azimut)), jarak) };
+  }
+
+  /** Geser kamera halus ke pose ini (±0,5 dtk). Pemain yang menyentuh kamera membatalkannya. */
+  geserKe(p: PoseKamera): void {
+    if (this.sinema) return;
+    this.geser = p;
+    this.sisaPutar = this.sisaMiring = 0;
+  }
+
+  /** Kamera sedang digeser halus ke pose tujuan. */
+  get sedangBergeser(): boolean {
+    return this.geser !== null;
+  }
+
+  /** Langkah geser halus: mendekat eksponensial, selesai saat tinggal beberapa senti. */
+  private animasiGeser(dt: number): void {
+    const g = this.geser!;
+    const k = 1 - Math.exp(-dt * 7);
+    const t = this.kontrol.target;
+    t.lerp(g.target, k);
+    this.kamera.position.lerp(g.posisi, k);
+    if (t.distanceToSquared(g.target) < 1e-4 && this.kamera.position.distanceToSquared(g.posisi) < 1e-4) {
+      t.copy(g.target);
+      this.kamera.position.copy(g.posisi);
+      this.geser = null;
+    }
+    this.kamera.lookAt(t);
+  }
+
   /** Titik tanah yang dilihat kamera (koordinat denah) dan jarak kamera ke sana, untuk suara. */
   titikPandang(): { readonly x: number; readonly y: number; readonly jarak: number } {
     const t = this.kontrol.target;
@@ -488,7 +540,8 @@ export class Adegan implements Proyektor {
     if (this.sinema) {
       this.gerakSinema(dt);
     } else {
-      this.animasiArah(dt);
+      if (this.geser) this.animasiGeser(dt);
+      else this.animasiArah(dt);
       this.kontrol.update(dt);
       this.jepitTarget();
     }

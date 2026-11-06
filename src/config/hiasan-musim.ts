@@ -46,6 +46,7 @@ export const PAPAN_MUSIM: Readonly<Record<string, PapanMusim>> = {
   // Biru langit, lebih muda dari papan Tipe B (biru tua) supaya tetap terbedakan.
   'papan-hujan': { latar: '#0284c7', warna: '#ffffff' },
   'papan-imlek': { latar: '#b91c1c', warna: '#fde047' },
-  // Kuning, bukan hijau tua: spanduk event Mudik Lebaran (#166534) menang di bawahnya selama event berlangsung.
-  'papan-mudik': { latar: '#eab308', warna: '#14532d' },
+  // Putih bertulisan hijau tua (kontras 9,1 : 1): kuning lama mirip papan Terpadu bawaan di siang hari, dan hijau
+  // tua menyatu dengan spanduk event Mudik Lebaran (#166534) yang menang di bawahnya selama event berlangsung.
+  'papan-mudik': { latar: '#ffffff', warna: '#14532d' },
 };

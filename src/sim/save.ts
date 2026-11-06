@@ -16,9 +16,10 @@
  */
 import { EKONOMI, type KonfigEkonomi } from '../config/economy.config';
 import { KOMPONEN_PERBAIKAN, MUSIM, SLOT_HIASAN, TEMPLAT_TUGAS, type KonfigMusim, type TemplatTugas } from '../config/musim.config';
-import { slotBangunan } from './bangunan';
+import { slotBangunan, type JumlahLantai } from './bangunan';
 import {
   BANGUNAN_IDS,
+  GEDUNG_LANTAI_IDS,
   isEventId,
   isPencapaianId,
   isPetugasId,
@@ -26,6 +27,7 @@ import {
   TARIF_IDS,
   TEKNOLOGI_IDS,
   type BangunanId,
+  type GedungLantaiId,
   type PencapaianId,
   type PetugasId,
   type PoId,
@@ -92,6 +94,8 @@ export interface SaveV3 {
   readonly terminal: {
     readonly id: string;
     readonly bangunan: Readonly<Record<BangunanId, number>>;
+    /** Lantai tambahan per gedung (sejak 0.6.0, documents/18). Opsional, skema tetap 3: tanpa blok ini semua 0. */
+    readonly lantai?: Readonly<Partial<Record<GedungLantaiId, number>>>;
     /** Urut rekrut. */
     readonly petugas: readonly PetugasId[];
     readonly tarif: Readonly<Record<TarifId, number>>;
@@ -172,6 +176,7 @@ export function keSaveV3(state: GameState): SaveV3 {
     terminal: {
       id: state.terminal.id,
       bangunan: { ...state.terminal.bangunan },
+      lantai: { ...state.terminal.lantai },
       petugas: [...state.terminal.petugas],
       tarif: { ...state.terminal.tarif },
       teknologi: { ...state.terminal.teknologi },
@@ -317,8 +322,10 @@ function dariSaveV3(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
   const perkembangan = bacaPerkembangan(akar['perkembangan'], cfg);
   const terminalMentah = wajibObjek(akar['terminal'], 'terminal');
   const mitra = bacaMitra(akar['mitra'], cfg);
+  // Slot memakai lantai, jadi lantai dibaca lebih dulu: unit di slot lantai tidak terpotong saat dimuat.
+  const lantai = bacaLantai(terminalMentah['lantai'], cfg);
   // Slot memakai level dari perkembangan (izin level): jendela & jalur izin tidak terpotong saat dimuat.
-  const bangunan = bacaBangunan(terminalMentah['bangunan'], perkembangan.perluasan, levelTerminalDariXp(perkembangan.xpTerminal, cfg), mitra, cfg);
+  const bangunan = bacaBangunan(terminalMentah['bangunan'], perkembangan.perluasan, levelTerminalDariXp(perkembangan.xpTerminal, cfg), mitra, cfg, lantai);
   const statistik = bacaStatistik(akar['statistik'], awal.statistik);
   const hariKe = waktuTerminal(statistik.waktuMainDetik).hariKe;
   const state: GameState = {
@@ -326,6 +333,7 @@ function dariSaveV3(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
     terminal: {
       id: opsional(terminalMentah['id'], ID_TERMINAL_AWAL, wajibString, 'terminal.id'),
       bangunan,
+      lantai,
       petugas: rapikanPetugas(bacaPetugas(terminalMentah['petugas']), bangunan),
       tarif: bacaTarif(terminalMentah['tarif'], awal.terminal.tarif, cfg),
       teknologi: bacaTeknologi(terminalMentah['teknologi'], awal.terminal.teknologi),
@@ -349,18 +357,32 @@ function dariSaveV3(akar: DataMentah, sekarangMs: number, cfg: KonfigEkonomi): G
 }
 
 /**
- * Bangunan: tiap jenis bilangan bulat dalam slot sekarang (tahap perluasan + izin level; save
+ * Lantai tambahan: dijepit ke 0…maksimal gedung itu dan dibulatkan ke bawah; gedung tak dikenal
+ * dan nilai bukan angka diabaikan. Tidak pernah menolak save (documents/18).
+ */
+function bacaLantai(nilai: unknown, cfg: KonfigEkonomi): JumlahLantai {
+  const o = objekAtauNull(nilai);
+  const hasil = {} as Record<GedungLantaiId, number>;
+  for (const g of GEDUNG_LANTAI_IDS) {
+    const n = o?.[g];
+    hasil[g] = typeof n === 'number' && Number.isFinite(n) ? Math.min(cfg.tycoon.lantai[g].level.length, Math.max(0, Math.floor(n))) : 0;
+  }
+  return hasil;
+}
+
+/**
+ * Bangunan: tiap jenis bilangan bulat dalam slot sekarang (tahap perluasan + izin level + lantai; save
  * dari versi lain / diubah tangan). Jalur permanen (paling sedikit unit
  * awalnya), jendela loket paling sedikit satu dan sebanyak yang disewa PO.
  */
-function bacaBangunan(nilai: unknown, perluasan: number, level: number, mitra: MitraState, cfg: KonfigEkonomi): Record<BangunanId, number> {
+function bacaBangunan(nilai: unknown, perluasan: number, level: number, mitra: MitraState, cfg: KonfigEkonomi, lantai: JumlahLantai): Record<BangunanId, number> {
   const o = opsionalObjek(nilai, 'terminal.bangunan');
   const hasil = {} as Record<BangunanId, number>;
   for (const id of BANGUNAN_IDS) {
     const b = cfg.tycoon.bangunan[id];
     const n = opsional(o?.[id], b.awal, wajibIntegerNonNegatif, `terminal.bangunan.${id}`);
     const min = id === 'jalur' ? b.awal : id === 'jendela' ? 1 : 0;
-    hasil[id] = Math.max(min, Math.min(slotBangunan(id, perluasan, level, cfg), n));
+    hasil[id] = Math.max(min, Math.min(slotBangunan(id, perluasan, level, cfg, lantai), n));
   }
   hasil.jendela = Math.max(hasil.jendela, mitra.terdaftar.reduce((a, p) => a + p.loket, 0));
   return hasil;

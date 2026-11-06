@@ -5,11 +5,14 @@
  * yang paling cepat balik modal. PO membayar kontrak di muka saat bergabung &
  * tiap perpanjangan (pemain menerima tawaran begitu muncul, selama kepuasan
  * mitra cukup); tarif tetap bawaan. Lihat documents/13-rancangan-tycoon.md bagian 14.
+ * Tambah lantai (documents/18) ikut dinilai seperti aksi lain: isinya langsung terbangun dan petugas
+ * wajibnya ikut direkrut menurut aturan game (sim/lantai.ts), operasionalnya lewat keuanganPerJam.
  */
 import { EKONOMI, type KonfigEkonomi } from '../src/config/economy.config';
-import { bangunanAwal, biayaBangun, slotBangunan } from '../src/sim/bangunan';
-import { BANGUNAN_IDS, PETUGAS_IDS, PO_IDS, TEKNOLOGI_IDS, type BangunanId, type PetugasId, type PoId, type TeknologiId } from '../src/sim/fitur';
+import { bangunanAwal, biayaBangun, lantaiAwal, slotBangunan } from '../src/sim/bangunan';
+import { BANGUNAN_IDS, GEDUNG_LANTAI_IDS, PETUGAS_IDS, PO_IDS, TEKNOLOGI_IDS, type BangunanId, type GedungLantaiId, type PetugasId, type PoId, type TeknologiId } from '../src/sim/fitur';
 import { keuanganPerJam, majukanKas } from '../src/sim/keuangan';
+import { biayaLantai, petugasIkutLantai, syaratLantai } from '../src/sim/lantai';
 import { kelasDariLevel, levelTerminalDariXp, slotPo } from '../src/sim/level-terminal';
 import { kelasAktif, levelPoDariXp, majukanReputasi, syaratDaftarKurang, targetReputasi, tawaranKontrak, tingkatPo } from '../src/sim/mitra';
 import { hitungOperasi, type HasilOperasi, type KeadaanOperasi } from '../src/sim/operasi';
@@ -33,6 +36,8 @@ export interface SimTycoon {
   detik: number;
   kas: number;
   bangunan: Record<BangunanId, number>;
+  /** Lantai tambahan tiap gedung (0 = hanya lantai dasar). */
+  lantai: Record<GedungLantaiId, number>;
   petugas: PetugasId[];
   tarif: NilaiTarif;
   teknologi: Record<TeknologiId, boolean>;
@@ -53,7 +58,8 @@ export type AksiSim =
   | { readonly jenis: 'rekrut'; readonly id: PetugasId }
   | { readonly jenis: 'teknologi'; readonly id: TeknologiId }
   | { readonly jenis: 'po'; readonly id: PoId }
-  | { readonly jenis: 'perluasan' };
+  | { readonly jenis: 'perluasan' }
+  | { readonly jenis: 'lantai'; readonly gedung: GedungLantaiId };
 
 export interface Catatan {
   readonly detik: number;
@@ -66,6 +72,7 @@ export function buatSim(cfg: KonfigEkonomi = EKONOMI): SimTycoon {
     detik: 0,
     kas: cfg.tycoon.modalAwal,
     bangunan: { ...bangunanAwal(cfg) },
+    lantai: { ...lantaiAwal() },
     petugas: [],
     tarif: tarifBawaan(cfg),
     teknologi: Object.fromEntries(TEKNOLOGI_IDS.map((id) => [id, false])) as Record<TeknologiId, boolean>,
@@ -99,6 +106,7 @@ export function keadaan(s: SimTycoon, cfg: KonfigEkonomi = EKONOMI): KeadaanOper
     po: s.po.map((p) => ({ id: p.id, level: levelPoSim(p, cfg), loket: p.loket, reputasi: p.reputasi })),
     kelasTerminal: kelasDariLevel(levelTerminalSim(s, cfg), cfg),
     perluasan: s.perluasan,
+    lantai: s.lantai,
   };
 }
 
@@ -149,6 +157,7 @@ export function arusRata(s: SimTycoon, cfg: KonfigEkonomi = EKONOMI): number {
 const salinSim = (s: SimTycoon): SimTycoon => ({
   ...s,
   bangunan: { ...s.bangunan },
+  lantai: { ...s.lantai },
   petugas: [...s.petugas],
   teknologi: { ...s.teknologi },
   po: s.po.map((p) => ({ ...p })),
@@ -158,9 +167,9 @@ const salinSim = (s: SimTycoon): SimTycoon => ({
 export function biayaAksi(s: SimTycoon, a: AksiSim, cfg: KonfigEkonomi = EKONOMI): number | null {
   switch (a.jenis) {
     case 'jendela':
-      return biayaBangun('jendela', s.bangunan, s.perluasan, levelTerminalSim(s, cfg), cfg);
+      return biayaBangun('jendela', s.bangunan, s.perluasan, levelTerminalSim(s, cfg), cfg, s.lantai);
     case 'bangun':
-      return biayaBangun(a.id, s.bangunan, s.perluasan, levelTerminalSim(s, cfg), cfg);
+      return biayaBangun(a.id, s.bangunan, s.perluasan, levelTerminalSim(s, cfg), cfg, s.lantai);
     case 'rekrut':
       return bisaRekrut(a.id, s.petugas, s.bangunan) ? 0 : null;
     case 'teknologi': {
@@ -176,7 +185,7 @@ export function biayaAksi(s: SimTycoon, a: AksiSim, cfg: KonfigEkonomi = EKONOMI
       const op = hitungOperasi(keadaan(s, cfg), { ritme: 1, event: 1 }, cfg);
       if (syaratDaftarKurang(a.id, { kelasTerminal: kelasDariLevel(level, cfg), kepuasan: op.kepuasan.nilai }, cfg)) return null;
       // PO butuh jendela: dibangun PO sendiri di slot kosong. Bergabung gratis: PO yang membayar kontrak.
-      if (s.bangunan.jendela >= slotBangunan('jendela', s.perluasan, level, cfg)) return null;
+      if (s.bangunan.jendela >= slotBangunan('jendela', s.perluasan, level, cfg, s.lantai)) return null;
       return 0;
     }
     case 'perluasan': {
@@ -184,6 +193,8 @@ export function biayaAksi(s: SimTycoon, a: AksiSim, cfg: KonfigEkonomi = EKONOMI
       if (!tahap || s.proyekDetik > 0 || levelTerminalSim(s, cfg) < tahap.level) return null;
       return tahap.biaya;
     }
+    case 'lantai':
+      return syaratLantai(a.gedung, s.lantai[a.gedung], s.perluasan, levelTerminalSim(s, cfg), cfg) === null ? biayaLantai(a.gedung, s.lantai[a.gedung], cfg) : null;
   }
 }
 
@@ -206,7 +217,7 @@ export function terapkanAksi(s: SimTycoon, a: AksiSim, biaya: number, cfg: Konfi
       x.teknologi[a.id] = true;
       break;
     case 'po': {
-      const bebas = slotBangunan('jendela', x.perluasan, levelTerminalSim(x, cfg), cfg) - x.bangunan.jendela;
+      const bebas = slotBangunan('jendela', x.perluasan, levelTerminalSim(x, cfg), cfg, x.lantai) - x.bangunan.jendela;
       const loket = Math.max(1, Math.min(tingkatPo(a.id, cfg).loketBawaan, bebas));
       x.bangunan.jendela += loket;
       const t = tawaranKontrak(a.id, 0, 1, kelasDariLevel(levelTerminalSim(x, cfg), cfg), cfg);
@@ -218,6 +229,13 @@ export function terapkanAksi(s: SimTycoon, a: AksiSim, biaya: number, cfg: Konfi
     case 'perluasan':
       x.proyekDetik = cfg.mitra.detikProyek;
       break;
+    case 'lantai': {
+      // Seperti tambahLantai di sim/state.ts: petugas dinilai sebelum isinya dibangun.
+      for (const id of petugasIkutLantai(x, a.gedung, cfg)) x.petugas = rekrut(x.petugas, id);
+      for (const [id, n] of Object.entries(cfg.tycoon.lantai[a.gedung].isi) as [BangunanId, number][]) x.bangunan[id] += n;
+      x.lantai[a.gedung]++;
+      break;
+    }
   }
   return x;
 }
@@ -238,10 +256,12 @@ function calonAksi(op: HasilOperasi): AksiSim[] {
   for (const id of PETUGAS_IDS) if (id !== 'manajerKemitraan') calon.push({ jenis: 'rekrut', id });
   for (const id of TEKNOLOGI_IDS) calon.push({ jenis: 'teknologi', id });
   for (const id of PO_IDS) calon.push({ jenis: 'po', id });
+  for (const gedung of GEDUNG_LANTAI_IDS) calon.push({ jenis: 'lantai', gedung });
   return calon;
 }
 
-const namaAksi = (a: AksiSim): string => (a.jenis === 'jendela' ? `jendela→${a.po}` : a.jenis === 'perluasan' ? 'perluasan' : `${a.jenis}:${a.id}`);
+const namaAksi = (a: AksiSim): string =>
+  a.jenis === 'jendela' ? `jendela→${a.po}` : a.jenis === 'perluasan' ? 'perluasan' : a.jenis === 'lantai' ? `lantai:${a.gedung}` : `${a.jenis}:${a.id}`;
 
 interface NilaiAksi {
   readonly a: AksiSim;

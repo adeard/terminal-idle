@@ -206,7 +206,8 @@ describe('teks Perluasan 3 (documents/16 bagian 4.5 & 9.3, playtest P-1 & P-2)',
   it('nama & deskripsi kartu', () => {
     expect(NAMA_PERLUASAN[2]).toEqual({
       nama: 'Sayap\u00a02\u00a0lantai',
-      deskripsi: 'Loket, ruang tunggu & food court: jendela +4, petak bus +10, kursi, toko, toilet; sesudahnya naik level menambah slot jendela & jalur',
+      // "\u2026, dan membuka Tambah lantai": documents/18, rancangan Tambah lantai bagian 4.4.
+      deskripsi: 'Loket, ruang tunggu & food court: jendela +4, petak bus +10, kursi, toko, toilet; sesudahnya naik level menambah slot jendela & jalur, dan membuka Tambah lantai',
     });
   });
 
