@@ -24,11 +24,17 @@ export const RILIS = {
   // itu dan menulis save berikutnya TANPA blok `musim` (juga ke cloud save): poin dan Rapor Musim, tugas harian,
   // hiasan yang dimiliki dan dipakai, tiket ganti, Surat Armada yang belum dipakai, riwayat musim, lencana, dan
   // sambutan hilang diam-diam dan permanen; 0.5.0 lalu membuka Musim dari nol. Karena itu versi lama dipaksa.
-  versiMinimal: '0.5.0',
+  // 0.6.0: Tambah lantai. Save tetap skema 3, tetapi 0.6.0 menambah `terminal.lantai` (lantai tambahan per gedung).
+  // Dijalankan 0.5.0 pada save 0.6.0 berlantai (Gedung parkir 2, Ruang tunggu 1, Gedung toilet 1, Aula loket 1):
+  // `bacaBangunan` 0.5.0 menjepit unit ke slot tanpa lantai dan 0.5.0 menulis save berikutnya TANPA `lantai`
+  // (juga ke cloud save, jalurnya sama: deserialisasi). Hilang diam-diam dan permanen: kursi 14 → 8, kios 4 → 3,
+  // toko 6 → 4, toilet 3 → 2, lahan parkir 6 → 2, petugas toilet 3 → 2 dan juru parkir 6 → 2, semua lantai, tanpa
+  // pengembalian uang (4,1 miliar Rp untuk kelima lantai). Karena itu versi lama dipaksa.
+  versiMinimal: '0.6.0',
   /** Catatan singkat "Yang baru" di versi ini, ditampilkan di popup (maks 3 butir pendek). */
   catatan: [
-    'Musim Terminal: 3 tugas harian dan Rapor Musim berhadiah hiasan, terbuka di Lv 6.',
-    'Musim 1 (Musim Hujan) mulai Senin, 30 November 2026.',
-    'Terminal dan kota di seberangnya kini berubah sedikit demi sedikit saat naik level.',
+    'Tambah lantai di Gedung parkir, Ruang tunggu, Gedung toilet, dan Aula loket, terbuka mulai Perluasan 3.',
+    'Tombol Lihat menampilkan tiap lantai; mobil naik-turun ramp di Gedung parkir.',
+    'Sayap 2 Lantai punya tangga baru. Beli lantai saat kas tipis minta ketuk dua kali.',
   ] as readonly string[],
 } as const;
